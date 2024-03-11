@@ -7,6 +7,7 @@ defmodule Object.Channel do
 
   Record.defrecord(:channel,
     server_id: nil,
+    chain_id: nil,
     block_number: nil,
     fleet_contract: nil,
     type: nil,
@@ -18,6 +19,7 @@ defmodule Object.Channel do
   @type channel ::
           record(:channel,
             server_id: binary(),
+            chain_id: binary(),
             block_number: integer(),
             fleet_contract: binary(),
             type: binary(),
@@ -61,6 +63,7 @@ defmodule Object.Channel do
 
   defp message(
          channel(
+           chain_id: chain_id,
            block_number: num,
            server_id: id,
            fleet_contract: fleet,
@@ -71,7 +74,7 @@ defmodule Object.Channel do
        ) do
     params = Rlp.encode!(params) |> Diode.hash()
 
-    ["channel", id, Chain.blockhash(num), fleet, type, name, params]
+    ["channel", id, Chain.blockhash(chain_id, num), fleet, type, name, params]
     |> Enum.map(&ABI.encode("bytes32", &1))
     |> :erlang.iolist_to_binary()
   end

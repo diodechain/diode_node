@@ -110,39 +110,6 @@ defmodule Network.RpcWs do
           {:ok, state}
         end
 
-      {:rpc, :syncing, bool} ->
-        reply =
-          Enum.filter(Process.get(), fn
-            {{:subs, _id}, :syncing} -> true
-            _ -> false
-          end)
-          |> Enum.map(fn {{:subs, id}, _} ->
-            {:text,
-             Poison.encode!(%{
-               "jsonrpc" => "2.0",
-               "method" => "eth_subscription",
-               "params" => %{
-                 "subscription" => id,
-                 "result" => %{
-                   "syncing" => bool,
-                   "status" => %{
-                     "startingBlock" => Chain.peak(),
-                     "currentBlock" => Chain.peak(),
-                     "highestBlock" => Chain.peak(),
-                     "pulledStates" => 0,
-                     "knownStates" => 0
-                   }
-                 }
-               }
-             })}
-          end)
-
-        if reply != [] do
-          {:reply, reply, state}
-        else
-          {:ok, state}
-        end
-
       {:EXIT, _pid, :normal} ->
         {:ok, state}
 

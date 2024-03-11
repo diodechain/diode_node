@@ -50,16 +50,52 @@ You can also use the blockchain explorer at https://diode.io/prenet to check you
 
 Converting Balance to Stake is a procedure with a built-in time-lock to prevent hit-and-run attacks against the network. Staking any balance will keep your funds locked for ~30 days before they are finally staked. Keep this in mind.
 
-To test if the transaction would work to stake 5 io:
+To test if the transaction would work to stake 5 Diode:
 
 ```elixir
 Shell.call_from(Diode.miner, Diode.registry_address, "MinerStake", [], [], value: Shell.ether(5))
 ```
 
-To submit the transaction to stake 5 dio:
+To submit the transaction to stake 5 Diode:
 
 ```elixir
 Shell.submit_from(Diode.miner, Diode.registry_address, "MinerStake", [], [], value: Shell.ether(5))
+```
+
+### Converting Stake to Balance
+
+Unstaking is a 2-step process.
+    1. Initiating the unstaking and wait for the lock period.
+    2. Withdraw the funds from the registry after the lock period. 
+
+The first step, the actual unstaking will immediately remove any stake-work bonus and earmark the funds for unstaking. After one epoch the funds are then available for withdrawal.
+
+##### Step 1: Unstaking
+
+Test unstaking 5 Diode using call_from() 
+```elixir
+Shell.call_from(Diode.miner, Diode.registry_address, "MinerUnstake", ["uint256"], [Shell.ether(5)])
+```
+
+Execute unstaking 5 Diode for real
+
+```elixir
+Shell.submit_from(Diode.miner, Diode.registry_address, "MinerUnstake", ["uint256"], [Shell.ether(5)])
+```
+
+#### Step 2: Withdrawal
+
+```elixir
+Shell.call_from(Diode.miner, Diode.registry_address, "MinerWithdraw")
+```
+
+MinerWithdraw
+
+
+### Sending funds
+
+```elixir
+Shell.transfer_from(Diode.miner, address, value: Shell.ether(5))
 ```
 
 ### Flushing the transaction pool

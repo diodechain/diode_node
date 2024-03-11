@@ -3,7 +3,6 @@
 # Licensed under the Diode License, Version 1.1
 defmodule Network.PeerHandler do
   use Network.Handler
-  alias Chain.BlockCache, as: Block
   alias Object.Server, as: Server
   alias Model.KademliaSql
 
@@ -47,68 +46,14 @@ defmodule Network.PeerHandler do
     )
   end
 
-  defp publish_peak(state = %{last_publish: last}) do
-    if Chain.peak_hash() != last do
-      GenServer.cast(self(), {:rpc, [@publish, Chain.with_peak(&Block.export/1)]})
-    end
-
-    state
-  end
-
   def ssl_options(opts) do
     Network.Server.default_ssl_options(opts)
     |> Keyword.put(:packet, 4)
   end
 
-  # Catching any block publication and comparing to the last one
-  def handle_cast(
-        {:rpc, call = [@publish, %Chain.Block{} = block]},
-        state = %{last_publish: last}
-      ) do
-    if Block.hash(block) != last do
-      calls = :queue.in({call, nil}, state.calls)
-      ssl_send(%{state | calls: calls, last_publish: Block.hash(block)}, call)
-    else
-      {:noreply, state}
-    end
-  end
-
   def handle_cast({:rpc, call}, state) do
     calls = :queue.in({call, nil}, state.calls)
     ssl_send(%{state | calls: calls}, call)
-  end
-
-  def handle_cast({:sync_done, ret}, state = %{blocks: blocks}) do
-    state = %{state | job: nil}
-
-    case ret do
-      <<block_hash::binary-size(32)>> ->
-        if blocks == nil or
-             Chain.Block.number(blocks.peak) <=
-               BlockProcess.with_block(block_hash, &Chain.Block.number/1) do
-          # delete backup list on first successfull block
-          {:noreply, %{state | blocks: nil, random_blocks: 0}}
-        else
-          # received a new block(s) in the meantime re-trigger sync
-          handle_block(
-            # TODO: Check raw block handling here
-            Chain.Block.with_parent(blocks.peak, fn parent -> parent end),
-            blocks.peak,
-            state
-          )
-          |> case do
-            {[@response, @publish, "ok"], state} ->
-              {:noreply, state}
-
-            other ->
-              other
-          end
-        end
-
-      err ->
-        log(state, "received invalid blocks: #{inspect(err)}")
-        {:noreply, %{state | blocks: nil, random_blocks: 0}}
-    end
   end
 
   def handle_cast(:stop, state) do
@@ -137,8 +82,10 @@ defmodule Network.PeerHandler do
       end)
 
     hello = Diode.self(hostname)
+    # Temporary, we don't have server registration atm
+    chain_id = 0
 
-    case ssl_send(state, [@hello, Object.encode!(hello), Chain.genesis_hash()]) do
+    case ssl_send(state, [@hello, Object.encode!(hello), chain_id, []]) do
       {:noreply, state} ->
         receive do
           {:ssl, _socket, msg} ->
@@ -200,29 +147,22 @@ defmodule Network.PeerHandler do
     {:noreply, state}
   end
 
-  defp handle_msg([@hello, server, genesis_hash], state) do
-    genesis = Chain.genesis_hash()
-
-    if genesis != genesis_hash do
-      log(state, "wrong genesis: #{Base16.encode(genesis)}, #{Base16.encode(genesis_hash)}")
-      {:stop, :normal, state}
+  # Provides a `chain_id` for potential of checking server registration in the corresponding Diode Registry contract
+  # `attr` is provided for future attributes, should be a kv-list
+  defp handle_msg([@hello, server, _chain_id, _attr], state) do
+    if Map.has_key?(state, :peer_port) do
+      {:noreply, state}
     else
-      state = publish_peak(state)
+      server = Object.decode!(server)
+      id = Wallet.address!(state.node_id)
+      ^id = Object.key(server)
 
-      if Map.has_key?(state, :peer_port) do
-        {:noreply, state}
-      else
-        server = Object.decode!(server)
-        id = Wallet.address!(state.node_id)
-        ^id = Object.key(server)
+      port = Server.peer_port(server)
 
-        port = Server.peer_port(server)
-
-        log(state, "hello from: #{Wallet.printable(state.node_id)}")
-        state = Map.put(state, :peer_port, port)
-        GenServer.cast(Kademlia, {:register_node, state.node_id, server})
-        {:noreply, %{state | server: server}}
-      end
+      log(state, "hello from: #{Wallet.printable(state.node_id)}")
+      state = Map.put(state, :peer_port, port)
+      GenServer.cast(Kademlia, {:register_node, state.node_id, server})
+      {:noreply, %{state | server: server}}
     end
   end
 
@@ -267,101 +207,8 @@ defmodule Network.PeerHandler do
     {[@response, @pong, @ping], state}
   end
 
-  defp handle_msg([@publish, %Chain.Transaction{} = tx], state) do
-    if Chain.Transaction.valid?(tx) do
-      Chain.Pool.add_transaction(tx)
-      {[@response, @publish, "ok"], state}
-    else
-      {[@response, @publish, "error"], state}
-    end
-  end
-
-  defp handle_msg([@publish, blocks], state) when is_list(blocks) do
-    # For better resource usage we only let one process sync at full
-    # throttle
-
-    with %{peak: peak, oldest: oldest} <- state.blocks do
-      len = Block.number(peak) - Block.number(oldest)
-
-      Chain.throttle_sync(
-        len > 10,
-        "Downloading block #{Block.number(oldest)}/#{Block.number(peak)} (#{len}) from #{name(state)}"
-      )
-    end
-
-    # Actual syncing
-    prev_oldest = get_in(state, [:blocks, :oldest])
-
-    Enum.reduce_while(blocks, {"ok", state}, fn block, {_, state} ->
-      case handle_msg([@publish, block], state) do
-        {response, state} -> {:cont, {response, state}}
-        other -> {:halt, other}
-      end
-    end)
-    |> case do
-      {response, state} ->
-        if state.blocks == nil or state.blocks.oldest == prev_oldest do
-          {[@response, @publish, "ok"], state}
-        else
-          {response, state}
-        end
-
-      other ->
-        other
-    end
-  end
-
-  defp handle_msg([@publish, %Chain.Block{} = block], state) do
-    block = Block.export(block)
-
-    case Chain.block_by_hash?(Chain.Block.hash(block)) do
-      false ->
-        handle_block(Block.with_parent(block, fn parent -> parent end), block, state)
-
-      true ->
-        # log(state, "Chain.add_block: Skipping existing block #{Block.printable(block)}")
-        {[@response, @publish, "ok"], state}
-    end
-  end
-
-  defp handle_msg([@response, @publish, "missing_parent", parent_hash], state) do
-    # if there is a missing parent we're batching 65k blocks at once
-    parents =
-      Enum.reduce_while(Chain.blocks(parent_hash), [], fn block, blocks ->
-        next = [Block.export(block) | blocks]
-
-        if byte_size(:erlang.term_to_binary(next)) > 260_000 do
-          {:halt, next}
-        else
-          {:cont, next}
-        end
-      end)
-      |> Enum.reverse()
-
-    case parents do
-      [] ->
-        # Responding to initial call, removing it from the stack
-        # e.g. from kademlia.ex `GenServer.cast(pid, {:rpc, msg})`
-        err = :io_lib.format("missing_parent ~p but there is no such parent", [parent_hash])
-        :io.format("~s~n", [err])
-        respond(state, err)
-
-      _other ->
-        # Creating a second round to finish this, need to
-        # retop the last call
-        {{:value, call}, calls} = :queue.out(state.calls)
-        calls = :queue.in(call, calls)
-        ssl_send(%{state | calls: calls}, [@publish, parents])
-    end
-  end
-
   defp handle_msg([@response, @find_value, value], state) do
     respond(state, {:value, value})
-  end
-
-  defp handle_msg([@response, @publish, "ok"], state) do
-    state = publish_peak(state)
-    respond(state, ["ok"])
   end
 
   defp handle_msg([@response, _cmd | rest], state) do
@@ -371,92 +218,6 @@ defmodule Network.PeerHandler do
   defp handle_msg(msg, state) do
     log(state, "Unhandled: #{inspect(msg)}")
     {:noreply, state}
-  end
-
-  # Block is based on unknown predecessor
-  # keep block in block backup list
-  defp handle_block(nil, block = %Chain.Block{}, state = %{blocks: blocks}) do
-    case blocks do
-      nil ->
-        parent = Model.SyncSql.search_parent(block)
-        {0, %{peak: block, oldest: parent}}
-
-      %{peak: peak, oldest: oldest} ->
-        if Block.number(oldest) <= Block.number(block) and
-             Block.number(block) <= Block.number(peak) do
-          {0, blocks}
-        else
-          parent = Model.SyncSql.search_parent(block)
-
-          if Block.number(oldest) > Block.number(parent) do
-            {0, %{blocks | oldest: parent}}
-          else
-            # this happens when there is a new top block created on the remote side
-            if Block.parent_hash(block) == Block.hash(peak) do
-              {0, %{blocks | peak: block}}
-            else
-              # is this a randomly broadcasted block or a chain re-org?
-              # assuming reorg after n blocks
-              if state.random_blocks < 100 do
-                log(state, "ignoring wrong ordered block [#{state.random_blocks + 1}]")
-                {state.random_blocks + 1, blocks}
-              else
-                log(
-                  state,
-                  "restarting sync because of random blocks [#{state.random_blocks + 1}]"
-                )
-
-                {:error, :too_many_random_blocks}
-              end
-            end
-          end
-        end
-    end
-    |> case do
-      {:error, reason} ->
-        {:stop, {:sync_error, reason}, state}
-
-      {random_blocks, blocks} ->
-        # if a search_parent() returns a known block we start the syncs
-        if Chain.block_by_hash?(Chain.Block.parent_hash(blocks.oldest)) do
-          do_handle_block(
-            blocks.oldest,
-            %{state | blocks: blocks, random_blocks: random_blocks}
-          )
-
-          # otherwise keep asking for more blocks
-        else
-          {[@response, @publish, "missing_parent", Block.parent_hash(blocks.oldest)],
-           %{state | blocks: blocks, random_blocks: random_blocks}}
-        end
-    end
-  end
-
-  defp handle_block(parent, block, state) when parent != nil do
-    do_handle_block(block, state)
-  end
-
-  defp do_handle_block(block, state = %{job: job}) do
-    if Chain.is_active_sync(true) and Process.whereis(:active_sync_job) == nil and job == nil do
-      me = self()
-
-      job =
-        spawn_link(fn ->
-          Process.register(self(), :active_sync_job)
-          count = Model.SyncSql.count(state.blocks)
-          validate_fast? = count > 100
-
-          ret =
-            Stream.concat([block], Model.SyncSql.resolve(state.blocks))
-            |> Chain.import_blocks(validate_fast?)
-
-          GenServer.cast(me, {:sync_done, ret})
-        end)
-
-      {[@response, @publish, "ok"], %{state | job: job}}
-    else
-      {[@response, @publish, "ok"], state}
-    end
   end
 
   defp respond(state, msg) do

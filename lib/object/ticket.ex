@@ -2,12 +2,12 @@
 # Copyright 2021 Diode
 # Licensed under the Diode License, Version 1.1
 defmodule Object.Ticket do
-  alias Chain.BlockCache, as: Block
   require Record
   @behaviour Object
 
   Record.defrecord(:ticket,
     server_id: nil,
+    chain_id: nil,
     block_number: nil,
     fleet_contract: nil,
     total_connections: nil,
@@ -20,6 +20,7 @@ defmodule Object.Ticket do
   @type ticket ::
           record(:ticket,
             server_id: binary(),
+            chain_id: binary(),
             block_number: integer(),
             fleet_contract: binary(),
             total_connections: integer(),
@@ -31,6 +32,7 @@ defmodule Object.Ticket do
   @type t ::
           record(:ticket,
             server_id: binary(),
+            chain_id: binary(),
             block_number: integer(),
             fleet_contract: binary(),
             total_connections: integer(),
@@ -84,6 +86,7 @@ defmodule Object.Ticket do
     [rec, r, s] = Secp256k1.bitcoin_to_rlp(device_signature(tck))
 
     [
+      chain_id(tck),
       block_number(tck),
       fleet_contract(tck),
       server_id(tck),
@@ -106,6 +109,7 @@ defmodule Object.Ticket do
     #   message[4] = bytes32(totalBytes);
     #   message[5] = localAddress;
     [
+      chain_id(tck),
       block_hash(tck),
       fleet_contract(tck),
       server_id(tck),
@@ -122,13 +126,21 @@ defmodule Object.Ticket do
     |> :erlang.iolist_to_binary()
   end
 
-  def epoch(ticket), do: with_block(ticket, &Block.epoch/1)
+  def epoch_length(), do: 2_592_000
+
+  def time_to_epoch(timestamp) do
+    rem(timestamp, epoch_length())
+  end
 
   def server_id(ticket(server_id: id)), do: id
+  def chain_id(ticket(chain_id: chain_id)), do: chain_id
+
+  def epoch(ticket(chain_id: chain_id, block_number: n)),
+    do: time_to_epoch(Chain.blocktime(chain_id, n))
+
   @impl true
   def block_number(ticket(block_number: n)), do: n
-  def with_block(ticket(block_number: n), fun), do: BlockProcess.with_block(n, fun)
-  def block_hash(ticket(block_number: n)), do: Chain.blockhash(n)
+  def block_hash(ticket(chain_id: chain_id, block_number: n)), do: Chain.blockhash(chain_id, n)
   def device_signature(ticket(device_signature: signature)), do: signature
   def server_signature(ticket(server_signature: signature)), do: signature
   def fleet_contract(ticket(fleet_contract: fc)), do: fc

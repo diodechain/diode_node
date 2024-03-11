@@ -222,11 +222,6 @@ defmodule Diode do
     :persistent_term.get(:env)
   end
 
-  @spec chain_id :: non_neg_integer()
-  def chain_id(block_number \\ Chain.peak()) do
-    ChainDefinition.chain_id(block_number)
-  end
-
   @version Mix.Project.config()[:full_version]
   def version() do
     "Diode Server #{@version}"
@@ -401,9 +396,9 @@ defmodule Diode do
 
   def self(hostname) do
     Object.Server.new(hostname, hd(edge2_ports()), peer_port(), version(), [
-      ["tickets", TicketStore.value(Chain.epoch())],
+      ["tickets", TicketStore.value(TicketStore.epoch())],
       ["uptime", Diode.uptime()],
-      ["block", Chain.peak()]
+      ["time", System.os_time()]
     ])
     |> Object.Server.sign(Wallet.privkey!(Diode.miner()))
   end

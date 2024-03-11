@@ -14,6 +14,10 @@ defmodule TicketStore do
     GenServer.start_link(__MODULE__, ets_extra, name: __MODULE__)
   end
 
+  def epoch() do
+    System.os_time(:second) |> Ticket.time_to_epoch()
+  end
+
   def init(ets_extra) do
     Ets.init(__MODULE__, ets_extra)
     EtsLru.new(@ticket_value_cache, 1024)
@@ -31,10 +35,11 @@ defmodule TicketStore do
   end
 
   # Should be called on each new block
-  def newblock(peak_hash) do
-    [height, epoch] = BlockProcess.fetch(peak_hash, [:number, :epoch])
+  def newblock(chain_id, blocknum) do
+    blocktime = Chain.blocktime(chain_id, blocknum)
 
-    if not Diode.dev_mode?() and rem(height, Chain.epoch_length()) > Chain.epoch_length() / 2 do
+    if not Diode.dev_mode?() and rem(blocktime, Ticket.epoch_length()) > Ticket.epoch_length() / 2 do
+      epoch = Ticket.time_to_epoch(blocktime)
       submit_tickets(epoch - 1)
     end
   end
@@ -43,7 +48,7 @@ defmodule TicketStore do
     tickets =
       tickets(epoch)
       |> Enum.filter(fn tck ->
-        estimate_ticket_value(tck, epoch) > 1_000_000
+        estimate_ticket_value(tck) > 1_000_000
       end)
       |> Enum.filter(fn tck ->
         Ticket.raw(tck)
@@ -66,14 +71,14 @@ defmodule TicketStore do
     if length(tickets) > 0 do
       tx =
         Enum.flat_map(tickets, fn tck ->
-          store_ticket_value(tck, epoch)
+          store_ticket_value(tck)
           Ticket.raw(tck)
         end)
         |> Contract.Registry.submit_ticket_raw_tx()
 
       case Shell.call_tx(tx, "latest") do
         {"", _gas_cost} ->
-          Chain.Pool.add_transaction(tx, true)
+          Shell.submit_tx(tx)
 
         {{:evmc_revert, reason}, _} ->
           :io.format("TicketStore:submit_tickets(~p) transaction error: ~p~n", [epoch, reason])
@@ -89,9 +94,9 @@ defmodule TicketStore do
   """
   @spec add(Ticket.t(), Wallet.t()) ::
           {:ok, non_neg_integer()} | {:too_low, Ticket.t()} | {:too_old, integer()}
-  def add(ticket() = tck, wallet) do
+  def add(ticket(chain_id: chain_id) = tck, wallet) do
     tepoch = Ticket.epoch(tck)
-    epoch = Chain.epoch()
+    epoch = Chain.epoch(chain_id)
     address = Wallet.address!(wallet)
     fleet = Ticket.fleet_contract(tck)
 
@@ -145,37 +150,42 @@ defmodule TicketStore do
     TicketSql.count(epoch)
   end
 
-  def estimate_ticket_value(tck, epoch) do
+  def estimate_ticket_value(tck = ticket(chain_id: chain_id, block_number: n)) do
+    epoch = Ticket.epoch(tck)
     device = Ticket.device_address(tck)
     fleet = Ticket.fleet_contract(tck)
 
     fleet_value =
-      EtsLru.fetch(@ticket_value_cache, {:fleet, fleet, epoch}, fn ->
-        Contract.Registry.fleet_value(0, fleet, Chain.epoch_length() * epoch)
+      EtsLru.fetch(@ticket_value_cache, {:fleet, chain_id, fleet, epoch}, fn ->
+        Contract.Registry.fleet_value(0, fleet, n)
       end)
 
     ticket_value = value(tck) * fleet_value
 
-    case EtsLru.get(@ticket_value_cache, {:ticket, fleet, device, epoch}) do
+    case EtsLru.get(@ticket_value_cache, {:ticket, chain_id, fleet, device, epoch}) do
       nil -> ticket_value
       prev -> ticket_value - prev
     end
   end
 
-  def store_ticket_value(tck, epoch) do
+  def store_ticket_value(tck = ticket(chain_id: chain_id, block_number: n)) do
+    epoch = Ticket.epoch(tck)
     device = Ticket.device_address(tck)
     fleet = Ticket.fleet_contract(tck)
 
     fleet_value =
-      EtsLru.fetch(@ticket_value_cache, {:fleet, fleet, epoch}, fn ->
-        Contract.Registry.fleet_value(0, fleet, Chain.epoch_length() * epoch)
+      EtsLru.fetch(@ticket_value_cache, {:fleet, chain_id, fleet, epoch}, fn ->
+        Contract.Registry.fleet_value(0, fleet, n)
       end)
 
     ticket_value = value(tck) * fleet_value
 
-    case EtsLru.get(@ticket_value_cache, {:ticket, fleet, device, epoch}) do
-      prev when prev >= ticket_value -> prev
-      _other -> EtsLru.put(@ticket_value_cache, {:ticket, fleet, device, epoch}, ticket_value)
+    case EtsLru.get(@ticket_value_cache, {:ticket, chain_id, fleet, device, epoch}) do
+      prev when prev >= ticket_value ->
+        prev
+
+      _other ->
+        EtsLru.put(@ticket_value_cache, {:ticket, chain_id, fleet, device, epoch}, ticket_value)
     end
   end
 

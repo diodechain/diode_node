@@ -189,7 +189,7 @@ defmodule Kademlia do
 
   @impl true
   def handle_info(:save, state) do
-    spawn(fn -> Chain.store_file(Diode.data_dir(@storage_file), state) end)
+    spawn(fn -> Model.File.store(Diode.data_dir(@storage_file), state) end)
     Process.send_after(self(), :save, 60_000)
     {:noreply, state}
   end
@@ -398,7 +398,7 @@ defmodule Kademlia do
     end)
 
     kb =
-      Chain.load_file(Diode.data_dir(@storage_file), fn ->
+      Model.File.load(Diode.data_dir(@storage_file), fn ->
         %Kademlia{network: KBuckets.new()}
       end)
 

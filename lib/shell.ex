@@ -3,9 +3,6 @@
 # Licensed under the Diode License, Version 1.1
 defmodule Shell do
   @moduledoc """
-    TODO: This module is too heavily dependent on Network.Rpc, need to think about
-    moving either Module
-
     Examples:
 
     me = Diode.miner() |> Wallet.address!()
@@ -30,7 +27,7 @@ defmodule Shell do
       when is_list(types) and is_list(values) do
     opts =
       opts
-      |> Keyword.put_new(:gas, Chain.gas_limit() * 100)
+      |> Keyword.put_new(:gas, 10_000_000)
       |> Keyword.put_new(:gasPrice, 0)
 
     tx = transaction(wallet, address, name, types, values, opts, false)
@@ -38,41 +35,12 @@ defmodule Shell do
     call_tx(tx, blockRef)
   end
 
-  def call_tx(tx, blockRef) do
-    Stats.tc(:call_tx, fn ->
-      Network.Rpc.with_block(blockRef, fn block ->
-        state = Chain.Block.state(block)
-
-        Stats.tc(:apply, fn ->
-          Chain.Transaction.apply(tx, block, state, static: true)
-        end)
-      end)
-    end)
-    |> case do
-      {:ok, _state, rcpt} ->
-        ret =
-          case rcpt.msg do
-            :evmc_revert -> ABI.decode_revert(rcpt.evmout)
-            _ -> rcpt.evmout
-          end
-
-        {ret, rcpt.gas_used}
-
-      {:error, reason} ->
-        {:error, reason}
-    end
+  def submit_tx(_tx) do
+    :todo
   end
 
-  def submit_from(wallet, address, name, types, values, opts \\ [])
-      when is_list(types) and is_list(values) do
-    tx = transaction(wallet, address, name, types, values, opts)
-    Chain.Pool.add_transaction(tx)
-  end
-
-  def transfer_from(wallet, address, opts \\ []) do
-    opts = Keyword.put(opts, :to, address)
-    tx = raw(wallet, "", opts)
-    Chain.Pool.add_transaction(tx)
+  def call_tx(_tx, _blockRef) do
+    :todo
   end
 
   def transaction(wallet, address, name, types, values, opts \\ [], sign \\ true)
@@ -92,7 +60,7 @@ defmodule Shell do
   def raw(wallet, callcode, opts \\ [], sign \\ true) do
     opts =
       opts
-      |> Keyword.put_new(:gas, Chain.gas_limit())
+      |> Keyword.put_new(:gas, 10_000_000)
       |> Keyword.put_new(:gasPrice, 0)
       |> Enum.map(fn {key, value} -> {Atom.to_string(key), value} end)
       |> Map.new()
@@ -100,11 +68,8 @@ defmodule Shell do
     Network.Rpc.create_transaction(wallet, callcode, opts, sign)
   end
 
-  def get_balance(address) do
-    Chain.with_peak_state(fn state ->
-      Chain.State.ensure_account(state, address)
-      |> Chain.Account.balance()
-    end)
+  def get_balance(_chain_id, _address) do
+    :todo
   end
 
   @spec get_miner_stake(binary()) :: non_neg_integer()
@@ -115,24 +80,8 @@ defmodule Shell do
     :binary.decode_unsigned(value)
   end
 
-  def get_slot(address, slot) do
-    Chain.with_peak_state(fn state ->
-      Chain.State.ensure_account(state, address)
-      |> Chain.Account.storage_value(slot)
-    end)
-  end
-
-  def get_code(address) do
-    Chain.with_peak_state(fn state ->
-      Chain.State.ensure_account(state, address)
-      |> Chain.Account.code()
-    end)
-  end
-
-  def profile_import() do
-    Stats.toggle_print()
-    # :observer.start()
-    spawn(fn -> Chain.import_blocks("blocks.dat") end)
+  def get_slot(_address, _slot) do
+    :todo
   end
 
   def ether(x), do: 1000 * finney(x)

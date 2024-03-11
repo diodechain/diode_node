@@ -45,8 +45,6 @@ defmodule Model.Sql do
 
     @impl true
     def init(_args) do
-      Model.ChainSql.init()
-      Model.StateSql.init()
       Model.TicketSql.init()
       Model.KademliaSql.init()
       {:ok, :done}

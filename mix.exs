@@ -12,7 +12,7 @@ defmodule Diode.Mixfile do
     [
       aliases: aliases(),
       app: Diode,
-      compilers: [:elixir_make] ++ Mix.compilers(),
+      compilers: Mix.compilers(),
       deps: deps(),
       description: "Diode Network Full Blockchain Node implementation",
       docs: docs(),
@@ -78,7 +78,7 @@ defmodule Diode.Mixfile do
       maintainers: ["Dominic Letz"],
       licenses: ["DIODE"],
       links: %{github: @url},
-      files: ~w(evm lib LICENSE mix.exs README.md)
+      files: ~w(lib LICENSE mix.exs README.md)
     ]
   end
 
@@ -86,7 +86,6 @@ defmodule Diode.Mixfile do
     [
       {:benchee, "~> 1.0", only: :benchmark},
       {:debouncer, "~> 0.1"},
-      {:elixir_make, "~> 0.4", runtime: false},
       {:ex_doc, "~> 0.28", only: :dev, runtime: false},
       {:keccakf1600, github: "diodechain/erlang-keccakf1600"},
       {:libsecp256k1, github: "diodechain/libsecp256k1"},
