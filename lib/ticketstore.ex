@@ -1,5 +1,5 @@
 # Diode Server
-# Copyright 2021 Diode
+# Copyright 2021-2024 Diode
 # Licensed under the Diode License, Version 1.1
 defmodule TicketStore do
   alias Object.TicketV2
@@ -158,7 +158,7 @@ defmodule TicketStore do
 
     fleet_value =
       EtsLru.fetch(@ticket_value_cache, {:fleet, chain_id, fleet, epoch}, fn ->
-        Contract.Registry.fleet_value(0, fleet, n)
+        Contract.Registry.fleet_value(chain_id, 0, fleet, n)
       end)
 
     ticket_value = value(tck) * fleet_value
@@ -176,7 +176,7 @@ defmodule TicketStore do
 
     fleet_value =
       EtsLru.fetch(@ticket_value_cache, {:fleet, chain_id, fleet, epoch}, fn ->
-        Contract.Registry.fleet_value(0, fleet, n)
+        Contract.Registry.fleet_value(chain_id, 0, fleet, n)
       end)
 
     ticket_value = value(tck) * fleet_value

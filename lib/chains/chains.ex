@@ -1,0 +1,75 @@
+defmodule Chains.Diode do
+  def chain_id(), do: 15
+  def expected_chain_intervall(), do: 15
+  def chain_prefix(), do: "diode"
+  def rpc_endpoints(), do: ["https://prenet.diode.io:8443"]
+  def ws_endpoints(), do: ["wss://prenet.diode.io:8443/ws"]
+  def registry_address(), do: Base16.decode("0x5000000000000000000000000000000000000000")
+  def developer_fleet_address(), do: Base16.decode("0x6000000000000000000000000000000000000000")
+end
+
+defmodule Chains.DiodeStaging do
+  def chain_id(), do: 13
+  def expected_chain_intervall(), do: 15
+  def chain_prefix(), do: "diodestg"
+  def rpc_endpoints(), do: ["https://staging.diode.io:8443"]
+  def ws_endpoints(), do: ["wss://staging.diode.io:8443/ws"]
+  def registry_address(), do: Base16.decode("0x5000000000000000000000000000000000000000")
+  def developer_fleet_address(), do: Base16.decode("0x6000000000000000000000000000000000000000")
+end
+
+defmodule Chains.Moonbeam do
+  def chain_id(), do: 1284
+  def expected_chain_intervall(), do: 15
+  def chain_prefix(), do: "moon"
+
+  def rpc_endpoints(),
+    do: [
+      "https://moonbeam.unitedbloc.com:3000",
+      "https://moonbeam-rpc.publicnode.com",
+      "https://rpc.api.moonbeam.network",
+      "https://moonbeam-rpc.dwellir.com",
+      "https://rpc.ankr.com/moonbeam",
+      "https://moonbeam.public.blastapi.io",
+      "https://endpoints.omniatech.io/v1/moonbeam/mainnet/public",
+      "https://moonbeam.api.onfinality.io/public",
+      "https://1rpc.io/glmr"
+    ]
+
+  def ws_endpoints(),
+    do: [
+      "wss://moonbeam.unitedbloc.com:3001",
+      "wss://moonbeam-rpc.dwellir.com",
+      "wss://wss.api.moonbeam.network",
+      "wss://moonbeam-rpc.publicnode.com",
+      "wss://moonbeam.api.onfinality.io/public-ws"
+    ]
+
+  def registry_address(), do: Base16.decode("0x5000000000000000000000000000000000000000")
+  def developer_fleet_address(), do: Base16.decode("0x6000000000000000000000000000000000000000")
+end
+
+defmodule Chains.MoonbaseAlpha do
+  def chain_id(), do: 1287
+  def expected_chain_intervall(), do: 15
+  def chain_prefix(), do: "m1"
+
+  def rpc_endpoints(),
+    do: [
+      "https://moonbase.unitedbloc.com:1000",
+      "https://rpc.testnet.moonbeam.network",
+      "https://rpc.api.moonbase.moonbeam.network",
+      "https://moonbase-alpha.public.blastapi.io",
+      "https://moonbeam-alpha.api.onfinality.io/public"
+    ]
+
+  def ws_endpoints(),
+    do: [
+      "wss://moonbase.unitedbloc.com:1001",
+      "wss://wss.api.moonbase.moonbeam.network",
+      "wss://moonbeam-alpha.api.onfinality.io/public-ws"
+    ]
+
+  def registry_address(), do: Base16.decode("0xEb0aDCd736Ae9341DFb635759C5D7D6c2D51B673")
+  def developer_fleet_address(), do: Base16.decode("0x6000000000000000000000000000000000000000")
+end

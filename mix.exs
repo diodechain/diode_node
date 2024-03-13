@@ -84,6 +84,7 @@ defmodule Diode.Mixfile do
 
   defp deps do
     [
+      {:websockex, "~> 0.4.3"},
       {:benchee, "~> 1.0", only: :benchmark},
       {:debouncer, "~> 0.1"},
       {:ex_doc, "~> 0.28", only: :dev, runtime: false},

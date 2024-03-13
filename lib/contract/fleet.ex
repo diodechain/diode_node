@@ -1,5 +1,5 @@
 # Diode Server
-# Copyright 2021 Diode
+# Copyright 2021-2024 Diode
 # Licensed under the Diode License, Version 1.1
 defmodule Contract.Fleet do
   @moduledoc """
@@ -7,17 +7,17 @@ defmodule Contract.Fleet do
     as needed by the tests
   """
 
-  def deploy_new(operator, accountant) do
-    Shell.constructor(
-      Diode.miner(),
-      deployment_code(),
-      ["address", "address", "address"],
-      [Diode.registry_address(), operator, accountant]
-    )
-  end
+  # def deploy_new(operator, accountant) do
+  #   Shell.constructor(
+  #     Diode.miner(),
+  #     deployment_code(),
+  #     ["address", "address", "address"],
+  #     [Diode.registry_address(), operator, accountant]
+  #   )
+  # end
 
   @spec set_device_allowlist(any, any, boolean) :: Chain.Transaction.t()
-  def set_device_allowlist(fleet \\ Diode.fleet_address(), address, bool) when is_boolean(bool) do
+  def set_device_allowlist(fleet, address, bool) when is_boolean(bool) do
     Shell.transaction(
       Diode.miner(),
       fleet,
@@ -28,7 +28,7 @@ defmodule Contract.Fleet do
   end
 
   @spec device_allowlisted?(any, any) :: boolean
-  def device_allowlisted?(fleet \\ Diode.fleet_address(), address) do
+  def device_allowlisted?(fleet, address) do
     ret = call(fleet, "DeviceAllowlist", ["address"], [address], "latest")
 
     case :binary.decode_unsigned(ret) do
@@ -37,12 +37,12 @@ defmodule Contract.Fleet do
     end
   end
 
-  def accountant(fleet \\ Diode.fleet_address()) do
+  def accountant(fleet) do
     call(fleet, "Accountant", [], [], "latest")
     |> Hash.to_address()
   end
 
-  def operator(fleet \\ Diode.fleet_address()) do
+  def operator(fleet) do
     call(fleet, "Operator", [], [], "latest")
     |> Hash.to_address()
   end

@@ -1,5 +1,5 @@
 # Diode Server
-# Copyright 2021 Diode
+# Copyright 2021-2024 Diode
 # Licensed under the Diode License, Version 1.1
 defmodule Shell do
   @moduledoc """
@@ -18,17 +18,18 @@ defmodule Shell do
     Shell.call_from(Wallet.from_address(addr), registryContract, "ContractStake", ["address"], [fleetContract])
   """
 
-  def call(address, name, types \\ [], values \\ [], opts \\ [])
+  def call(chain_id, address, name, types \\ [], values \\ [], opts \\ [])
       when is_list(types) and is_list(values) do
-    call_from(Diode.miner(), address, name, types, values, opts)
+    call_from(chain_id, Diode.miner(), address, name, types, values, opts)
   end
 
-  def call_from(wallet, address, name, types \\ [], values \\ [], opts \\ [])
+  def call_from(chain_id, wallet, address, name, types \\ [], values \\ [], opts \\ [])
       when is_list(types) and is_list(values) do
     opts =
       opts
       |> Keyword.put_new(:gas, 10_000_000)
       |> Keyword.put_new(:gasPrice, 0)
+      |> Keyword.put_new(:chain_id, chain_id)
 
     tx = transaction(wallet, address, name, types, values, opts, false)
     blockRef = Keyword.get(opts, :blockRef, "latest")
@@ -72,10 +73,10 @@ defmodule Shell do
     :todo
   end
 
-  @spec get_miner_stake(binary()) :: non_neg_integer()
-  def get_miner_stake(address) do
+  @spec get_miner_stake(non_neg_integer(), binary()) :: non_neg_integer()
+  def get_miner_stake(chain_id, address) do
     {value, _gas} =
-      call(Diode.registry_address(), "MinerValue", ["uint8", "address"], [0, address])
+      call(Chain.registry_address(chain_id), "MinerValue", ["uint8", "address"], [0, address])
 
     :binary.decode_unsigned(value)
   end

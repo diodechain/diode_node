@@ -1,5 +1,5 @@
 # Diode Server
-# Copyright 2023 Diode
+# Copyright 2021-2024 Diode
 # Licensed under the Diode License, Version 1.1
 defmodule Network.EdgeM1 do
   import Network.EdgeV2, only: [response: 1, response: 2, error: 1]

@@ -1,5 +1,5 @@
 # Diode Server
-# Copyright 2021 Diode
+# Copyright 2021-2024 Diode
 # Licensed under the Diode License, Version 1.1
 defmodule Model.Sql do
   # Automatically defines child_spec/1
@@ -9,21 +9,16 @@ defmodule Model.Sql do
 
   defp databases() do
     [
-      {Db.Sync, "sync.sq3"},
-      {Db.Cache, "cache.sq3"},
-      {Db.Default, "blockchain.sq3"},
       {Db.Tickets, "tickets.sq3"},
       {Db.Creds, "wallet.sq3"}
     ]
   end
 
-  defp map_mod(Chain.BlockCache), do: Db.Cache
-  defp map_mod(Model.SyncSql), do: Db.Sync
   defp map_mod(Model.CredSql), do: Db.Creds
   defp map_mod(Model.TicketSql), do: Db.Tickets
   defp map_mod(Model.KademliaSql), do: Db.Tickets
   defp map_mod(pid) when is_pid(pid), do: pid
-  defp map_mod(_), do: Db.Default
+  defp map_mod(_), do: Db.Tickets
 
   def start_link() do
     Application.put_env(:sqlitex, :call_timeout, 300_000)
@@ -61,7 +56,7 @@ defmodule Model.Sql do
         %{id: name, start: {__MODULE__, :start_database, [name, name]}}
       end)
 
-    children = children ++ [Model.CredSql, Model.SyncSql, Init, Model.ChainSql.Writer]
+    children = children ++ [Model.CredSql, Init]
     Supervisor.init(children, strategy: :one_for_one)
   end
 

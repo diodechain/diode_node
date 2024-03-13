@@ -1,5 +1,5 @@
 # Diode Server
-# Copyright 2021 Diode
+# Copyright 2021-2024 Diode
 # Licensed under the Diode License, Version 1.1
 require Logger
 
@@ -18,8 +18,6 @@ defmodule Diode do
     :persistent_term.put(:env, Mix.env())
     :erlang.system_flag(:backtrace_depth, 30)
     :logger.add_primary_filter(:ignore_supervisor_infos, {&filter_function/2, []})
-
-    set_chaindefinition()
 
     puts("====== ENV #{Mix.env()} ======")
     puts("Build       : #{version()}")
@@ -64,23 +62,15 @@ defmodule Diode do
 
     puts("")
 
-    ets_extra =
-      if memory_mode() == :minimal do
-        [:compressed]
-      else
-        []
-      end
-
     base_children = [
       worker(Stats, []),
       supervisor(Model.Sql),
       supervisor(Channels),
       supervisor(Moonbeam.Sup),
-      worker(Chain.BlockCache, [ets_extra]),
-      worker(Chain, [ets_extra]),
       worker(PubSub, [args]),
       worker(Chain.Pool, [args]),
-      worker(TicketStore, [ets_extra])
+      worker(TicketStore, []),
+      Enum.map(Chain.chains(), fn chain -> worker(Chain.Sup, [chain]) end)
     ]
 
     children =
@@ -98,7 +88,9 @@ defmodule Diode do
       end
 
     children = children ++ [worker(Chain.Worker, [worker_mode()])]
-    Supervisor.start_link(children, strategy: :rest_for_one, name: Diode.Supervisor)
+    {:ok, pid} = Supervisor.start_link(children, strategy: :rest_for_one, name: Diode.Supervisor)
+    start_client_network()
+    {:ok, pid}
   end
 
   # To be started from the stage gen_server
@@ -120,23 +112,6 @@ defmodule Diode do
     Plug.Cowboy.shutdown(Network.RpcHttp.HTTP)
     Plug.Cowboy.shutdown(Network.RpcHttp.HTTPS)
     Supervisor.terminate_child(Diode.Supervisor, Network.EdgeV2)
-  end
-
-  defp set_chaindefinition() do
-    def =
-      cond do
-        get_env("CHAINDEF") != nil ->
-          "Elixir.ChainDefinition.#{get_env("CHAINDEF") |> String.capitalize()}"
-          |> String.to_atom()
-
-        Diode.dev_mode?() ->
-          ChainDefinition.Devnet
-
-        true ->
-          ChainDefinition.Mainnet
-      end
-
-    :persistent_term.put(:chain_definition, def)
   end
 
   defp worker(module, args \\ []) do
@@ -259,10 +234,6 @@ defmodule Diode do
     Model.CredSql.wallet()
   end
 
-  def syncing?() do
-    Process.whereis(:active_sync) != nil or Process.whereis(:active_sync_job) != nil
-  end
-
   @spec wallets() :: [Wallet.t()]
   @doc """
     Decode env parameter such as
@@ -275,16 +246,6 @@ defmodule Diode do
       decode_int(int)
       |> Wallet.from_privkey()
     end)
-
-    # |> List.insert_at(0, miner())
-  end
-
-  def registry_address() do
-    Base16.decode("0x5000000000000000000000000000000000000000")
-  end
-
-  def fleet_address() do
-    Base16.decode("0x6000000000000000000000000000000000000000")
   end
 
   @spec data_dir(binary()) :: binary()

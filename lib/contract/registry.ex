@@ -1,5 +1,5 @@
 # Diode Server
-# Copyright 2021 Diode
+# Copyright 2021-2024 Diode
 # Licensed under the Diode License, Version 1.1
 defmodule Contract.Registry do
   @moduledoc """
@@ -7,50 +7,50 @@ defmodule Contract.Registry do
     as needed by the inner workings of the chain
   """
 
-  @spec miner_value(0 | 1 | 2 | 3, <<_::160>> | Wallet.t(), any()) :: non_neg_integer
-  def miner_value(type, address, blockRef) when type >= 0 and type <= 3 do
-    call("MinerValue", ["uint8", "address"], [type, address], blockRef)
+  def miner_value(chain_id, type, address, blockRef) when type >= 0 and type <= 3 do
+    call(chain_id, "MinerValue", ["uint8", "address"], [type, address], blockRef)
     |> :binary.decode_unsigned()
   end
 
-  @spec fleet_value(0 | 1 | 2 | 3, <<_::160>> | Wallet.t(), any()) :: non_neg_integer
-  def fleet_value(type, address, blockRef) when type >= 0 and type <= 3 do
-    call("ContractValue", ["uint8", "address"], [type, address], blockRef)
+  def fleet_value(chain_id, type, address, blockRef) when type >= 0 and type <= 3 do
+    call(chain_id, "ContractValue", ["uint8", "address"], [type, address], blockRef)
     |> :binary.decode_unsigned()
   end
 
-  @spec min_transaction_fee(any()) :: non_neg_integer
-  def min_transaction_fee(blockRef) do
-    call("MinTransactionFee", [], [], blockRef)
+  def min_transaction_fee(chain_id, blockRef) do
+    call(chain_id, "MinTransactionFee", [], [], blockRef)
     |> :binary.decode_unsigned()
   end
 
-  @spec epoch(any()) :: non_neg_integer
-  def epoch(blockRef) do
-    call("Epoch", [], [], blockRef)
+  def epoch(chain_id, blockRef) do
+    call(chain_id, "Epoch", [], [], blockRef)
     |> :binary.decode_unsigned()
   end
 
-  @spec fee(any()) :: non_neg_integer
-  def fee(blockRef) do
-    call("Fee", [], [], blockRef)
+  def fee(chain_id, blockRef) do
+    call(chain_id, "Fee", [], [], blockRef)
     |> :binary.decode_unsigned()
   end
 
-  @spec fee_pool(any()) :: non_neg_integer
-  def fee_pool(blockRef) do
-    call("FeePool", [], [], blockRef)
+  def fee_pool(chain_id, blockRef) do
+    call(chain_id, "FeePool", [], [], blockRef)
     |> :binary.decode_unsigned()
   end
 
-  def submit_ticket_raw_tx(ticket) do
-    Shell.transaction(Diode.miner(), Diode.registry_address(), "SubmitTicketRaw", ["bytes32[]"], [
-      ticket
-    ])
+  def submit_ticket_raw_tx(ticket = [chain_id | _]) do
+    Shell.transaction(
+      Diode.miner(),
+      Chain.registry_address(chain_id),
+      "SubmitTicketRaw",
+      ["bytes32[]"],
+      [ticket]
+    )
   end
 
-  defp call(name, types, values, blockRef) do
-    {ret, _gas} = Shell.call(Diode.registry_address(), name, types, values, blockRef: blockRef)
+  defp call(chain_id, name, types, values, blockRef) do
+    {ret, _gas} =
+      Shell.call(Chain.registry_address(chain_id), name, types, values, blockRef: blockRef)
+
     ret
   end
 
