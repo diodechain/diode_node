@@ -2,8 +2,6 @@
 > ### Secure. Super Light. Web3. 
 > An Ethereum Chain Fork for the Web3
 
-[![Build Status](https://travis-ci.com/diodechain/diode_server_ex.svg?branch=master)](https://travis-ci.com/diodechain/diode_server_ex)
-
 # Diode Miner & Traffic Gateway
 
 This server is the main Diode blockchain node. It implements both Diode PEER and EDGE protocols. After startup it will automatically connect to the network, and start mining and start acting as a traffic relay.
