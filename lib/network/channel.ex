@@ -2,14 +2,14 @@
 # Copyright 2021 Diode
 # Licensed under the Diode License, Version 1.1
 defmodule Network.Channel do
-  import Object.Channel, only: :macros
+  import Object.ChannelV2, only: :macros
   use GenServer
 
   alias Network.EdgeV2.Port
   alias Network.EdgeV2.PortClient
   alias Network.EdgeV2.PortCollection
 
-  def start_link(ch = channel()) do
+  def start_link(ch = channelv2()) do
     GenServer.start_link(__MODULE__, ch, hibernate_after: 5_000)
   end
 
@@ -112,7 +112,7 @@ defmodule Network.Channel do
             state
           else
             case state.channel do
-              channel(type: "mailbox") ->
+              channelv2(type: "mailbox") ->
                 port = %{port | mailbox: :queue.in(data, mailbox)}
                 %{state | ports: PortCollection.put(state.ports, port)}
 

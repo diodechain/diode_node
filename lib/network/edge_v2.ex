@@ -4,10 +4,10 @@
 defmodule Network.EdgeV2 do
   use Network.Handler
   require Logger
-  alias Object.Ticket
-  alias Object.Channel
-  import Ticket, only: :macros
-  import Channel, only: :macros
+  alias Object.TicketV2
+  alias Object.ChannelV2
+  import TicketV2, only: :macros
+  import ChannelV2, only: :macros
 
   defmodule PortClient do
     defstruct pid: nil, mon: nil, ref: nil, write: true, trace: false
@@ -314,7 +314,7 @@ defmodule Network.EdgeV2 do
           {response("ok"), state}
         end
 
-      ["ticket" | rest = [_block, _fc, _tc, _tb, _la, _ds]] ->
+      ["ticketv2" | rest = [_ci, _block, _fc, _tc, _tb, _la, _ds]] ->
         handle_ticket(rest, state)
 
       ["bytes"] ->
@@ -351,9 +351,10 @@ defmodule Network.EdgeV2 do
       ["ping"] ->
         response("pong")
 
-      ["channel", block_number, fleet, type, name, params, signature] ->
+      ["channelv2", chain_id, block_number, fleet, type, name, params, signature] ->
         obj =
-          channel(
+          channelv2(
+            chain_id: to_num(chain_id),
             server_id: Diode.miner() |> Wallet.address!(),
             block_number: to_num(block_number),
             fleet_contract: fleet,
@@ -363,7 +364,7 @@ defmodule Network.EdgeV2 do
             signature: signature
           )
 
-        device = Object.Channel.device_address(obj)
+        device = Object.ChannelV2.device_address(obj)
 
         cond do
           not Wallet.equal?(device, device_id(state)) ->
@@ -372,14 +373,14 @@ defmodule Network.EdgeV2 do
           not Contract.Fleet.device_allowlisted?(fleet, device) ->
             error("device not whitelisted for this fleet")
 
-          not Object.Channel.valid_type?(obj) ->
+          not Object.ChannelV2.valid_type?(obj) ->
             error("invalid channel type")
 
-          not Object.Channel.valid_params?(obj) ->
+          not Object.ChannelV2.valid_params?(obj) ->
             error("invalid channel parameters")
 
           true ->
-            key = Object.Channel.key(obj)
+            key = Object.ChannelV2.key(obj)
 
             case Kademlia.find_value(key) do
               nil ->
@@ -614,7 +615,7 @@ defmodule Network.EdgeV2 do
          state
        ) do
     dl =
-      ticket(
+      ticketv2(
         server_id: Wallet.address!(Diode.miner()),
         fleet_contract: fleet,
         total_connections: to_num(total_connections),
@@ -625,15 +626,15 @@ defmodule Network.EdgeV2 do
       )
 
     cond do
-      Ticket.block_number(dl) > Chain.peaknumber(chain_id) ->
+      TicketV2.block_number(dl) > Chain.peaknumber(chain_id) ->
         log(
           state,
-          "Ticket with future block number #{Ticket.block_number(dl)} vs. #{Chain.peaknumber(chain_id)}!"
+          "Ticket with future block number #{TicketV2.block_number(dl)} vs. #{Chain.peaknumber(chain_id)}!"
         )
 
         error("block number too high")
 
-      not Ticket.device_address?(dl, device_id(state)) ->
+      not TicketV2.device_address?(dl, device_id(state)) ->
         log(state, "Received invalid ticket signature!")
         error("signature mismatch")
 
@@ -643,7 +644,7 @@ defmodule Network.EdgeV2 do
       #   error("device not whitelisted")
 
       true ->
-        dl = Ticket.server_sign(dl, Wallet.privkey!(Diode.miner()))
+        dl = TicketV2.server_sign(dl, Wallet.privkey!(Diode.miner()))
         ret = TicketStore.add(dl, device_id(state))
 
         # address = Ticket.device_address(dl)
@@ -685,11 +686,12 @@ defmodule Network.EdgeV2 do
           {:too_low, last} ->
             response_array([
               "too_low",
-              Ticket.block_hash(last),
-              Ticket.total_connections(last),
-              Ticket.total_bytes(last),
-              Ticket.local_address(last),
-              Ticket.device_signature(last)
+              TicketV2.chain_id(last),
+              TicketV2.block_hash(last),
+              TicketV2.total_connections(last),
+              TicketV2.total_bytes(last),
+              TicketV2.local_address(last),
+              TicketV2.device_signature(last)
             ])
         end
     end
@@ -721,7 +723,7 @@ defmodule Network.EdgeV2 do
       bin ->
         channel = Object.decode!(bin)
 
-        Object.Channel.server_id(channel)
+        Object.ChannelV2.server_id(channel)
         |> Wallet.from_address()
         |> Wallet.equal?(Diode.miner())
         |> if do

@@ -1,5 +1,5 @@
 # Diode Server
-# Copyright 2021 Diode
+# Copyright 2024 Diode
 # Licensed under the Diode License, Version 1.1
 defmodule Diode.Mixfile do
   use Mix.Project
@@ -14,7 +14,7 @@ defmodule Diode.Mixfile do
       app: Diode,
       compilers: Mix.compilers(),
       deps: deps(),
-      description: "Diode Network Full Blockchain Node implementation",
+      description: "Diode Network Traffic Relay Node implementation",
       docs: docs(),
       elixir: "~> 1.13",
       elixirc_options: [warnings_as_errors: Mix.target() == :host],

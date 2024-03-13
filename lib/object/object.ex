@@ -24,8 +24,9 @@ defmodule Object do
   end
 
   def decode_rlp_list!([
-        "ticket",
+        "ticketv2",
         server_id,
+        chain_id,
         block_num,
         fleet_contract,
         total_connections,
@@ -34,8 +35,9 @@ defmodule Object do
         device_signature,
         server_signature
       ]) do
-    {:ticket, server_id, Rlpx.bin2num(block_num), fleet_contract, Rlpx.bin2num(total_connections),
-     Rlpx.bin2num(total_bytes), local_address, device_signature, server_signature}
+    {:ticketv2, server_id, chain_id, Rlpx.bin2num(block_num), fleet_contract,
+     Rlpx.bin2num(total_connections), Rlpx.bin2num(total_bytes), local_address, device_signature,
+     server_signature}
   end
 
   def decode_rlp_list!(["server", host, edge_port, peer_port, signature]) do

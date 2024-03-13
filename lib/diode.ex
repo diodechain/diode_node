@@ -21,14 +21,6 @@ defmodule Diode do
 
     set_chaindefinition()
 
-    if travis_mode?() do
-      puts("++++++ TRAVIS DETECTED ++++++")
-      puts("~0p~n", [:inet.getifaddrs()])
-      puts("~0p~n", [:inet.get_rc()])
-      puts("~0p~n", [:inet.getaddr('localhost', :inet)])
-      puts("~0p~n", [:inet.gethostname()])
-    end
-
     puts("====== ENV #{Mix.env()} ======")
     puts("Build       : #{version()}")
     puts("Edge    Port: #{Enum.join(edge2_ports(), ",")}")
@@ -230,13 +222,6 @@ defmodule Diode do
   @spec dev_mode? :: boolean
   def dev_mode?() do
     env() == :dev or env() == :test
-  end
-
-  def travis_mode?() do
-    case System.get_env("TRAVIS", nil) do
-      nil -> false
-      _ -> true
-    end
   end
 
   @spec test_mode? :: boolean

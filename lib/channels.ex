@@ -15,7 +15,7 @@ defmodule Channels do
 
   def ensure(ch) do
     Supervisor.start_child(__MODULE__, %{
-      id: Object.Channel.key(ch),
+      id: Object.ChannelV2.key(ch),
       start: {Network.Channel, :start_link, [ch]}
     })
     |> case do
