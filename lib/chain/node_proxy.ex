@@ -37,12 +37,11 @@ defmodule Chain.NodeProxy do
       }
       |> Poison.encode!()
 
-    {:ok, binary_frame} = WebSockex.Frame.encode_frame({:text, request})
-    WebSockex.Conn.socket_send(conn, binary_frame)
-    {:noreply, %{state | req: id}, requests: Map.put(state.requests, id, from)}
+    WebSockex.cast(conn, {:send_request, request})
+    {:noreply, %{state | req: id, requests: Map.put(state.requests, id, from)}}
   end
 
-  @security_level 2
+  @security_level 1
   @impl true
   def handle_info(
         {:new_block, ws_url, block_number},
@@ -55,6 +54,13 @@ defmodule Chain.NodeProxy do
     end
 
     {:noreply, %{state | lastblocks: lastblocks}}
+  end
+
+  def handle_info({:DOWN, _ref, :process, down_pid, _reason}, state) do
+    connections =
+      state.connections |> Enum.filter(fn {_, pid} -> pid != down_pid end) |> Map.new()
+
+    {:noreply, ensure_connections(%{state | connections: connections})}
   end
 
   defp ensure_connections(state = %NodeProxy{chain: chain, connections: connections})

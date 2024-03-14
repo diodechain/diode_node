@@ -6,7 +6,7 @@ defmodule Chain.Sup do
   use Supervisor
 
   def start_link(chain) do
-    Supervisor.start_link(__MODULE__, chain, name: __MODULE__)
+    Supervisor.start_link(__MODULE__, chain)
   end
 
   def init(chain) do

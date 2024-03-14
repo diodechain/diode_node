@@ -298,7 +298,7 @@ defmodule Network.EdgeV2 do
   def handle_msg(msg, state) do
     case msg do
       ["hello", vsn | flags] when is_binary(vsn) ->
-        if to_num(vsn) != 1_000 do
+        if to_num(vsn) != 2_000 do
           {error("version not supported"), state}
         else
           state1 =
