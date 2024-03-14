@@ -1,6 +1,6 @@
 defmodule Chains.Diode do
   def chain_id(), do: 15
-  def expected_chain_intervall(), do: 15
+  def expected_block_intervall(), do: 15
   def chain_prefix(), do: "diode"
   def rpc_endpoints(), do: ["https://prenet.diode.io:8443"]
   def ws_endpoints(), do: ["wss://prenet.diode.io:8443/ws"]
@@ -10,7 +10,7 @@ end
 
 defmodule Chains.DiodeStaging do
   def chain_id(), do: 13
-  def expected_chain_intervall(), do: 15
+  def expected_block_intervall(), do: 15
   def chain_prefix(), do: "diodestg"
   def rpc_endpoints(), do: ["https://staging.diode.io:8443"]
   def ws_endpoints(), do: ["wss://staging.diode.io:8443/ws"]
@@ -20,7 +20,7 @@ end
 
 defmodule Chains.Moonbeam do
   def chain_id(), do: 1284
-  def expected_chain_intervall(), do: 15
+  def expected_block_intervall(), do: 15
   def chain_prefix(), do: "moon"
 
   def rpc_endpoints(),
@@ -51,7 +51,7 @@ end
 
 defmodule Chains.MoonbaseAlpha do
   def chain_id(), do: 1287
-  def expected_chain_intervall(), do: 15
+  def expected_block_intervall(), do: 15
   def chain_prefix(), do: "m1"
 
   def rpc_endpoints(),

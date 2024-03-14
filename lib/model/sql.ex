@@ -5,7 +5,7 @@ defmodule Model.Sql do
   # Automatically defines child_spec/1
   use Supervisor
   # esqlite doesn't support :infinity
-  @infinity 300_000_000
+  # @infinity 300_000_000
 
   defp databases() do
     [
@@ -14,21 +14,12 @@ defmodule Model.Sql do
     ]
   end
 
-  defp map_mod(Model.CredSql), do: Db.Creds
-  defp map_mod(Model.TicketSql), do: Db.Tickets
-  defp map_mod(Model.KademliaSql), do: Db.Tickets
-  defp map_mod(pid) when is_pid(pid), do: pid
-  defp map_mod(_), do: Db.Tickets
+  defp map_mod(ref) when is_reference(ref), do: ref
+  defp map_mod(Model.CredSql), do: :persistent_term.get(Db.Creds)
+  defp map_mod(_), do: :persistent_term.get(Db.Tickets)
 
   def start_link() do
-    Application.put_env(:sqlitex, :call_timeout, 300_000)
     Supervisor.start_link(__MODULE__, [], name: __MODULE__)
-  end
-
-  defp init_connection(conn) do
-    query!(conn, "PRAGMA journal_mode = WAL")
-    query!(conn, "PRAGMA synchronous = NORMAL")
-    # query!(conn, "PRAGMA OPTIMIZE", call_timeout: @infinity)
   end
 
   defmodule Init do
@@ -49,46 +40,44 @@ defmodule Model.Sql do
   def init(_args) do
     File.mkdir(Diode.data_dir())
 
-    children =
-      databases()
-      |> Keyword.keys()
-      |> Enum.map(fn name ->
-        %{id: name, start: {__MODULE__, :start_database, [name, name]}}
-      end)
+    for {atom, file} <- databases() do
+      start_database(atom, file)
+    end
 
-    children = children ++ [Model.CredSql, Init]
+    children = [Model.CredSql, Init]
     Supervisor.init(children, strategy: :one_for_one)
   end
 
-  @spec start_database(atom(), atom() | nil) :: {:ok, pid()}
-  def start_database(db, name \\ nil) do
-    path =
-      Keyword.fetch!(databases(), db)
-      |> Diode.data_dir()
-      |> to_charlist()
-
-    opts = [name: name, db_timeout: @infinity, stmt_cache_size: 50]
-
-    {:ok, pid} = Sqlitex.Server.start_link(path, opts)
-    init_connection(pid)
-    {:ok, pid}
+  def start_database(atom, file) do
+    path = Diode.data_dir(file)
+    {:ok, conn} = Exqlite.Sqlite3.open(path)
+    :persistent_term.put(atom, conn)
+    query!(conn, "PRAGMA journal_mode = WAL")
+    query!(conn, "PRAGMA synchronous = NORMAL")
   end
 
   def query(mod, sql, params \\ []) do
-    params = Keyword.put_new(params, :call_timeout, @infinity)
+    conn = map_mod(mod)
 
     Stats.tc(:query, fn ->
-      Sqlitex.Server.query(map_mod(mod), sql, params)
+      {:ok, stmt} = Exqlite.Sqlite3.prepare(conn, sql)
+      :ok = Exqlite.Sqlite3.bind(conn, stmt, params)
+      ret = collect(conn, stmt, []) |> Enum.reverse()
+      :ok = Exqlite.Sqlite3.release(conn, stmt)
+      {:ok, ret}
     end)
+  end
+
+  defp collect(conn, stmt, acc) do
+    case Exqlite.Sqlite3.step(conn, stmt) do
+      {:row, row} -> collect(conn, stmt, [row | acc])
+      :done -> acc
+    end
   end
 
   def query!(mod, sql, params \\ []) do
     {:ok, ret} = query(mod, sql, params)
     ret
-  end
-
-  def query_async!(mod, sql, params \\ []) do
-    Sqlitex.Server.query_async(map_mod(mod), sql, params)
   end
 
   def fetch!(mod, sql, param1) do
@@ -99,14 +88,9 @@ defmodule Model.Sql do
   end
 
   def lookup!(mod, sql, param1 \\ [], default \\ nil) do
-    case query!(mod, sql, bind: List.wrap(param1)) do
+    case query!(mod, sql, List.wrap(param1)) do
       [] -> default
-      [[{_key, value}]] -> value
+      [[value]] -> value
     end
-  end
-
-  def with_transaction(mod, fun) do
-    {:ok, result} = Sqlitex.Server.with_transaction(map_mod(mod), fun, call_timeout: @infinity)
-    result
   end
 end

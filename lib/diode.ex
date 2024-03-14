@@ -6,23 +6,14 @@ require Logger
 defmodule Diode do
   use Application
 
-  # Ignoring all info level sasl messages
-  def filter_function(event, _) do
-    case event do
-      %{level: :info, meta: %{domain: [:otp, :sasl]}} -> :stop
-      _other -> :ignore
-    end
-  end
-
   def start(_type, args) do
     :persistent_term.put(:env, Mix.env())
     :erlang.system_flag(:backtrace_depth, 30)
-    :logger.add_primary_filter(:ignore_supervisor_infos, {&filter_function/2, []})
 
     puts("====== ENV #{Mix.env()} ======")
     puts("Build       : #{version()}")
     puts("Edge    Port: #{Enum.join(edge2_ports(), ",")}")
-    puts("Peer    Port: #{peer_port()}")
+    puts("Peer    Port: #{peer2_port()}")
     puts("RPC     Port: #{rpc_port()}")
 
     if ssl?() do
@@ -62,32 +53,23 @@ defmodule Diode do
 
     puts("")
 
-    base_children = [
-      worker(Stats, []),
-      supervisor(Model.Sql),
-      supervisor(Channels),
-      supervisor(Moonbeam.Sup),
-      worker(PubSub, [args]),
-      worker(Chain.Pool, [args]),
-      worker(TicketStore, []),
-      Enum.map(Chain.chains(), fn chain -> worker(Chain.Sup, [chain]) end)
-    ]
-
     children =
-      if Mix.env() == :benchmark do
-        base_children
-      else
-        network_children = [
-          # Starting External Interfaces
-          Network.Server.child(peer_port(), Network.PeerHandler),
-          worker(Kademlia, [args]),
-          worker(Stages)
+      [
+        worker(Stats, []),
+        supervisor(Model.Sql),
+        supervisor(Channels),
+        worker(PubSub, [args]),
+        worker(TicketStore, [])
+        | Enum.map(Chain.chains(), fn chain ->
+            supervisor(Chain.Sup, [chain], {Chain.Sup, chain})
+          end)
+      ] ++
+        [
+          # External Interfaces
+          Network.Server.child(peer2_port(), Network.PeerHandler),
+          worker(Kademlia, [args])
         ]
 
-        base_children ++ network_children
-      end
-
-    children = children ++ [worker(Chain.Worker, [worker_mode()])]
     {:ok, pid} = Supervisor.start_link(children, strategy: :rest_for_one, name: Diode.Supervisor)
     start_client_network()
     {:ok, pid}
@@ -114,13 +96,13 @@ defmodule Diode do
     Supervisor.terminate_child(Diode.Supervisor, Network.EdgeV2)
   end
 
-  defp worker(module, args \\ []) do
+  defp worker(module, args) do
     %{id: module, start: {Diode, :start_worker, [module, args]}}
   end
 
-  defp supervisor(module, args \\ []) do
+  defp supervisor(module, args \\ [], id \\ nil) do
     %{
-      id: module,
+      id: id || module,
       start: {Diode, :start_worker, [module, args]},
       shutdown: :infinity,
       type: :supervisor
@@ -290,9 +272,9 @@ defmodule Diode do
     |> Enum.map(fn port -> decode_int(String.trim(port)) end)
   end
 
-  @spec peer_port() :: integer()
-  def peer_port() do
-    get_env_int("PEER_PORT", 51054)
+  @spec peer2_port() :: integer()
+  def peer2_port() do
+    get_env_int("PEER2_PORT", 51055)
   end
 
   def seeds() do
@@ -314,15 +296,6 @@ defmodule Diode do
     end
   end
 
-  @spec worker_mode() :: :disabled | :poll | integer()
-  def worker_mode() do
-    case get_env("WORKER_MODE", "run") do
-      "poll" -> :poll
-      "disabled" -> :disabled
-      _number -> get_env_int("WORKER_MODE", 75)
-    end
-  end
-
   @spec memory_mode() :: :normal | :minimal
   def memory_mode() do
     case get_env("MEMORY_MODE", "normal") do
@@ -341,7 +314,7 @@ defmodule Diode do
   def self(), do: self(host())
 
   def self(hostname) do
-    Object.Server.new(hostname, hd(edge2_ports()), peer_port(), version(), [
+    Object.Server.new(hostname, hd(edge2_ports()), peer2_port(), version(), [
       ["tickets", TicketStore.value(TicketStore.epoch())],
       ["uptime", Diode.uptime()],
       ["time", System.os_time()]

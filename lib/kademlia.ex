@@ -432,7 +432,7 @@ defmodule Kademlia do
         Network.PeerHandler,
         node_id,
         "localhost",
-        Diode.peer_port()
+        Diode.peer2_port()
       )
     else
       server = KBuckets.object(item)

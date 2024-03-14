@@ -1,12 +1,18 @@
+# Diode Server
+# Copyright 2021-2024 Diode
+# Licensed under the Diode License, Version 1.1
 defmodule Chain.RPCCache do
   use GenServer, restart: :permanent
   require Logger
   alias Chain.RPCCache
 
-  defstruct [:chain, :lru, :block_number, :block_number_timestamp]
+  defstruct [:chain, :lru, :block_number]
 
   def start_link(chain) do
-    GenServer.start_link(__MODULE__, chain, name: __MODULE__, hibernate_after: 5_000)
+    GenServer.start_link(__MODULE__, chain,
+      name: {:global, {__MODULE__, chain}},
+      hibernate_after: 5_000
+    )
   end
 
   @impl true
@@ -14,56 +20,46 @@ defmodule Chain.RPCCache do
     {:ok, %__MODULE__{chain: chain, lru: Lru.new(1000), block_number: nil}}
   end
 
-  def block_number() do
-    GenServer.call(__MODULE__, :block_number)
+  def set_block_number(chain, block_number) do
+    GenServer.cast({:global, {__MODULE__, chain}}, {:block_number, block_number})
   end
 
-  def get_block_by_number(block \\ "latest", with_transactions \\ false) do
+  def block_number(chain) do
+    case GenServer.call({:global, {__MODULE__, chain}}, :block_number) do
+      nil -> raise "no block_number yet"
+      number -> number
+    end
+  end
+
+  def get_block_by_number(chain, block \\ "latest", with_transactions \\ false) do
     block =
       if block == "latest" do
-        block_number()
+        block_number(chain)
       else
         block
       end
 
-    get("eth_getBlockByNumber", [block, with_transactions])
+    get(chain, "eth_getBlockByNumber", [block, with_transactions])
   end
 
-  def get_storage_at(address, slot, block \\ "latest") do
+  def get_storage_at(chain, address, slot, block \\ "latest") do
     block =
       if block == "latest" do
-        block_number()
+        block_number(chain)
       else
         block
       end
 
-    get("eth_getStorageAt", [address, slot, block])
+    get(chain, "eth_getStorageAt", [address, slot, block])
   end
 
-  def get(method, args) do
-    GenServer.call(__MODULE__, {:get, method, args})
+  def get(chain, method, args) do
+    GenServer.call({:global, {__MODULE__, chain}}, {:get, chain, method, args})
   end
 
   @impl true
-  def handle_call(:block_number, _from, state = %RPCCache{block_number: nil}) do
-    number = Moonbeam.block_number()
-    time = System.os_time(:second)
-    {:reply, number, %RPCCache{state | block_number: number, block_number_timestamp: time}}
-  end
-
-  def handle_call(
-        :block_number,
-        _from,
-        state = %RPCCache{block_number: number, block_number_timestamp: time}
-      ) do
-    now = System.os_time(:second)
-
-    if now - time > 5 do
-      number = Moonbeam.block_number()
-      {:reply, number, %RPCCache{state | block_number: number, block_number_timestamp: now}}
-    else
-      {:reply, number, state}
-    end
+  def handle_call(:block_number, _from, state = %RPCCache{block_number: number}) do
+    {:reply, number, state}
   end
 
   def handle_call({:get, method, args}, _from, state = %RPCCache{lru: lru}) do

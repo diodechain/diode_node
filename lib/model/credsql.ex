@@ -14,23 +14,17 @@ defmodule Model.CredSql do
     GenServer.start_link(__MODULE__, :ok, name: __MODULE__)
   end
 
-  defp query!(sql, params) do
+  defp query!(sql, params \\ []) do
     Sql.query!(__MODULE__, sql, params)
   end
 
-  defp with_transaction(fun) do
-    Sql.with_transaction(__MODULE__, fun)
-  end
-
   def init(_args) do
-    with_transaction(fn db ->
-      Sql.query!(db, """
-          CREATE TABLE IF NOT EXISTS config (
-            key TEXT PRIMARY KEY,
-            value BLOB
-          )
-      """)
-    end)
+    query!("""
+        CREATE TABLE IF NOT EXISTS config (
+          key TEXT PRIMARY KEY,
+          value BLOB
+        )
+    """)
 
     case Diode.get_env_int("PRIVATE", 0) do
       # Decode env parameter such as
@@ -65,7 +59,7 @@ defmodule Model.CredSql do
 
   def put_config(key, value) when is_binary(key) do
     value_data = BertInt.encode!(value)
-    query!("REPLACE INTO config (key, value) VALUES(?1, ?2)", bind: [key, value_data])
+    query!("REPLACE INTO config (key, value) VALUES(?1, ?2)", [key, value_data])
     value
   end
 

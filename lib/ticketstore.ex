@@ -10,16 +10,16 @@ defmodule TicketStore do
 
   @ticket_value_cache :ticket_value_cache
 
-  def start_link(ets_extra) do
-    GenServer.start_link(__MODULE__, ets_extra, name: __MODULE__)
+  def start_link() do
+    GenServer.start_link(__MODULE__, [], name: __MODULE__)
   end
 
   def epoch() do
     System.os_time(:second) |> TicketV2.time_to_epoch()
   end
 
-  def init(ets_extra) do
-    Ets.init(__MODULE__, ets_extra)
+  def init([]) do
+    Ets.init(__MODULE__)
     EtsLru.new(@ticket_value_cache, 1024)
     {:ok, nil}
   end

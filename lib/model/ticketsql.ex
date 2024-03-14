@@ -9,35 +9,30 @@ defmodule Model.TicketSql do
     Sql.query!(__MODULE__, sql, params)
   end
 
-  defp with_transaction(fun) do
-    Sql.with_transaction(__MODULE__, fun)
-  end
-
   def init() do
-    with_transaction(fn db ->
-      Sql.query!(db, """
-          CREATE TABLE IF NOT EXISTS tickets (
-            device BLOB,
-            fleet BLOB,
-            epoch INTEGER,
-            ticket BLOB,
-            PRIMARY KEY (device, fleet, epoch)
-          )
-      """)
+    query!("""
+        CREATE TABLE IF NOT EXISTS tickets (
+          device BLOB,
+          fleet BLOB,
+          epoch INTEGER,
+          ticket BLOB,
+          PRIMARY KEY (device, fleet, epoch)
+        )
+    """)
 
-      Sql.query!(db, """
-          CREATE INDEX IF NOT EXISTS tck_epoch ON tickets (
-            epoch
-          )
-      """)
-    end)
+    query!("""
+        CREATE INDEX IF NOT EXISTS tck_epoch ON tickets (
+          epoch
+        )
+    """)
   end
 
   def put_ticket(ticket) do
     ticket_data = BertInt.encode!(ticket)
 
-    query!("REPLACE INTO tickets (device, fleet, epoch, ticket) VALUES(?1, ?2, ?3, ?4)",
-      bind: [
+    query!(
+      "REPLACE INTO tickets (device, fleet, epoch, ticket) VALUES(?1, ?2, ?3, ?4)",
+      [
         TicketV2.device_address(ticket),
         TicketV2.fleet_contract(ticket),
         TicketV2.epoch(ticket),
@@ -50,14 +45,14 @@ defmodule Model.TicketSql do
 
   def tickets_raw() do
     query!("SELECT device, fleet, epoch, ticket FROM tickets")
-    |> Enum.map(fn [device: dev, fleet: fleet, epoch: epoch, ticket: ticket] ->
+    |> Enum.map(fn [dev, fleet, epoch, ticket] ->
       {dev, fleet, epoch, BertInt.decode!(ticket)}
     end)
   end
 
   def tickets(epoch) do
-    query!("SELECT ticket FROM tickets WHERE epoch = ?1", bind: [epoch])
-    |> Enum.map(fn [ticket: ticket] -> BertInt.decode!(ticket) end)
+    query!("SELECT ticket FROM tickets WHERE epoch = ?1", [epoch])
+    |> Enum.map(fn [ticket] -> BertInt.decode!(ticket) end)
   end
 
   def find(tck) do
@@ -79,12 +74,12 @@ defmodule Model.TicketSql do
   def delete(device = <<_::160>>, fleet = <<_fl::160>>, epoch) when is_integer(epoch) do
     query!(
       "DELETE FROM tickets WHERE device = ?1 AND fleet = ?2 AND epoch = ?3",
-      bind: [device, fleet, epoch]
+      [device, fleet, epoch]
     )
   end
 
   def delete_old(epoch) do
-    query!("DELETE FROM tickets WHERE epoch < ?1", bind: [epoch])
+    query!("DELETE FROM tickets WHERE epoch < ?1", [epoch])
   end
 
   def delete_all() do
@@ -92,7 +87,7 @@ defmodule Model.TicketSql do
   end
 
   def count(epoch) do
-    [[c: c]] = query!("SELECT COUNT(*) as c FROM tickets WHERE epoch = ?1", bind: [epoch])
+    [[c]] = query!("SELECT COUNT(*) as c FROM tickets WHERE epoch = ?1", [epoch])
     c
   end
 end

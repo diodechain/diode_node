@@ -1,11 +1,11 @@
 # Diode Server
-# Copyright 2024 Diode
+# Copyright 2021-2024 Diode
 # Licensed under the Diode License, Version 1.1
 defmodule Diode.Mixfile do
   use Mix.Project
 
   @vsn "1.1.0"
-  @full_vsn "v1.1.0"
+  @full_vsn "v1.1.0-5-g6b9baab-dirty"
   @url "https://github.com/diodechain/diode_server"
 
   def project do
@@ -31,20 +31,7 @@ defmodule Diode.Mixfile do
   defp elixirc_paths(_), do: ["lib"]
 
   def application do
-    [
-      mod: {Diode, []},
-      extra_applications: [
-        :debouncer,
-        :keccakf1600,
-        :libsecp256k1,
-        :logger,
-        :mix,
-        :observer,
-        :runtime_tools,
-        :sqlitex,
-        :os_mon
-      ]
-    ]
+    [mod: {Diode, []}, extra_applications: [:logger, :observer, :runtime_tools]]
   end
 
   defp aliases do
@@ -85,7 +72,6 @@ defmodule Diode.Mixfile do
   defp deps do
     [
       {:websockex, "~> 0.4.3"},
-      {:benchee, "~> 1.0", only: :benchmark},
       {:debouncer, "~> 0.1"},
       {:ex_doc, "~> 0.28", only: :dev, runtime: false},
       {:keccakf1600, github: "diodechain/erlang-keccakf1600"},
@@ -93,9 +79,8 @@ defmodule Diode.Mixfile do
       {:plug_cowboy, "~> 2.5"},
       {:poison, "~> 3.0"},
       {:profiler, github: "dominicletz/profiler"},
-      {:sqlitex, github: "diodechain/sqlitex"},
+      {:exqlite, "~> 0.17"},
       {:niffler, "~> 0.1"},
-      {:while, "~> 0.2"},
       {:httpoison, "~> 2.0"},
       {:oncrash, "~> 0.0"},
 

@@ -186,7 +186,7 @@ defmodule Network.Server do
       if client != nil do
         {:reply, client, state}
       else
-        worker = start_worker!(state, [:connect, node_id, "localhost", Diode.peer_port()])
+        worker = start_worker!(state, [:connect, node_id, "localhost", Diode.peer2_port()])
         {:reply, worker, %{state | self_conns: [worker]}}
       end
     else

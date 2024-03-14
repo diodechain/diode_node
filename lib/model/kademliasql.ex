@@ -8,19 +8,13 @@ defmodule Model.KademliaSql do
     Sql.query!(__MODULE__, sql, params)
   end
 
-  defp with_transaction(fun) do
-    Sql.with_transaction(__MODULE__, fun)
-  end
-
   def init() do
-    with_transaction(fn db ->
-      Sql.query!(db, """
-          CREATE TABLE IF NOT EXISTS p2p_objects (
-            key BLOB PRIMARY KEY,
-            object BLOB
-          )
-      """)
-    end)
+    query!("""
+        CREATE TABLE IF NOT EXISTS p2p_objects (
+          key BLOB PRIMARY KEY,
+          object BLOB
+        )
+    """)
   end
 
   def clear() do
@@ -58,11 +52,11 @@ defmodule Model.KademliaSql do
 
   def put_object(key, object) do
     object = BertInt.encode!(object)
-    query!("REPLACE INTO p2p_objects (key, object) VALUES(?1, ?2)", bind: [key, object])
+    query!("REPLACE INTO p2p_objects (key, object) VALUES(?1, ?2)", [key, object])
   end
 
   def delete_object(key) do
-    query!("DELETE FROM p2p_objects WHERE key = ?1", bind: [key])
+    query!("DELETE FROM p2p_objects WHERE key = ?1", [key])
   end
 
   def object(key) do
@@ -71,7 +65,7 @@ defmodule Model.KademliaSql do
 
   def scan() do
     query!("SELECT key, object FROM p2p_objects")
-    |> Enum.map(fn [key: key, object: obj] ->
+    |> Enum.map(fn [key, obj] ->
       obj = BertInt.decode!(obj) |> Object.decode!()
       {key, obj}
     end)
@@ -83,15 +77,17 @@ defmodule Model.KademliaSql do
     bend = <<range_end::integer-size(256)>>
 
     if range_start < range_end do
-      query!("SELECT key, object FROM p2p_objects WHERE key >= ?1 AND key <= ?2",
-        bind: [bstart, bend]
+      query!(
+        "SELECT key, object FROM p2p_objects WHERE key >= ?1 AND key <= ?2",
+        [bstart, bend]
       )
     else
-      query!("SELECT key, object FROM p2p_objects WHERE key >= ?1 OR key <= ?2",
-        bind: [bstart, bend]
+      query!(
+        "SELECT key, object FROM p2p_objects WHERE key >= ?1 OR key <= ?2",
+        [bstart, bend]
       )
     end
-    |> Enum.map(fn [key: key, object: obj] -> {key, BertInt.decode!(obj)} end)
+    |> Enum.map(fn [key, obj] -> {key, BertInt.decode!(obj)} end)
     |> Enum.filter(fn {key, value} ->
       # After a chain fork some signatures might have become invalid
       hash =
@@ -100,7 +96,7 @@ defmodule Model.KademliaSql do
         |> Kademlia.hash()
 
       if key != hash do
-        query!("DELETE FROM p2p_objects WHERE key = ?1", bind: [key])
+        query!("DELETE FROM p2p_objects WHERE key = ?1", [key])
         false
       else
         true
