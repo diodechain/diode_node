@@ -5,4 +5,4 @@
 rm -rf data_dev/
 export MIX_ENV=dev
 mix deps.get
-exec iex -S mix run 
+exec iex -S mix run --no-halt

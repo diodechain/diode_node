@@ -58,6 +58,11 @@ defmodule Chain.RPCCache do
   end
 
   @impl true
+  def handle_cast({:block_number, block_number}, state) do
+    {:noreply, %RPCCache{state | block_number: block_number}}
+  end
+
+  @impl true
   def handle_call(:block_number, _from, state = %RPCCache{block_number: number}) do
     {:reply, number, state}
   end

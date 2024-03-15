@@ -6,7 +6,7 @@ defmodule Chain.NodeProxy do
   alias Chain.NodeProxy
   require Logger
 
-  defstruct [:chain, connections: %{}, req: 0, requests: %{}, lastblocks: %{}]
+  defstruct [:chain, connections: %{}, req: 100, requests: %{}, lastblocks: %{}]
 
   def start_link(chain) do
     GenServer.start_link(__MODULE__, %NodeProxy{chain: chain, connections: %{}},
@@ -56,11 +56,29 @@ defmodule Chain.NodeProxy do
     {:noreply, %{state | lastblocks: lastblocks}}
   end
 
-  def handle_info({:DOWN, _ref, :process, down_pid, _reason}, state) do
+  def handle_info({:DOWN, _ref, :process, down_pid, reason}, state) do
+    if reason != :normal do
+      Logger.warning(
+        "WSConn #{inspect(down_pid)} of #{inspect(state.chain)} disconnected for #{inspect(reason)}"
+      )
+    end
+
     connections =
       state.connections |> Enum.filter(fn {_, pid} -> pid != down_pid end) |> Map.new()
 
     {:noreply, ensure_connections(%{state | connections: connections})}
+  end
+
+  def handle_info({:response, _ws_url, %{"id" => id} = response}, state) do
+    case Map.pop(state.requests, id) do
+      {nil, _} ->
+        Logger.warning("No request found for response: #{inspect(response)}")
+        {:noreply, state}
+
+      {from, requests} ->
+        GenServer.reply(from, response)
+        {:noreply, %{state | requests: requests}}
+    end
   end
 
   defp ensure_connections(state = %NodeProxy{chain: chain, connections: connections})

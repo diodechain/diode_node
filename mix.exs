@@ -71,7 +71,7 @@ defmodule Diode.Mixfile do
 
   defp deps do
     [
-      {:websockex, "~> 0.4.3"},
+      {:websockex, github: "Azolo/websockex"},
       {:debouncer, "~> 0.1"},
       {:ex_doc, "~> 0.28", only: :dev, runtime: false},
       {:keccakf1600, github: "diodechain/erlang-keccakf1600"},

@@ -53,7 +53,10 @@ defmodule Chain.RPC do
   end
 
   def rpc(chain, method, params) do
-    Chain.NodeProxy.rpc(chain, method, params)
+    case Chain.NodeProxy.rpc(chain, method, params) do
+      %{"result" => result} -> {:ok, result}
+      %{"error" => error} -> {:error, error}
+    end
   end
 
   def call(chain, to, from, data, block \\ "latest") do
