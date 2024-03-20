@@ -23,6 +23,11 @@ defmodule Chain.NodeProxy do
     GenServer.call({:global, {__MODULE__, chain}}, {:rpc, method, params})
   end
 
+  def rpc!(chain, method, params) do
+    %{"result" => ret} = rpc(chain, method, params)
+    ret
+  end
+
   @impl true
   def handle_call({:rpc, method, params}, from, state) do
     conn = Enum.random(Map.values(state.connections))
@@ -41,6 +46,11 @@ defmodule Chain.NodeProxy do
     {:noreply, %{state | req: id, requests: Map.put(state.requests, id, from)}}
   end
 
+  @impl true
+  def handle_cast(:ensure_connections, state) do
+    {:noreply, ensure_connections(state)}
+  end
+
   @security_level 1
   @impl true
   def handle_info(
@@ -56,17 +66,21 @@ defmodule Chain.NodeProxy do
     {:noreply, %{state | lastblocks: lastblocks}}
   end
 
-  def handle_info({:DOWN, _ref, :process, down_pid, reason}, state) do
+  def handle_info({:DOWN, _ref, :process, down_pid, reason}, state = %{connections: connections}) do
     if reason != :normal do
       Logger.warning(
         "WSConn #{inspect(down_pid)} of #{inspect(state.chain)} disconnected for #{inspect(reason)}"
       )
     end
 
-    connections =
-      state.connections |> Enum.filter(fn {_, pid} -> pid != down_pid end) |> Map.new()
+    pid = self()
 
-    {:noreply, ensure_connections(%{state | connections: connections})}
+    Debouncer.immediate({__MODULE__, pid, :ensure_connections}, fn ->
+      GenServer.cast(pid, :ensure_connections)
+    end)
+
+    connections = Enum.filter(connections, fn {_, pid} -> pid != down_pid end) |> Map.new()
+    {:noreply, %{state | connections: connections}}
   end
 
   def handle_info({:response, _ws_url, %{"id" => id} = response}, state) do

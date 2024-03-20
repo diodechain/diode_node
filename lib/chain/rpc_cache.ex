@@ -4,6 +4,7 @@
 defmodule Chain.RPCCache do
   use GenServer, restart: :permanent
   require Logger
+  alias Chain.NodeProxy
   alias Chain.RPCCache
 
   defstruct [:chain, :lru, :block_number]
@@ -54,7 +55,7 @@ defmodule Chain.RPCCache do
   end
 
   def get(chain, method, args) do
-    GenServer.call({:global, {__MODULE__, chain}}, {:get, chain, method, args})
+    GenServer.call({:global, {__MODULE__, chain}}, {:get, method, args})
   end
 
   @impl true
@@ -67,8 +68,8 @@ defmodule Chain.RPCCache do
     {:reply, number, state}
   end
 
-  def handle_call({:get, method, args}, _from, state = %RPCCache{lru: lru}) do
-    {lru, ret} = Lru.fetch(lru, {method, args}, fn -> Moonbeam.rpc!(method, args) end)
+  def handle_call({:get, method, args}, _from, state = %RPCCache{chain: chain, lru: lru}) do
+    {lru, ret} = Lru.fetch(lru, {method, args}, fn -> NodeProxy.rpc!(chain, method, args) end)
     {:reply, ret, %RPCCache{state | lru: lru}}
   end
 end
