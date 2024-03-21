@@ -2,7 +2,7 @@
 # Copyright 2021-2024 Diode
 # Licensed under the Diode License, Version 1.1
 defmodule Edge2Client do
-  alias Object.Ticket, as: Ticket
+  alias Object.TicketV1, as: Ticket
   require ExUnit.Assertions
   import Ticket
 
@@ -81,7 +81,7 @@ defmodule Edge2Client do
     count = div(unpaid_bytes + 400 - paid_bytes, @ticket_grace)
 
     tck =
-      ticket(
+      ticketv1(
         server_id: Wallet.address!(Diode.miner()),
         total_connections: state.conns,
         total_bytes: paid_bytes + @ticket_grace * count,

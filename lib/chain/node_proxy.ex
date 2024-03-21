@@ -9,9 +9,7 @@ defmodule Chain.NodeProxy do
   defstruct [:chain, connections: %{}, req: 100, requests: %{}, lastblocks: %{}]
 
   def start_link(chain) do
-    GenServer.start_link(__MODULE__, %NodeProxy{chain: chain, connections: %{}},
-      name: {:global, {__MODULE__, chain}}
-    )
+    GenServer.start_link(__MODULE__, %NodeProxy{chain: chain, connections: %{}}, name: name(chain))
   end
 
   @impl true
@@ -20,7 +18,7 @@ defmodule Chain.NodeProxy do
   end
 
   def rpc(chain, method, params) do
-    GenServer.call({:global, {__MODULE__, chain}}, {:rpc, method, params})
+    GenServer.call(name(chain), {:rpc, method, params})
   end
 
   def rpc!(chain, method, params) do
@@ -110,5 +108,10 @@ defmodule Chain.NodeProxy do
 
   defp ensure_connections(state) do
     state
+  end
+
+  defp name(chain) do
+    impl = Chain.chainimpl(chain) || raise "no chainimpl for #{inspect(chain)}"
+    {:global, {__MODULE__, impl}}
   end
 end

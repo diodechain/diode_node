@@ -56,6 +56,14 @@ defmodule Chain.WSConn do
     {:ok, state}
   end
 
+  def handle_disconnect(%{reason: reason}, state) do
+    Logger.warning(
+      "WSConn disconnected from #{inspect(state.chain)} for reason: #{inspect(reason)}"
+    )
+
+    {:ok, state}
+  end
+
   def handle_disconnect(status, state) do
     Logger.warning("WSConn disconnected from #{inspect(state.chain)} for #{inspect(status)}")
     {:ok, state}

@@ -24,7 +24,7 @@ defmodule Object do
   end
 
   def decode_rlp_list!([
-        "ticketv2",
+        ext = "ticketv2",
         server_id,
         chain_id,
         block_num,
@@ -35,22 +35,40 @@ defmodule Object do
         device_signature,
         server_signature
       ]) do
-    {:ticketv2, server_id, chain_id, Rlpx.bin2num(block_num), fleet_contract,
+    {recordname(ext), server_id, chain_id, Rlpx.bin2num(block_num), fleet_contract,
      Rlpx.bin2num(total_connections), Rlpx.bin2num(total_bytes), local_address, device_signature,
      server_signature}
   end
 
-  def decode_rlp_list!(["server", host, edge_port, peer_port, signature]) do
-    {:server, host, Rlpx.bin2num(edge_port), Rlpx.bin2num(peer_port), signature}
+  def decode_rlp_list!([
+        ext = "ticket",
+        server_id,
+        block_num,
+        fleet_contract,
+        total_connections,
+        total_bytes,
+        local_address,
+        device_signature,
+        server_signature
+      ]) do
+    {recordname(ext), server_id, Rlpx.bin2num(block_num), fleet_contract,
+     Rlpx.bin2num(total_connections), Rlpx.bin2num(total_bytes), local_address, device_signature,
+     server_signature}
   end
 
-  def decode_rlp_list!(["server", host, edge_port, peer_port, version, extra, signature]) do
+  def decode_rlp_list!([ext = "server", host, edge_port, peer_port, signature]) do
+    {recordname(ext), host, Rlpx.bin2num(edge_port), Rlpx.bin2num(peer_port), signature}
+  end
+
+  def decode_rlp_list!([ext = "server", host, edge_port, peer_port, version, extra, signature]) do
     extra = Enum.map(extra, fn [key, value] -> [key, Rlpx.bin2num(value)] end)
-    {:server, host, Rlpx.bin2num(edge_port), Rlpx.bin2num(peer_port), version, extra, signature}
+
+    {recordname(ext), host, Rlpx.bin2num(edge_port), Rlpx.bin2num(peer_port), version, extra,
+     signature}
   end
 
   def decode_rlp_list!([
-        "channel",
+        ext = "channel",
         server_id,
         block_num,
         fleet_contract,
@@ -59,11 +77,12 @@ defmodule Object do
         params,
         signature
       ]) do
-    {:channel, server_id, Rlpx.bin2num(block_num), fleet_contract, type, name, params, signature}
+    {recordname(ext), server_id, Rlpx.bin2num(block_num), fleet_contract, type, name, params,
+     signature}
   end
 
-  def decode_rlp_list!(["data", block_num, name, value, signature]) do
-    {:name, Rlpx.bin2num(block_num), name, value, signature}
+  def decode_rlp_list!([ext = "data", block_num, name, value, signature]) do
+    {recordname(ext), Rlpx.bin2num(block_num), name, value, signature}
   end
 
   def encode!(record) do
@@ -86,28 +105,24 @@ defmodule Object do
     modname(record).block_number(record)
   end
 
-  defp modname(record) do
-    name = Atom.to_string(elem(record, 0))
+  @names [
+    # record, external, module
+    {:channel, "channel", Object.Channel},
+    {:server, "server", Object.Server},
+    {:data, "data", Object.Data},
+    {:ticketv1, "ticket", Object.TicketV1},
+    {:ticketv2, "ticketv2", Object.TicketV2}
+  ]
 
-    "Elixir.Object.#{String.capitalize(name)}"
-    |> String.to_atom()
+  for {record, _ext, module} <- @names do
+    def modname(unquote(record)), do: unquote(module)
   end
 
-  defp extname(name) do
-    case name do
-      :ticket -> "ticket"
-      :server -> "server"
-      :channel -> "channel"
-      :data -> "data"
-    end
+  for {record, ext, _module} <- @names do
+    def extname(unquote(record)), do: unquote(ext)
   end
 
-  defp recordname(name) do
-    case name do
-      "ticket" -> :ticket
-      "server" -> :server
-      "channel" -> :channel
-      "data" -> :data
-    end
+  for {record, ext, _mod} <- @names do
+    def recordname(unquote(ext)), do: unquote(record)
   end
 end

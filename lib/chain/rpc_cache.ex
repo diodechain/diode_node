@@ -11,7 +11,7 @@ defmodule Chain.RPCCache do
 
   def start_link(chain) do
     GenServer.start_link(__MODULE__, chain,
-      name: {:global, {__MODULE__, chain}},
+      name: name(chain),
       hibernate_after: 5_000
     )
   end
@@ -22,40 +22,31 @@ defmodule Chain.RPCCache do
   end
 
   def set_block_number(chain, block_number) do
-    GenServer.cast({:global, {__MODULE__, chain}}, {:block_number, block_number})
+    GenServer.cast(name(chain), {:block_number, block_number})
   end
 
   def block_number(chain) do
-    case GenServer.call({:global, {__MODULE__, chain}}, :block_number) do
+    case GenServer.call(name(chain), :block_number) do
       nil -> raise "no block_number yet"
       number -> number
     end
   end
 
   def get_block_by_number(chain, block \\ "latest", with_transactions \\ false) do
-    block =
-      if block == "latest" do
-        block_number(chain)
-      else
-        block
-      end
-
+    block = resolve_block(chain, block)
     get(chain, "eth_getBlockByNumber", [block, with_transactions])
   end
 
   def get_storage_at(chain, address, slot, block \\ "latest") do
-    block =
-      if block == "latest" do
-        block_number(chain)
-      else
-        block
-      end
-
+    block = resolve_block(chain, block)
     get(chain, "eth_getStorageAt", [address, slot, block])
   end
 
   def get(chain, method, args) do
-    GenServer.call({:global, {__MODULE__, chain}}, {:get, method, args})
+    case GenServer.call(name(chain), {:get, method, args}) do
+      nil -> maybe_cache(chain, method, args)
+      result -> result
+    end
   end
 
   @impl true
@@ -63,13 +54,45 @@ defmodule Chain.RPCCache do
     {:noreply, %RPCCache{state | block_number: block_number}}
   end
 
+  def handle_cast({:set, method, args, result}, state = %RPCCache{lru: lru}) do
+    {:noreply, %RPCCache{state | lru: Lru.insert(lru, {method, args}, result)}}
+  end
+
   @impl true
   def handle_call(:block_number, _from, state = %RPCCache{block_number: number}) do
     {:reply, number, state}
   end
 
-  def handle_call({:get, method, args}, _from, state = %RPCCache{chain: chain, lru: lru}) do
-    {lru, ret} = Lru.fetch(lru, {method, args}, fn -> NodeProxy.rpc!(chain, method, args) end)
-    {:reply, ret, %RPCCache{state | lru: lru}}
+  def handle_call({:get, method, args}, _from, state = %RPCCache{lru: lru}) do
+    {:reply, Lru.get(lru, {method, args}), state}
+  end
+
+  defp resolve_block(chain, "latest"), do: block_number(chain)
+  defp resolve_block(_chain, block), do: block
+
+  defp name(chain) do
+    impl = Chain.chainimpl(chain) || raise "no chainimpl for #{inspect(chain)}"
+    {:global, {__MODULE__, impl}}
+  end
+
+  defp maybe_cache(chain, method, args) do
+    {time, ret} = :timer.tc(fn -> NodeProxy.rpc!(chain, method, args) end)
+    Logger.debug("RPC #{method} #{inspect(args)} took #{time}ms")
+
+    if should_cache_method(method, args) and should_cache_result(ret) do
+      GenServer.cast(name(chain), {:set, method, args, ret})
+    end
+
+    ret
+  end
+
+  defp should_cache_method(method, args) do
+    IO.inspect({method, args}, label: "should_cache_method")
+    true
+  end
+
+  defp should_cache_result(ret) do
+    IO.inspect(ret, label: "should_cache_result")
+    true
   end
 end

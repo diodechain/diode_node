@@ -2,20 +2,15 @@
 # Copyright 2021-2024 Diode
 # Licensed under the Diode License, Version 1.1
 defmodule TicketStore do
-  alias Object.TicketV2
+  alias Object.Ticket
   alias Model.TicketSql
   alias Model.Ets
   use GenServer
-  import TicketV2
 
   @ticket_value_cache :ticket_value_cache
 
   def start_link() do
     GenServer.start_link(__MODULE__, [], name: __MODULE__)
-  end
-
-  def epoch() do
-    System.os_time(:second) |> TicketV2.time_to_epoch()
   end
 
   def init([]) do
@@ -28,19 +23,21 @@ defmodule TicketStore do
     TicketSql.delete_all()
   end
 
+  def epoch() do
+    div(System.os_time(:second), Chains.Moonbeam.epoch_length())
+  end
+
   def tickets(epoch) do
     Ets.all(__MODULE__)
-    |> Enum.filter(fn tck -> TicketV2.epoch(tck) == epoch end)
+    |> Enum.filter(fn tck -> Ticket.epoch(tck) == epoch end)
     |> Enum.concat(TicketSql.tickets(epoch))
   end
 
   # Should be called on each new block
   def newblock(chain_id, blocknum) do
-    blocktime = Chain.blocktime(chain_id, blocknum)
-
     if not Diode.dev_mode?() and
-         rem(blocktime, TicketV2.epoch_length()) > TicketV2.epoch_length() / 2 do
-      epoch = TicketV2.time_to_epoch(blocktime)
+         Chain.epoch_progress(chain_id, blocknum) > 0.5 do
+      epoch = Chain.epoch(chain_id, blocknum)
       submit_tickets(epoch - 1)
     end
   end
@@ -52,7 +49,7 @@ defmodule TicketStore do
         estimate_ticket_value(tck) > 1_000_000
       end)
       |> Enum.filter(fn tck ->
-        TicketV2.raw(tck)
+        Ticket.raw(tck)
         |> Contract.Registry.submit_ticket_raw_tx()
         |> Shell.call_tx("latest")
         |> case do
@@ -73,7 +70,7 @@ defmodule TicketStore do
       tx =
         Enum.flat_map(tickets, fn tck ->
           store_ticket_value(tck)
-          TicketV2.raw(tck)
+          Ticket.raw(tck)
         end)
         |> Contract.Registry.submit_ticket_raw_tx()
 
@@ -93,13 +90,14 @@ defmodule TicketStore do
   @doc """
     Handling a ConnectionTicket
   """
-  @spec add(TicketV2.t(), Wallet.t()) ::
-          {:ok, non_neg_integer()} | {:too_low, TicketV2.t()} | {:too_old, integer()}
-  def add(ticketv2(chain_id: chain_id) = tck, wallet) do
-    tepoch = TicketV2.epoch(tck)
+  @spec add(Ticket.t(), Wallet.t()) ::
+          {:ok, non_neg_integer()} | {:too_low, Ticket.t()} | {:too_old, integer()}
+  def add(tck, wallet) do
+    chain_id = Ticket.chain_id(tck)
+    tepoch = Ticket.epoch(tck)
     epoch = Chain.epoch(chain_id)
     address = Wallet.address!(wallet)
-    fleet = TicketV2.fleet_contract(tck)
+    fleet = Ticket.fleet_contract(tck)
 
     if epoch - 1 < tepoch do
       last = find(address, fleet, tepoch)
@@ -107,19 +105,19 @@ defmodule TicketStore do
       case last do
         nil ->
           put_ticket(tck, address, fleet, tepoch)
-          {:ok, TicketV2.total_bytes(tck)}
+          {:ok, Ticket.total_bytes(tck)}
 
         last ->
-          if TicketV2.total_connections(last) < TicketV2.total_connections(tck) or
-               TicketV2.total_bytes(last) < TicketV2.total_bytes(tck) do
+          if Ticket.total_connections(last) < Ticket.total_connections(tck) or
+               Ticket.total_bytes(last) < Ticket.total_bytes(tck) do
             put_ticket(tck, address, fleet, tepoch)
-            {:ok, max(0, TicketV2.total_bytes(tck) - TicketV2.total_bytes(last))}
+            {:ok, max(0, Ticket.total_bytes(tck) - Ticket.total_bytes(last))}
           else
-            if address != TicketV2.device_address(last) do
+            if address != Ticket.device_address(last) do
               :io.format("Ticked Signed on Fork Chain~n")
               :io.format("Last: ~180p~nTick: ~180p~n", [last, tck])
               put_ticket(tck, address, fleet, tepoch)
-              {:ok, TicketV2.total_bytes(tck)}
+              {:ok, Ticket.total_bytes(tck)}
             else
               {:too_low, last}
             end
@@ -151,10 +149,12 @@ defmodule TicketStore do
     TicketSql.count(epoch)
   end
 
-  def estimate_ticket_value(tck = ticketv2(chain_id: chain_id, block_number: n)) do
-    epoch = TicketV2.epoch(tck)
-    device = TicketV2.device_address(tck)
-    fleet = TicketV2.fleet_contract(tck)
+  def estimate_ticket_value(tck) do
+    chain_id = Ticket.chain_id(tck)
+    n = Ticket.block_number(tck)
+    epoch = Ticket.epoch(tck)
+    device = Ticket.device_address(tck)
+    fleet = Ticket.fleet_contract(tck)
 
     fleet_value =
       EtsLru.fetch(@ticket_value_cache, {:fleet, chain_id, fleet, epoch}, fn ->
@@ -169,10 +169,12 @@ defmodule TicketStore do
     end
   end
 
-  def store_ticket_value(tck = ticketv2(chain_id: chain_id, block_number: n)) do
-    epoch = TicketV2.epoch(tck)
-    device = TicketV2.device_address(tck)
-    fleet = TicketV2.fleet_contract(tck)
+  def store_ticket_value(tck) do
+    chain_id = Ticket.chain_id(tck)
+    n = Ticket.block_number(tck)
+    epoch = Ticket.epoch(tck)
+    device = Ticket.device_address(tck)
+    fleet = Ticket.fleet_contract(tck)
 
     fleet_value =
       EtsLru.fetch(@ticket_value_cache, {:fleet, chain_id, fleet, epoch}, fn ->
@@ -191,8 +193,8 @@ defmodule TicketStore do
   end
 
   @doc "Reports ticket value in 1024 blocks"
-  def value(ticketv2() = tck) do
-    div(TicketV2.total_bytes(tck) + TicketV2.total_connections(tck) * 1024, 1024)
+  def value(tck) when is_tuple(tck) do
+    div(Ticket.total_bytes(tck) + Ticket.total_connections(tck) * 1024, 1024)
   end
 
   def value(epoch) when is_integer(epoch) do

@@ -3,7 +3,7 @@
 # Licensed under the Diode License, Version 1.1
 defmodule TicketTest do
   use ExUnit.Case
-  # alias Object.Ticket
+  # alias Object.TicketV1
 
   # defp ticket_a() do
   #   {:ticket,

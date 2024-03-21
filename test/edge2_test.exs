@@ -5,7 +5,7 @@ defmodule Edge2Test do
   use ExUnit.Case, async: false
   alias Network.Server, as: Server
   alias Network.EdgeV2, as: EdgeHandler
-  alias Object.Ticket, as: Ticket
+  alias Object.TicketV1, as: Ticket
   alias Object.Channel, as: Channel
   import Ticket
   import Channel
@@ -113,7 +113,7 @@ defmodule Edge2Test do
     IO.puts("Chain.peak(): #{Chain.peak()}")
 
     tck =
-      ticket(
+      ticketv1(
         server_id: Wallet.address!(Diode.miner()),
         total_connections: 1,
         total_bytes: 0,
@@ -191,9 +191,9 @@ defmodule Edge2Test do
     # Testing ticket integrity
     Model.TicketSql.tickets_raw()
     |> Enum.each(fn {dev, fleet, epoch, tck} ->
-      assert Object.Ticket.device_address(tck) == dev
-      assert Object.Ticket.epoch(tck) == epoch
-      assert Object.Ticket.fleet_contract(tck) == fleet
+      assert Object.TicketV1.device_address(tck) == dev
+      assert Object.TicketV1.epoch(tck) == epoch
+      assert Object.TicketV1.fleet_contract(tck) == fleet
     end)
 
     # Testing disconnect
@@ -212,7 +212,7 @@ defmodule Edge2Test do
     ensure_clients()
 
     tck =
-      ticket(
+      ticketv1(
         server_id: Wallet.address!(Diode.miner()),
         total_connections: 1,
         total_bytes: 0,

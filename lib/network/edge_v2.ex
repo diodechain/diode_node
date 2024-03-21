@@ -4,11 +4,10 @@
 defmodule Network.EdgeV2 do
   use Network.Handler
   require Logger
-  alias Object.TicketV2
   alias Object.Ticket
   alias Object.ChannelV2
-  import Ticket, only: :macros
-  import TicketV2, only: :macros
+  import Object.TicketV1, only: :macros
+  import Object.TicketV2, only: :macros
   import ChannelV2, only: :macros
 
   defmodule PortClient do
@@ -316,11 +315,41 @@ defmodule Network.EdgeV2 do
           {response("ok"), state}
         end
 
-      ["ticket" | rest = [_block, _fc, _tc, _tb, _la, _ds]] ->
-        handle_ticket(rest, state)
+      ["ticket" | [block, fleet, total_connections, total_bytes, local_address, device_signature]] ->
+        ticketv1(
+          server_id: Wallet.address!(Diode.miner()),
+          fleet_contract: fleet,
+          total_connections: to_num(total_connections),
+          total_bytes: to_num(total_bytes),
+          local_address: local_address,
+          block_number: to_num(block),
+          device_signature: device_signature
+        )
+        |> handle_ticket(state)
 
-      ["ticketv2" | rest = [_ci, _block, _fc, _tc, _tb, _la, _ds]] ->
-        handle_ticket(rest, state)
+      [
+        "ticketv2"
+        | [
+            chain_id,
+            block,
+            fleet,
+            total_connections,
+            total_bytes,
+            local_address,
+            device_signature
+          ]
+      ] ->
+        ticketv2(
+          chain_id: to_num(chain_id),
+          server_id: Wallet.address!(Diode.miner()),
+          fleet_contract: fleet,
+          total_connections: to_num(total_connections),
+          total_bytes: to_num(total_bytes),
+          local_address: local_address,
+          block_number: to_num(block),
+          device_signature: device_signature
+        )
+        |> handle_ticket(state)
 
       ["bytes"] ->
         # This is an exception as unpaid_bytes can be negative
@@ -628,21 +657,7 @@ defmodule Network.EdgeV2 do
     end
   end
 
-  defp handle_ticket(
-         [block, fleet, total_connections, total_bytes, local_address, device_signature],
-         state
-       ) do
-    dl =
-      ticket(
-        server_id: Wallet.address!(Diode.miner()),
-        fleet_contract: fleet,
-        total_connections: to_num(total_connections),
-        total_bytes: to_num(total_bytes),
-        local_address: local_address,
-        block_number: to_num(block),
-        device_signature: device_signature
-      )
-
+  defp handle_ticket(dl, state) do
     cond do
       Ticket.block_number(dl) > Chain.peaknumber(Ticket.chain_id(dl)) ->
         log(
@@ -702,109 +717,7 @@ defmodule Network.EdgeV2 do
             response("too_old", min)
 
           {:too_low, last} ->
-            response_array([
-              "too_low",
-              Ticket.block_hash(last),
-              Ticket.total_connections(last),
-              Ticket.total_bytes(last),
-              Ticket.local_address(last),
-              Ticket.device_signature(last)
-            ])
-        end
-    end
-  end
-
-  defp handle_ticket(
-         [
-           chain_id,
-           block,
-           fleet,
-           total_connections,
-           total_bytes,
-           local_address,
-           device_signature
-         ],
-         state
-       ) do
-    dl =
-      ticketv2(
-        server_id: Wallet.address!(Diode.miner()),
-        fleet_contract: fleet,
-        total_connections: to_num(total_connections),
-        total_bytes: to_num(total_bytes),
-        local_address: local_address,
-        block_number: to_num(block),
-        device_signature: device_signature
-      )
-
-    cond do
-      TicketV2.block_number(dl) > Chain.peaknumber(chain_id) ->
-        log(
-          state,
-          "Ticket with future block number #{TicketV2.block_number(dl)} vs. #{Chain.peaknumber(chain_id)}!"
-        )
-
-        error("block number too high")
-
-      not TicketV2.device_address?(dl, device_id(state)) ->
-        log(state, "Received invalid ticket signature!")
-        error("signature mismatch")
-
-      # TODO: Needs to be re-enabled after dev-contract is all-yes
-      # not Contract.Fleet.device_allowlisted?(fleet, device) ->
-      #   log(state, "Received invalid ticket fleet!")
-      #   error("device not whitelisted")
-
-      true ->
-        dl = TicketV2.server_sign(dl, Wallet.privkey!(Diode.miner()))
-        ret = TicketStore.add(dl, device_id(state))
-
-        # address = Ticket.device_address(dl)
-        # short = String.slice(Base16.encode(address), 0..7)
-        # total = Ticket.total_bytes(dl)
-        # unpaid = state.unpaid_bytes
-        # IO.puts("[#{short}] TICKET total: #{total} unpaid: #{unpaid} ret => #{inspect(ret)}")
-
-        case ret do
-          {:ok, bytes} ->
-            key = Object.key(dl)
-
-            # Storing the updated ticket of this device, debounce is 15 sec
-            Debouncer.immediate(
-              key,
-              fn ->
-                Model.KademliaSql.put_object(Kademlia.hash(key), Object.encode!(dl))
-                Kademlia.store(dl)
-              end,
-              15_000
-            )
-
-            # Storing the updated ticket of this device, debounce is 10 sec
-            Debouncer.immediate(
-              :publish_me,
-              fn ->
-                me = Diode.self()
-                Kademlia.store(me)
-              end,
-              10_000
-            )
-
-            {response("thanks!", bytes),
-             %{state | unpaid_bytes: state.unpaid_bytes - bytes, last_ticket: Time.utc_now()}}
-
-          {:too_old, min} ->
-            response("too_old", min)
-
-          {:too_low, last} ->
-            response_array([
-              "too_low",
-              TicketV2.chain_id(last),
-              TicketV2.block_hash(last),
-              TicketV2.total_connections(last),
-              TicketV2.total_bytes(last),
-              TicketV2.local_address(last),
-              TicketV2.device_signature(last)
-            ])
+            response_array(["too_low" | Ticket.summary(last)])
         end
     end
   end

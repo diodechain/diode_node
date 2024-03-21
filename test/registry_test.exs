@@ -2,7 +2,7 @@
 # Copyright 2021-2024 Diode
 # Licensed under the Diode License, Version 1.1
 defmodule RegistryTest do
-  alias Object.Ticket
+  alias Object.TicketV1
   import Ticket
   alias Contract.{Fleet, Registry}
   use ExUnit.Case, async: false
@@ -21,7 +21,7 @@ defmodule RegistryTest do
 
   test "future ticket" do
     tck =
-      ticket(
+      ticketv1(
         server_id: Wallet.address!(Diode.miner()),
         total_connections: 1,
         total_bytes: 0,
@@ -41,7 +41,7 @@ defmodule RegistryTest do
 
   test "zero ticket" do
     tck =
-      ticket(
+      ticketv1(
         server_id: Wallet.address!(Diode.miner()),
         total_connections: 1,
         total_bytes: 0,
@@ -75,7 +75,7 @@ defmodule RegistryTest do
     assert Fleet.device_allowlisted?(fleet, client) == false
 
     tck =
-      ticket(
+      ticketv1(
         server_id: Wallet.address!(Diode.miner()),
         total_connections: 1,
         total_bytes: 0,
@@ -99,7 +99,7 @@ defmodule RegistryTest do
     assert Fleet.device_allowlisted?(fleet, client) == true
 
     tck =
-      ticket(
+      ticketv1(
         server_id: Wallet.address!(Diode.miner()),
         total_connections: 1,
         total_bytes: 0,
@@ -118,7 +118,7 @@ defmodule RegistryTest do
     assert Fleet.device_allowlisted?(clientid(1)) == true
 
     tck =
-      ticket(
+      ticketv1(
         server_id: Wallet.address!(Diode.miner()),
         total_connections: 1,
         total_bytes: 0,

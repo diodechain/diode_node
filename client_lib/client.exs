@@ -1,7 +1,7 @@
 # Diode Server
 # Copyright 2021-2024 Diode
 # Licensed under the Diode License, Version 1.1
-alias Object.Ticket, as: Ticket
+alias Object.TicketV1, as: Ticket
 import Ticket
 
 defmodule Client do
