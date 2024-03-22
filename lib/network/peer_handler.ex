@@ -82,7 +82,7 @@ defmodule Network.PeerHandler do
       end)
 
     hello = Diode.self(hostname)
-    # Temporary, we don't have server registration atm
+    # We don't have server registration atm
     chain_id = 0
 
     case ssl_send(state, [@hello, Object.encode!(hello), chain_id, []]) do

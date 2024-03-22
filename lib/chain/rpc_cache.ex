@@ -86,6 +86,14 @@ defmodule Chain.RPCCache do
     ret
   end
 
+  defp should_cache_method("dio_edgev2", [hex]) do
+    case Rlp.decode!(Base16.decode(hex)) |> hd() do
+      other ->
+        IO.inspect(other, label: "should_cache_method dio_edgev2")
+        true
+    end
+  end
+
   defp should_cache_method(method, args) do
     IO.inspect({method, args}, label: "should_cache_method")
     true

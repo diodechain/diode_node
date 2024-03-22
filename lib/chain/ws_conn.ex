@@ -81,6 +81,7 @@ defmodule Chain.WSConn do
 
       %{"params" => %{"result" => %{"number" => <<"0", _x, hex_number::binary>>}}} ->
         block_number = String.to_integer(hex_number, 16)
+        Logger.info("WSConn received block #{block_number} from #{ws_url}")
         send(state.owner, {:new_block, ws_url, block_number})
         {:ok, %{state | lastblock_at: DateTime.utc_now(), lastblock_number: block_number}}
     end

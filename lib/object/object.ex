@@ -118,6 +118,11 @@ defmodule Object do
     def modname(unquote(record)), do: unquote(module)
   end
 
+  def modname(tuple) do
+    [type | _] = Tuple.to_list(tuple)
+    modname(type)
+  end
+
   for {record, ext, _module} <- @names do
     def extname(unquote(record)), do: unquote(ext)
   end

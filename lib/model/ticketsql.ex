@@ -3,7 +3,7 @@
 # Licensed under the Diode License, Version 1.1
 defmodule Model.TicketSql do
   alias Model.Sql
-  alias Object.TicketV2
+  alias Object.Ticket
 
   defp query!(sql, params \\ []) do
     Sql.query!(__MODULE__, sql, params)
@@ -33,9 +33,9 @@ defmodule Model.TicketSql do
     query!(
       "REPLACE INTO tickets (device, fleet, epoch, ticket) VALUES(?1, ?2, ?3, ?4)",
       [
-        TicketV2.device_address(ticket),
-        TicketV2.fleet_contract(ticket),
-        TicketV2.epoch(ticket),
+        Ticket.device_address(ticket),
+        Ticket.fleet_contract(ticket),
+        Ticket.epoch(ticket),
         ticket_data
       ]
     )
@@ -56,7 +56,7 @@ defmodule Model.TicketSql do
   end
 
   def find(tck) do
-    find(TicketV2.device_address(tck), TicketV2.fleet_contract(tck), TicketV2.epoch(tck))
+    find(Ticket.device_address(tck), Ticket.fleet_contract(tck), Ticket.epoch(tck))
   end
 
   def find(device = <<_::160>>, fleet = <<_fl::160>>, epoch) when is_integer(epoch) do
@@ -68,7 +68,7 @@ defmodule Model.TicketSql do
   end
 
   def delete(tck) do
-    delete(TicketV2.device_address(tck), TicketV2.fleet_contract(tck), TicketV2.epoch(tck))
+    delete(Ticket.device_address(tck), Ticket.fleet_contract(tck), Ticket.epoch(tck))
   end
 
   def delete(device = <<_::160>>, fleet = <<_fl::160>>, epoch) when is_integer(epoch) do

@@ -5,9 +5,9 @@ defmodule Network.Channel do
   import Object.ChannelV2, only: :macros
   use GenServer
 
-  alias Network.EdgeV2.Port
-  alias Network.EdgeV2.PortClient
-  alias Network.EdgeV2.PortCollection
+  alias Network.PortCollection.Port
+  alias Network.PortCollection.PortClient
+  alias Network.PortCollection
 
   def start_link(ch = channelv2()) do
     GenServer.start_link(__MODULE__, ch, hibernate_after: 5_000)
