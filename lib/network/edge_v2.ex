@@ -34,17 +34,17 @@ defmodule Network.EdgeV2 do
 
     state =
       Map.merge(state, %{
-        ports: %PortCollection{},
-        inbuffer: nil,
         blocked: :queue.new(),
         compression: nil,
         extra_flags: [],
-        unpaid_bytes: 0,
-        unpaid_rx_bytes: 0,
-        last_ticket: nil,
+        inbuffer: nil,
         last_message: Time.utc_now(),
+        last_ticket: nil,
         pid: self(),
-        sender: Network.Sender.new(state.socket)
+        ports: %PortCollection{},
+        sender: Network.Sender.new(state.socket),
+        unpaid_bytes: 0,
+        unpaid_rx_bytes: 0
       })
 
     log(state, "accepted connection")
@@ -106,13 +106,13 @@ defmodule Network.EdgeV2 do
     {:noreply, state}
   end
 
-  def handle_cast(fun, state) when is_function(fun) do
-    fun.(state)
-  end
-
   def handle_cast({:pccb_portsend, %Port{trace: trace, ref: ref}, data}, state) do
     trace = {trace, name(state), "exec portsend to #{Base16.encode(ref)}"}
     {:noreply, send_socket(state, {:port, ref}, random_ref(), ["portsend", ref, data], trace)}
+  end
+
+  def handle_cast(fun, state) when is_function(fun) do
+    fun.(state)
   end
 
   def handle_cast({:trace, msg}, state) do

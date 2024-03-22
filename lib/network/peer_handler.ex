@@ -5,6 +5,8 @@ defmodule Network.PeerHandler do
   use Network.Handler
   alias Object.Server, as: Server
   alias Model.KademliaSql
+  alias Network.PortCollection
+  alias Network.PortCollection.Port
 
   # @hello 0
   # @response 1
@@ -32,16 +34,17 @@ defmodule Network.PeerHandler do
   def do_init(state) do
     send_hello(
       Map.merge(state, %{
-        calls: :queue.new(),
         blocks: nil,
-        random_blocks: 0,
-        stable: false,
-        msg_count: 0,
-        start_time: System.os_time(:second),
-        server: nil,
+        calls: :queue.new(),
         job: nil,
         last_publish: nil,
-        last_send: nil
+        last_send: nil,
+        msg_count: 0,
+        ports: %PortCollection{},
+        random_blocks: 0,
+        server: nil,
+        stable: false,
+        start_time: System.os_time(:second)
       })
     )
   end
@@ -61,9 +64,34 @@ defmodule Network.PeerHandler do
     {:stop, :normal, state}
   end
 
+  def handle_cast({:pccb_portopen, %Port{ref: ref, portname: portname}, device_address}, state) do
+    ssl_send(state, [:portopen, portname, ref, device_address])
+  end
+
+  def handle_cast({:pccb_portclose, %Port{ref: ref}}, state) do
+    ssl_send(state, [:portclose, ref])
+  end
+
+  def handle_cast({:pccb_portsend, %Port{ref: ref}, data}, state) do
+    ssl_send(state, [:portsend, ref, data])
+  end
+
   def handle_call({:rpc, call}, from, state) do
     calls = :queue.in({call, from}, state.calls)
     ssl_send(%{state | calls: calls}, call)
+  end
+
+  def handle_call({PortCollection, cmd}, from, state) do
+    case PortCollection.handle_call(state.ports, cmd, from) do
+      {:reply, ret, pc} ->
+        {:reply, ret, %{state | ports: pc}}
+
+      {:noreply, pc} ->
+        {:noreply, %{state | ports: pc}}
+
+      {:error, reason} ->
+        {:reply, {:error, reason}, state}
+    end
   end
 
   defp encode(msg) do
@@ -112,9 +140,6 @@ defmodule Network.PeerHandler do
 
   def handle_info({:ssl, _sock, omsg}, state) do
     msg = decode(omsg)
-
-    # log(state, format("Received ~p bytes on ~p: ~180p", [byte_size(omsg), _sock, msg]))
-
     state = %{state | msg_count: state.msg_count + 1}
 
     # We consider this connection stable after at least 5 minutes and 10 messages
@@ -140,6 +165,11 @@ defmodule Network.PeerHandler do
   def handle_info({:ssl_closed, info}, state) do
     log(state, "Connection closed by remote. info: #{inspect(info)}")
     {:stop, :normal, state}
+  end
+
+  def handle_info({:DOWN, mon, _type, _object, _info}, state) do
+    ports = PortCollection.handle_down(state.ports, mon)
+    {:noreply, %{state | ports: ports}}
   end
 
   def handle_info(msg, state) do
@@ -211,8 +241,46 @@ defmodule Network.PeerHandler do
     respond(state, {:value, value})
   end
 
+  defp handle_msg([@response, :portopen, ref, "ok"], state) do
+    case PortCollection.confirm_portopen(state.ports, ref) do
+      {:ok, pc} -> {:noreply, %{state | ports: pc}}
+      {:error, _reason} -> {:noreply, state}
+    end
+  end
+
+  defp handle_msg([@response, :portopen, ref, "error", reason], state) do
+    case PortCollection.deny_portopen(state.ports, ref, reason) do
+      {:ok, pc} -> {:noreply, %{state | ports: pc}}
+      {:error, _reason} -> {:noreply, state}
+    end
+  end
+
   defp handle_msg([@response, _cmd | rest], state) do
     respond(state, rest)
+  end
+
+  defp handle_msg([:portopen, portname, ref, device_address], state) do
+    pid = PubSub.subscribers({:edge, device_address}) |> List.first()
+
+    case PortCollection.request_portopen(device_address, self(), portname, "rw", pid, ref) do
+      {:error, reason} ->
+        {[@response, :portopen, ref, "error", reason], state}
+
+      :ok ->
+        {[@response, :portopen, ref, "ok"], state}
+    end
+  end
+
+  defp handle_msg([:portclose, ref], state) do
+    case PortCollection.portclose(state.ports, ref) do
+      {:ok, pc} -> {:noreply, %{state | ports: pc}}
+      {:error, _reason} -> {:noreply, state}
+    end
+  end
+
+  defp handle_msg([:portsend, ref, data], state) do
+    PortCollection.portsend(state.ports, ref, data)
+    {:noreply, state}
   end
 
   defp handle_msg(msg, state) do
