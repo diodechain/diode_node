@@ -7,10 +7,10 @@ defmodule Network.EdgeV2 do
   alias Network.PortCollection
   alias Network.PortCollection.Port
   alias Object.Ticket
-  alias Object.ChannelV2
+  alias Object.Channel
   import Object.TicketV1, only: :macros
   import Object.TicketV2, only: :macros
-  import ChannelV2, only: :macros
+  import Channel, only: :macros
 
   @type state :: %{
           socket: any(),
@@ -274,9 +274,9 @@ defmodule Network.EdgeV2 do
       ["ping"] ->
         response("pong")
 
-      ["channelv2", chain_id, block_number, fleet, type, name, params, signature] ->
+      ["channel", chain_id, block_number, fleet, type, name, params, signature] ->
         obj =
-          channelv2(
+          channel(
             chain_id: to_num(chain_id),
             server_id: Diode.miner() |> Wallet.address!(),
             block_number: to_num(block_number),
@@ -287,7 +287,7 @@ defmodule Network.EdgeV2 do
             signature: signature
           )
 
-        device = Object.ChannelV2.device_address(obj)
+        device = Object.Channel.device_address(obj)
 
         cond do
           not Wallet.equal?(device, device_id(state)) ->
@@ -296,14 +296,14 @@ defmodule Network.EdgeV2 do
           not Contract.Fleet.device_allowlisted?(fleet, device) ->
             error("device not whitelisted for this fleet")
 
-          not Object.ChannelV2.valid_type?(obj) ->
+          not Object.Channel.valid_type?(obj) ->
             error("invalid channel type")
 
-          not Object.ChannelV2.valid_params?(obj) ->
+          not Object.Channel.valid_params?(obj) ->
             error("invalid channel parameters")
 
           true ->
-            key = Object.ChannelV2.key(obj)
+            key = Object.Channel.key(obj)
 
             case Kademlia.find_value(key) do
               nil ->
@@ -576,7 +576,7 @@ defmodule Network.EdgeV2 do
       bin ->
         channel = Object.decode!(bin)
 
-        Object.ChannelV2.server_id(channel)
+        Object.Channel.server_id(channel)
         |> Wallet.from_address()
         |> Wallet.equal?(Diode.miner())
         |> if do

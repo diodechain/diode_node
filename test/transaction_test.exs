@@ -4,14 +4,12 @@
 defmodule TransactionTest do
   use ExUnit.Case
   alias Chain.Transaction
-  alias Chain.State
-  alias Chain.Account
+  import TestHelper
 
   test "recoding" do
     [from, to] = Diode.wallets() |> Enum.reverse() |> Enum.take(2)
 
-    before = Chain.with_peak_state(fn state -> state end)
-    nonce = State.ensure_account(before, from) |> Account.nonce()
+    nonce = Chain.RPC.get_transaction_count(chain(), Wallet.address!(from) |> Base16.encode()) |> Base16.decode_int()
     to = Wallet.address!(to)
 
     tx =
@@ -19,14 +17,15 @@ defmodule TransactionTest do
         "value" => 1000,
         "nonce" => nonce,
         "to" => to,
-        "gasPrice" => 0
+        "gasPrice" => 0,
+        "chainId" => chain().chain_id(),
       })
 
     rlp = tx |> Transaction.to_rlp() |> Rlp.encode!()
     tx2 = Transaction.from_rlp(rlp)
 
     assert tx == tx2
-    assert tx2.chain_id == Diode.chain_id()
+    assert tx2.chain_id == chain().chain_id()
   end
 
   test "contract address" do

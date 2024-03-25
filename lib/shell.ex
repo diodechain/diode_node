@@ -36,8 +36,15 @@ defmodule Shell do
     call_tx(tx, blockRef)
   end
 
-  def submit_tx(_tx) do
-    :todo
+  def submit_tx(tx) do
+    id = Chain.Transaction.chain_id(tx)
+    hex = Chain.Transaction.to_rlp(tx) |> Rlp.encode!() |> Base16.encode()
+    Chain.RPC.send_raw_transaction(id, hex)
+  end
+
+  def await_tx(tx) do
+    submit_tx(tx)
+    |> IO.inspect()
   end
 
   def call_tx(_tx, _blockRef) do

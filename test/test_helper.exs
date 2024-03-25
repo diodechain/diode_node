@@ -1,39 +1,73 @@
 # Diode Server
 # Copyright 2021-2024 Diode
 # Licensed under the Diode License, Version 1.1
-import While
-
 ExUnit.start(seed: 0)
 
-while Stages.stage() < 1 do
-  IO.puts("Waiting for RPC")
-  Process.sleep(1_000)
+defmodule ChainAgent do
+  use GenServer
+  defstruct port: nil, out: ""
+
+  def init(_args) do
+    {:ok, %ChainAgent{}}
+  end
+
+  def handle_call(:restart, _from, %{port: port}) do
+      if port != nil do
+        Port.close(port)
+        Process.sleep(500)
+      end
+
+      port = Port.open({:spawn_executable, System.find_executable("anvil")}, [
+        :stream,
+        :exit_status,
+        :hide,
+        :use_stdio,
+        :binary,
+        :stderr_to_stdout
+      ])
+
+      {:reply, :ok, %{port: port, out: ""}}
+  end
+
+  def handle_info({port0, {:data, msg}}, %{out: out, port: port}) do
+    if port0 == port do
+      {:noreply, %{out: out <> msg}}
+    else
+      {:noreply, %{out: out}}
+    end
+  end
 end
 
 defmodule TestHelper do
   @delay_clone 10_000
   @cookie "EXTMP_K66"
   @max_ports 10
+  @chain Chains.Anvil
+
+  def chain(), do: @chain
+  def peaknumber(), do: Chain.peaknumber(@chain)
+  def developer_fleet_address(), do: Chain.developer_fleet_address(@chain)
+  def epoch(), do: Chain.epoch(@chain)
 
   def reset() do
     kill_clones()
-    Chain.Pool.flush()
-    Chain.reset_state()
     TicketStore.clear()
     Kademlia.reset()
-    wait(0)
-    Supervisor.restart_child(Diode.Supervisor, Chain.Worker)
-    Chain.Worker.work()
-    wait(1)
+    restart_chain()
+  end
+
+  def restart_chain() do
+    chaintask = Process.whereis(Chain.Anvil) || elem(GenServer.start(ChainAgent, [], name: Chain.Anvil), 1)
+    GenServer.call(chaintask, :restart)
   end
 
   def wait(n) do
-    case Chain.peak() >= n do
+    case peaknumber() >= n do
       true ->
         :ok
 
       false ->
-        :io.format("Waiting for block ~p/~p~n", [n, Chain.peak()])
+        :io.format("Waiting for block ~p/~p~n", [n, peaknumber()])
         Process.sleep(1000)
         wait(n)
     end
@@ -192,3 +226,5 @@ defmodule TestHelper do
     end
   end
 end
+
+TestHelper.restart_chain()

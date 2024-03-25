@@ -139,9 +139,9 @@ names = Enum.map(all, fn {key, <<value::binary-size(30), _len::unsigned-size(16)
 } end) |> Enum.filter(fn %{owner: owner} -> owner != nil end)
 
 
-devices = Model.Sql.query!(Model.KademliaSql, "SELECT object FROM p2p_objects", []) |> Enum.map(fn [object: obj] -> BertInt.decode!(obj) |> Object.decode!() end) |> Enum.filter(fn obj -> elem(obj, 0) == :ticket end) |> Enum.map(fn obj -> Object.Ticket.device_address(obj) end)
+devices = Model.Sql.query!(Model.KademliaSql, "SELECT object FROM p2p_objects", []) |> Enum.map(fn [object: obj] -> BertInt.decode!(obj) |> Object.decode!() end) |> Enum.filter(fn obj -> elem(obj, 0) == :ticket end) |> Enum.map(fn obj -> Object.TicketV1.device_address(obj) end)
 
-devices_v2 = Model.Sql.query!(Model.KademliaSql, "SELECT object FROM p2p_objects", []) |> Enum.map(fn [object: obj] -> BertInt.decode!(obj) |> Object.decode!() end) |> Enum.filter(fn obj -> elem(obj, 0) == :ticket end) |> Enum.map(fn obj -> {Object.Ticket.device_address(obj), case Object.Ticket.local_address(obj) do
+devices_v2 = Model.Sql.query!(Model.KademliaSql, "SELECT object FROM p2p_objects", []) |> Enum.map(fn [object: obj] -> BertInt.decode!(obj) |> Object.decode!() end) |> Enum.filter(fn obj -> elem(obj, 0) == :ticket end) |> Enum.map(fn obj -> {Object.TicketV1.device_address(obj), case Object.TicketV1.local_address(obj) do
     <<b, _rest::binary>> when b in [0, 1] -> "diode_drive"
     "spam" -> "test"
     _ -> "diode_cli"

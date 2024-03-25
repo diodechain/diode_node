@@ -5,6 +5,7 @@ defmodule Edge2Client do
   alias Object.TicketV1, as: Ticket
   require ExUnit.Assertions
   import Ticket
+  @chain Chains.Anvil
 
   @ticket_grace 4096
 
@@ -18,10 +19,13 @@ defmodule Edge2Client do
   end
 
   def whitelist_client(num) do
-    Contract.Fleet.set_device_allowlist(clientid(num), true)
-    |> Chain.Pool.add_transaction()
-
-    Chain.Worker.work()
+    Contract.Fleet.set_device_allowlist(
+      @chain.chain_id(),
+      @chain.developer_fleet_address(),
+      clientid(num),
+      true
+    )
+    |> Shell.await_tx()
   end
 
   def to_bin(num) do
@@ -86,8 +90,8 @@ defmodule Edge2Client do
         total_connections: state.conns,
         total_bytes: paid_bytes + @ticket_grace * count,
         local_address: "spam",
-        block_number: Chain.peak(),
-        fleet_contract: Diode.fleet_address()
+        block_number: Chain.peaknumber(@chain),
+        fleet_contract: Chain.developer_fleet_address(@chain)
       )
       |> Ticket.device_sign(state.key)
 
@@ -341,10 +345,10 @@ defmodule Edge2Client do
     {:ok, socket} = :ssl.connect('localhost', hd(Diode.edge2_ports()), options(cert), 5000)
     wallet = clientid(n)
     key = Wallet.privkey!(wallet)
-    fleet = Diode.fleet_address()
+    fleet = Chain.developer_fleet_address(@chain)
 
     {conns, bytes} =
-      case TicketStore.find(Wallet.address!(wallet), fleet, Chain.epoch()) do
+      case TicketStore.find(Wallet.address!(wallet), fleet, Chain.epoch(@chain)) do
         nil -> {1, 0}
         tck -> {Ticket.total_connections(tck) + 1, Ticket.total_bytes(tck)}
       end

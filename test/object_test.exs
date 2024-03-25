@@ -1,8 +1,9 @@
 # Diode Server
 # Copyright 2021-2024 Diode
 # Licensed under the Diode License, Version 1.1
-defmodule TicketTest do
+defmodule ObjectTest do
   use ExUnit.Case
+  import TestHelper
   alias Object.Server
 
   # Testing forward compatibility of server tickets
@@ -30,7 +31,7 @@ defmodule TicketTest do
   test "encode/decode compat" do
     objs =
       for idx <- 1..100 do
-        Object.Data.new(Chain.peak(), "name_#{idx}", "value", Wallet.privkey!(Wallet.new()))
+        Object.Data.new(peaknumber(), "name_#{idx}", "value", Wallet.privkey!(Wallet.new()))
       end
 
     for object <- objs do

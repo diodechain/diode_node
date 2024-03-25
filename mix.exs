@@ -86,7 +86,8 @@ defmodule Diode.Mixfile do
 
       # linting
       {:dialyxir, "~> 1.1", only: [:dev], runtime: false},
-      {:credo, "~> 1.5", only: [:dev, :test], runtime: false}
+      {:credo, "~> 1.5", only: [:dev, :test], runtime: false},
+      {:while, "~> 0.1", only: [:test], runtime: false}
     ]
   end
 end

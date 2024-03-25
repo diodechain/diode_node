@@ -16,14 +16,14 @@ defmodule Contract.Fleet do
   #   )
   # end
 
-  @spec set_device_allowlist(any, any, boolean) :: Chain.Transaction.t()
-  def set_device_allowlist(fleet, address, bool) when is_boolean(bool) do
+  def set_device_allowlist(chain_id, fleet, address, bool) when is_boolean(bool) do
     Shell.transaction(
       Diode.miner(),
       fleet,
       "SetDeviceAllowlist",
       ["address", "bool"],
-      [address, bool]
+      [address, bool],
+      chain_id: chain_id
     )
   end
 

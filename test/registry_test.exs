@@ -3,16 +3,17 @@
 # Licensed under the Diode License, Version 1.1
 defmodule RegistryTest do
   alias Object.TicketV1
-  import Ticket
+  import TicketV1
   alias Contract.{Fleet, Registry}
   use ExUnit.Case, async: false
+  import TestHelper
   import Edge2Client
   import While
 
   setup_all do
     Chain.reset_state()
 
-    while Chain.peak() < Chain.epoch_length() do
+    while peaknumber() < Chain.epoch_length() do
       Chain.Worker.work()
     end
 
@@ -26,7 +27,7 @@ defmodule RegistryTest do
         total_connections: 1,
         total_bytes: 0,
         local_address: "spam",
-        block_number: Chain.peak() + Chain.epoch_length(),
+        block_number: peaknumber() + Chain.epoch_length(),
         fleet_contract: <<0::unsigned-size(160)>>,
         device_signature: Secp256k1.sign(clientkey(1), Hash.sha3_256("random"))
       )
@@ -46,7 +47,7 @@ defmodule RegistryTest do
         total_connections: 1,
         total_bytes: 0,
         local_address: "spam",
-        block_number: Chain.peak() - Chain.epoch_length(),
+        block_number: peaknumber() - Chain.epoch_length(),
         fleet_contract: <<0::unsigned-size(160)>>
       )
       |> Ticket.device_sign(clientkey(1))
@@ -80,7 +81,7 @@ defmodule RegistryTest do
         total_connections: 1,
         total_bytes: 0,
         local_address: "spam",
-        block_number: Chain.peak() - Chain.epoch_length(),
+        block_number: peaknumber() - Chain.epoch_length(),
         fleet_contract: fleet
       )
       |> Ticket.device_sign(clientkey(1))
@@ -104,7 +105,7 @@ defmodule RegistryTest do
         total_connections: 1,
         total_bytes: 0,
         local_address: "spam",
-        block_number: Chain.peak() - Chain.epoch_length(),
+        block_number: peaknumber() - Chain.epoch_length(),
         fleet_contract: fleet
       )
       |> Ticket.device_sign(clientkey(1))
@@ -123,7 +124,7 @@ defmodule RegistryTest do
         total_connections: 1,
         total_bytes: 0,
         local_address: "spam",
-        block_number: Chain.peak() - Chain.epoch_length(),
+        block_number: peaknumber() - Chain.epoch_length(),
         fleet_contract: Diode.fleet_address()
       )
       |> Ticket.device_sign(clientkey(1))

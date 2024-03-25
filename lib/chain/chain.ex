@@ -12,13 +12,19 @@ defmodule Chain do
   def blocktime(chain_id, number), do: block(chain_id, number)["timestamp"] |> Base16.decode_int()
   def peaknumber(chain_id), do: Chain.RPCCache.block_number(chain_id)
   def registry_address(chain_id), do: chainimpl(chain_id).registry_address()
+  def developer_fleet_address(chain_id), do: chainimpl(chain_id).developer_fleet_address()
 
-  @chains [
-    Chains.DiodeStaging,
-    Chains.Diode,
-    Chains.Moonbeam,
-    Chains.MoonbaseAlpha
-  ]
+  if Mix.env() == :test do
+    @chains [Chains.Anvil]
+  else
+    @chains [
+      Chains.DiodeStaging,
+      Chains.Diode,
+      Chains.Moonbeam,
+      Chains.MoonbaseAlpha
+    ]
+  end
+
   def chains(), do: @chains
 
   for chain <- @chains do

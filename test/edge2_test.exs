@@ -7,6 +7,7 @@ defmodule Edge2Test do
   alias Network.EdgeV2, as: EdgeHandler
   alias Object.TicketV1, as: Ticket
   alias Object.Channel, as: Channel
+  import TestHelper
   import Ticket
   import Channel
   import Edge2Client
@@ -68,22 +69,22 @@ defmodule Edge2Test do
   end
 
   test "getblock" do
-    assert rpc(:client_1, ["getblockpeak"]) == [Chain.peak() |> to_bin()]
+    assert rpc(:client_1, ["getblockpeak"]) == [peaknumber() |> to_bin()]
   end
 
   test "getaccount" do
     ["account does not exist"] =
-      rpc(:client_1, ["getaccount", Chain.peak(), "01234567890123456789"])
+      rpc(:client_1, ["getaccount", peaknumber(), "01234567890123456789"])
 
     ["account does not exist"] =
-      rpc(:client_1, ["getaccount", Chain.peak(), Wallet.address!(Wallet.new())])
+      rpc(:client_1, ["getaccount", peaknumber(), Wallet.address!(Wallet.new())])
 
     ["account does not exist"] =
-      rpc(:client_1, ["getaccountroots", Chain.peak(), Wallet.address!(Wallet.new())])
+      rpc(:client_1, ["getaccountroots", peaknumber(), Wallet.address!(Wallet.new())])
 
     {addr, acc} = hd(Chain.GenesisFactory.genesis_accounts())
 
-    [ret, _proof] = rpc(:client_1, ["getaccount", Chain.peak(), addr])
+    [ret, _proof] = rpc(:client_1, ["getaccount", peaknumber(), addr])
 
     ret = Rlpx.list2map(ret)
 
@@ -93,11 +94,11 @@ defmodule Edge2Test do
 
   test "getaccountvalue" do
     ["account does not exist"] =
-      rpc(:client_1, ["getaccountvalue", Chain.peak(), "01234567890123456789", 0])
+      rpc(:client_1, ["getaccountvalue", peaknumber(), "01234567890123456789", 0])
 
     {addr, _balance} = hd(Chain.GenesisFactory.genesis_accounts())
 
-    [ret] = rpc(:client_1, ["getaccountvalue", Chain.peak(), addr, 0])
+    [ret] = rpc(:client_1, ["getaccountvalue", peaknumber(), addr, 0])
 
     # Should be empty
     assert length(ret) == 2
@@ -110,7 +111,7 @@ defmodule Edge2Test do
     TicketStore.clear()
     ensure_clients()
 
-    IO.puts("Chain.peak(): #{Chain.peak()}")
+    IO.puts("peaknumber(): #{peaknumber()}")
 
     tck =
       ticketv1(
@@ -118,8 +119,8 @@ defmodule Edge2Test do
         total_connections: 1,
         total_bytes: 0,
         local_address: "spam",
-        block_number: Chain.peak(),
-        fleet_contract: Diode.fleet_address()
+        block_number: peaknumber(),
+        fleet_contract: developer_fleet_address()
       )
       |> Ticket.device_sign(clientkey(1))
 
@@ -135,7 +136,7 @@ defmodule Edge2Test do
         Ticket.device_signature(tck)
       ])
 
-    IO.puts("Chain.peak(): #{Chain.peak()}")
+    IO.puts("peaknumber(): #{peaknumber()}")
     assert ret == ["thanks!", ""]
 
     # Submitting a second ticket with the same count should fail
@@ -217,8 +218,8 @@ defmodule Edge2Test do
         total_connections: 1,
         total_bytes: 0,
         local_address: "spam",
-        block_number: Chain.peak(),
-        fleet_contract: Diode.fleet_address()
+        block_number: peaknumber(),
+        fleet_contract: developer_fleet_address()
       )
       |> Ticket.device_sign(clientkey(1))
 
@@ -237,11 +238,11 @@ defmodule Edge2Test do
                ""
              ]
 
-    epoch = Chain.epoch()
-    assert [_tck2] = TicketStore.tickets(Chain.epoch())
+    epoch = epoch()
+    assert [_tck2] = TicketStore.tickets(epoch())
 
-    while epoch == Chain.epoch() do
-      Chain.Worker.work()
+    while epoch == epoch() do
+      Chain.RPC.rpc!(chain(), "evm_mine")
     end
 
     tx = Ticket.raw(tck) |> Contract.Registry.submit_ticket_raw_tx()
@@ -310,8 +311,8 @@ defmodule Edge2Test do
     ch =
       channel(
         server_id: Wallet.address!(Diode.miner()),
-        block_number: Chain.peak(),
-        fleet_contract: Diode.fleet_address(),
+        block_number: peaknumber(),
+        fleet_contract: developer_fleet_address(),
         type: "broadcast",
         name: "testchannel"
       )
@@ -376,8 +377,8 @@ defmodule Edge2Test do
   #   ch =
   #     channel(
   #       server_id: Wallet.address!(Diode.miner()),
-  #       block_number: Chain.peak(),
-  #       fleet_contract: Diode.fleet_address(),
+  #       block_number: peaknumber(),
+  #       fleet_contract: developer_fleet_address(),
   #       type: "mailbox",
   #       name: "testchannel"
   #     )
@@ -545,7 +546,7 @@ defmodule Edge2Test do
 
   test "getblockquick" do
     for _ <- 1..50, do: Chain.Worker.work()
-    peak = Chain.peak()
+    peak = peaknumber()
 
     # Test blockquick with gap
     window_size = 10

@@ -23,7 +23,7 @@ defmodule KademliaTest do
   end
 
   defp new_value(name, value) do
-    Object.Data.new(Chain.peak(), name, value, Wallet.privkey!(@testkey))
+    Object.Data.new(peaknumber(), name, value, Wallet.privkey!(@testkey))
   end
 
   defp find_value(name) do
