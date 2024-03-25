@@ -241,27 +241,19 @@ defmodule Network.Server do
 
         {:reply, {:ok, hd(state.ports)}, %{state | clients: clients}}
 
-      {other_pid, timestamp} ->
+      {other_pid, _timestamp} ->
         # hm, another pid is given for the node_id logging this
 
-        if now - timestamp > 5000 do
-          :io.format(
-            "~p Handshake anomaly(~p): #{Wallet.printable(node_id)} is already connected: ~180p~n",
-            [state.protocol, pid, {other_pid, Process.alive?(other_pid)}]
-          )
+        :io.format(
+          "~p Handshake anomaly(~p): #{Wallet.printable(node_id)} is already connected: ~180p~n",
+          [state.protocol, pid, {other_pid, Process.alive?(other_pid)}]
+        )
 
-          GenServer.cast(other_pid, :stop)
+        clients =
+          Map.put(clients, key, {pid, now})
+          |> Map.put(pid, key)
 
-          clients =
-            Map.put(clients, key, {pid, now})
-            |> Map.put(pid, key)
-
-          {:reply, {:ok, hd(state.ports)}, %{state | clients: clients}}
-        else
-          # the existing connection is fresh (younger than 5000ms) so we keep the old connection
-          # and deny for now
-          {:reply, {:deny, hd(state.ports)}, %{state | clients: clients}}
-        end
+        {:reply, {:ok, hd(state.ports)}, %{state | clients: clients}}
     end
   end
 

@@ -9,7 +9,10 @@ defmodule TransactionTest do
   test "recoding" do
     [from, to] = Diode.wallets() |> Enum.reverse() |> Enum.take(2)
 
-    nonce = Chain.RPC.get_transaction_count(chain(), Wallet.address!(from) |> Base16.encode()) |> Base16.decode_int()
+    nonce =
+      Chain.RPC.get_transaction_count(chain(), Wallet.address!(from) |> Base16.encode())
+      |> Base16.decode_int()
+
     to = Wallet.address!(to)
 
     tx =
@@ -18,7 +21,7 @@ defmodule TransactionTest do
         "nonce" => nonce,
         "to" => to,
         "gasPrice" => 0,
-        "chainId" => chain().chain_id(),
+        "chainId" => chain().chain_id()
       })
 
     rlp = tx |> Transaction.to_rlp() |> Rlp.encode!()

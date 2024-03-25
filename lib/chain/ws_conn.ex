@@ -15,6 +15,7 @@ defmodule Chain.WSConn do
     :ws_url,
     :conn,
     :lastblock_at,
+    :subscription_id,
     lastblock_number: 0
   ]
 
@@ -36,19 +37,27 @@ defmodule Chain.WSConn do
   @impl true
   def handle_connect(conn, state) do
     Process.monitor(state.owner)
+    state = %{state | conn: conn}
 
-    request =
-      %{
-        "jsonrpc" => "2.0",
-        "id" => 1,
-        "method" => "eth_subscribe",
-        "params" => ["newHeads"]
-      }
-      |> Poison.encode!()
+    %{
+      "jsonrpc" => "2.0",
+      "id" => 1,
+      "method" => "eth_subscribe",
+      "params" => ["newHeads"]
+    }
+    |> Poison.encode!()
+    |> send_frame(state)
 
-    {:ok, frame} = WebSockex.Frame.encode_frame({:text, request})
-    :ok = WebSockex.Conn.socket_send(conn, frame)
-    {:ok, %{state | conn: conn}}
+    %{
+      "jsonrpc" => "2.0",
+      "id" => 2,
+      "method" => "eth_blockNumber",
+      "params" => []
+    }
+    |> Poison.encode!()
+    |> send_frame(state)
+
+    {:ok, state}
   end
 
   @impl true
@@ -70,20 +79,30 @@ defmodule Chain.WSConn do
   end
 
   @impl true
-  def handle_frame({:text, json}, state = %{ws_url: ws_url, chain: _chain}) do
+  def handle_frame(
+        {:text, json},
+        state = %{ws_url: ws_url, chain: _chain, subscription_id: subscription_id}
+      ) do
     case Poison.decode!(json) do
       %{"id" => 1, "result" => subscription_id} when is_binary(subscription_id) ->
+        {:ok, %{state | subscription_id: subscription_id}}
+
+      %{"id" => 2, "result" => <<"0", _x, hex_number::binary>>} ->
+        state = new_block(hex_number, state)
+        {:ok, state}
+
+      %{
+        "params" => %{
+          "subscription" => ^subscription_id,
+          "result" => %{"number" => <<"0", _x, hex_number::binary>>}
+        }
+      } ->
+        state = new_block(hex_number, state)
         {:ok, state}
 
       %{"id" => _} = other ->
         send(state.owner, {:response, ws_url, other})
         {:ok, state}
-
-      %{"params" => %{"result" => %{"number" => <<"0", _x, hex_number::binary>>}}} ->
-        block_number = String.to_integer(hex_number, 16)
-        Logger.info("WSConn received block #{block_number} from #{ws_url}")
-        send(state.owner, {:new_block, ws_url, block_number})
-        {:ok, %{state | lastblock_at: DateTime.utc_now(), lastblock_number: block_number}}
     end
   end
 
@@ -95,8 +114,7 @@ defmodule Chain.WSConn do
   @impl true
   # Chain.RPC.block_number(Chains.Diode)
   def handle_cast({:send_request, request}, state) do
-    {:ok, frame} = WebSockex.Frame.encode_frame({:text, request})
-    :ok = WebSockex.Conn.socket_send(state.conn, frame)
+    send_frame(request, state)
     {:ok, state}
   end
 
@@ -116,5 +134,17 @@ defmodule Chain.WSConn do
     else
       {:ok, state}
     end
+  end
+
+  defp new_block(hex_number, state) do
+    block_number = String.to_integer(hex_number, 16)
+    Logger.info("WSConn received block #{block_number} from #{state.ws_url}")
+    send(state.owner, {:new_block, state.ws_url, block_number})
+    %{state | lastblock_at: DateTime.utc_now(), lastblock_number: block_number}
+  end
+
+  defp send_frame(request, state) do
+    {:ok, frame} = WebSockex.Frame.encode_frame({:text, request})
+    :ok = WebSockex.Conn.socket_send(state.conn, frame)
   end
 end

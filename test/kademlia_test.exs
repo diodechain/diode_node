@@ -35,12 +35,24 @@ defmodule KademliaTest do
   end
 
   defp connect_clones(range) do
-    pid = Server.ensure_node_connection(PeerHandler, nil, "localhost", Diode.peer_port())
+    pid = Server.ensure_node_connection(PeerHandler, nil, "localhost", Diode.peer2_port())
     assert GenServer.call(pid, {:rpc, [PeerHandler.ping()]}) == [PeerHandler.pong()]
 
     for n <- range do
       pid = Server.ensure_node_connection(PeerHandler, nil, "localhost", peer_port(n))
-      assert GenServer.call(pid, {:rpc, [PeerHandler.ping()]}) == [PeerHandler.pong()]
+
+      ret =
+        try do
+          GenServer.call(pid, {:rpc, [PeerHandler.ping()]}, 15_000)
+        rescue
+          _error ->
+            IO.inspect(Process.info(pid, :current_stacktrace), label: "stacktrace")
+        catch
+          _type, _error ->
+            IO.inspect(Process.info(pid, :current_stacktrace), label: "stacktrace")
+        end
+
+      assert ret == [PeerHandler.pong()]
     end
   end
 

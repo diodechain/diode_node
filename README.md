@@ -28,11 +28,11 @@ TCP port bindings can be controlled through environment variables. The default b
 | `RPC_PORT`   | Ethereum JSON API endpoint        | 8545
 | `RPCS_PORT`  | SSL version of `RPC_PORT`*        | 8443
 | `EDGE2_PORT` | Client Communication Port         | 41046,443,993,1723,10000
-| `PEER_PORT`  | Miner-To-Miner Communication Port | 51054
+| `PEER2_PORT`  | Miner-To-Miner Communication Port | 51054
 
 `RPCS_PORT` is only used & needed for access from Web2 services such as the blockchain explorer at https://diode.io/prenet/ - the port can be ignored in most deployments.
 
-`EDGE2_PORT` and `PEER_PORT` support multiple port numbers given by a comma separated list.
+`EDGE2_PORT` and `PEER2_PORT` support multiple port numbers given by a comma separated list.
 
 # Defining the Wallet to be used
 

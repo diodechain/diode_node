@@ -11,13 +11,16 @@ defmodule ChainAgent do
     {:ok, %ChainAgent{}}
   end
 
-  def handle_call(:restart, _from, %{port: port}) do
-      if port != nil do
-        Port.close(port)
-        Process.sleep(500)
-      end
+  def handle_call(:restart, _from, state = %{port: port}) do
+    System.cmd("killall", ["anvil"])
 
-      port = Port.open({:spawn_executable, System.find_executable("anvil")}, [
+    if port != nil do
+      Port.close(port)
+      Process.sleep(500)
+    end
+
+    port =
+      Port.open({:spawn_executable, System.find_executable("anvil")}, [
         :stream,
         :exit_status,
         :hide,
@@ -26,14 +29,14 @@ defmodule ChainAgent do
         :stderr_to_stdout
       ])
 
-      {:reply, :ok, %{port: port, out: ""}}
+    {:reply, :ok, %{state | port: port, out: ""}}
   end
 
-  def handle_info({port0, {:data, msg}}, %{out: out, port: port}) do
+  def handle_info({port0, {:data, msg}}, state = %{out: out, port: port}) do
     if port0 == port do
-      {:noreply, %{out: out <> msg}}
+      {:noreply, %{state | out: out <> msg}}
     else
-      {:noreply, %{out: out}}
+      {:noreply, %{state | out: out}}
     end
   end
 end
@@ -57,7 +60,9 @@ defmodule TestHelper do
   end
 
   def restart_chain() do
-    chaintask = Process.whereis(Chain.Anvil) || elem(GenServer.start(ChainAgent, [], name: Chain.Anvil), 1)
+    chaintask =
+      Process.whereis(Chain.Anvil) || elem(GenServer.start(ChainAgent, [], name: Chain.Anvil), 1)
+
     GenServer.call(chaintask, :restart)
   end
 
@@ -124,7 +129,7 @@ defmodule TestHelper do
           {"RPC_PORT", "#{rpc_port(num)}"},
           {"RPCS_PORT", "#{rpcs_port(num)}"},
           {"EDGE2_PORT", "#{edge2_port(num)}"},
-          {"PEER_PORT", "#{peer_port(num)}"},
+          {"PEER2_PORT", "#{peer_port(num)}"},
           {"SEED", "none"}
         ]
         |> Enum.map(fn {key, value} -> {String.to_charlist(key), String.to_charlist(value)} end)
@@ -145,8 +150,6 @@ defmodule TestHelper do
 
       clone_loop(port, file)
     end)
-
-    Process.sleep(1000)
   end
 
   defp clone_loop(port, file) do
@@ -179,11 +182,27 @@ defmodule TestHelper do
   end
 
   def wait_clones(target_count, seconds) do
-    wait_for(
-      fn -> count_clones() == target_count end,
-      "clones #{count_clones()}/#{target_count}",
-      seconds
-    )
+    timeout = System.os_time(:second) + seconds
+
+    Enum.map(1..target_count, &peer_port/1)
+    |> wait_tcp(timeout)
+  end
+
+  def wait_tcp([], _timeout), do: :ok
+  def wait_tcp([port | rest] = ports, timeout) do
+    if System.os_time(:second) > timeout do
+      :error
+    else
+      case :gen_tcp.connect({127, 0, 0, 1}, port, [:binary, packet: :line, active: false], 1000) do
+        {:ok, port} ->
+          :gen_tcp.close(port)
+          wait_tcp(rest, timeout)
+
+        {:error, _} ->
+          Process.sleep(100)
+          wait_tcp(ports, timeout)
+      end
+    end
   end
 
   def is_macos() do
@@ -203,7 +222,7 @@ defmodule TestHelper do
 
   def kill_clones() do
     System.cmd("pkill", ["-9", "-f", @cookie])
-    :ok = wait_clones(0, 60)
+    wait_for(fn -> count_clones() == 0 end, "kill clones", 60)
   end
 
   def wait_for(fun, comment, timeout \\ 10)
