@@ -151,12 +151,12 @@ defmodule Chain.Transaction do
   end
 
   def hash(tx = %Chain.Transaction{signature: {:fake, _pubkey}}) do
-    to_message(tx) |> Diode.hash()
+    to_message(tx) |> Chain.transaction_hash(chain_id(tx)).()
   end
 
   @spec hash(Chain.Transaction.t()) :: binary()
   def hash(tx) do
-    to_rlp(tx) |> Rlp.encode!() |> Diode.hash()
+    to_rlp(tx) |> Rlp.encode!() |> Chain.transaction_hash(chain_id(tx)).()
   end
 
   @spec to_message(Chain.Transaction.t()) :: binary()

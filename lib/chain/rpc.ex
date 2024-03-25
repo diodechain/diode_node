@@ -33,16 +33,16 @@ defmodule Chain.RPC do
     rpc!(chain, "eth_getBalance", [address, block])
   end
 
+  def gas_price(chain) do
+    rpc!(chain, "eth_gasPrice", [])
+  end
+
   def send_raw_transaction(chain, tx) do
     case rpc(chain, "eth_sendRawTransaction", [tx]) do
       {:ok, tx_hash} -> tx_hash
       {:error, %{"code" => -32603, "message" => "already known"}} -> :already_known
       {:error, error} -> raise "RPC error: #{inspect(error)}"
     end
-  end
-
-  def gas_price(chain) do
-    rpc!(chain, "eth_gasPrice")
   end
 
   def rpc!(chain, method, params \\ []) do

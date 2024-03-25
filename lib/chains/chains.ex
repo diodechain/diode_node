@@ -8,6 +8,7 @@ defmodule Chains.Diode do
   def ws_endpoints(), do: ["wss://prenet.diode.io:8443/ws"]
   def registry_address(), do: Base16.decode("0x5000000000000000000000000000000000000000")
   def developer_fleet_address(), do: Base16.decode("0x6000000000000000000000000000000000000000")
+  def transaction_hash(), do: &Hash.sha3_256/1
 end
 
 defmodule Chains.DiodeStaging do
@@ -20,6 +21,7 @@ defmodule Chains.DiodeStaging do
   def ws_endpoints(), do: ["wss://staging.diode.io:8443/ws"]
   def registry_address(), do: Base16.decode("0x5000000000000000000000000000000000000000")
   def developer_fleet_address(), do: Base16.decode("0x6000000000000000000000000000000000000000")
+  def transaction_hash(), do: &Hash.sha3_256/1
 end
 
 defmodule Chains.Moonbeam do
@@ -54,6 +56,7 @@ defmodule Chains.Moonbeam do
 
   def registry_address(), do: Base16.decode("0x5000000000000000000000000000000000000000")
   def developer_fleet_address(), do: Base16.decode("0x6000000000000000000000000000000000000000")
+  def transaction_hash(), do: &Hash.keccak_256/1
 end
 
 defmodule Chains.MoonbaseAlpha do
@@ -82,6 +85,7 @@ defmodule Chains.MoonbaseAlpha do
 
   def registry_address(), do: Base16.decode("0xEb0aDCd736Ae9341DFb635759C5D7D6c2D51B673")
   def developer_fleet_address(), do: Base16.decode("0x6000000000000000000000000000000000000000")
+  def transaction_hash(), do: &Hash.keccak_256/1
 end
 
 defmodule Chains.Anvil do
@@ -100,4 +104,5 @@ defmodule Chains.Anvil do
 
   def registry_address(), do: Base16.decode("0xEb0aDCd736Ae9341DFb635759C5D7D6c2D51B673")
   def developer_fleet_address(), do: Base16.decode("0x6000000000000000000000000000000000000000")
+  def transaction_hash(), do: &Hash.keccak_256/1
 end

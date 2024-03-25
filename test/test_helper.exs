@@ -29,11 +29,46 @@ defmodule ChainAgent do
         :stderr_to_stdout
       ])
 
-    {:reply, :ok, %{state | port: port, out: ""}}
+    state = await(%{state | port: port, out: ""})
+    {:reply, :ok, state}
+  end
+
+  defp await(state = %{port: port, out: out}) do
+    if String.contains?(out, "Listening on") do
+      wallets =
+        for n <- 0..9 do
+          [_, privkey] = Regex.run(~r/\(#{n}\) (0x[a-f0-9]{64})/, out)
+
+          Base16.decode(privkey)
+          |> Wallet.from_privkey()
+        end
+
+      Model.CredSql.set_wallet(hd(wallets))
+
+      wallets = Enum.map(wallets, fn w -> Base16.encode(Wallet.privkey!(w)) end) |> Enum.join(" ")
+      System.put_env("WALLETS", wallets)
+      IO.inspect(wallets, label: "wallets")
+
+      # IO.puts(out)
+      # Chain.RPC.rpc!(Chains.Anvil, "evm_setAutomine", [true])
+      IO.puts("Anvil started")
+      state
+    else
+      receive do
+        {^port, {:data, data}} ->
+          state = %{state | out: out <> data}
+          await(state)
+
+        other ->
+          IO.inspect(other, label: "await")
+          raise "Unexpected message: #{inspect(other)}"
+      end
+    end
   end
 
   def handle_info({port0, {:data, msg}}, state = %{out: out, port: port}) do
     if port0 == port do
+      IO.puts(msg)
       {:noreply, %{state | out: out <> msg}}
     else
       {:noreply, %{state | out: out}}
@@ -189,6 +224,7 @@ defmodule TestHelper do
   end
 
   def wait_tcp([], _timeout), do: :ok
+
   def wait_tcp([port | rest] = ports, timeout) do
     if System.os_time(:second) > timeout do
       :error

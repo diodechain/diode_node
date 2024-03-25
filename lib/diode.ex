@@ -31,24 +31,10 @@ defmodule Diode do
 
     puts("")
 
-    if dev_mode?() and [] == wallets() do
-      wallets =
-        for n <- 1..5, do: Wallet.from_privkey(Hash.keccak_256("#{Date.utc_today()}.#{n}"))
+    puts("====== Accounts ======")
 
-      keys = Enum.map(wallets, fn w -> Base16.encode(Wallet.privkey!(w)) end)
-      System.put_env("WALLETS", Enum.join(keys, " "))
-
-      puts("====== DEV Accounts ==")
-
-      for w <- wallets do
-        puts("#{Wallet.printable(w)} priv #{Base16.encode(Wallet.privkey!(w))}")
-      end
-    else
-      puts("====== Accounts ======")
-
-      for w <- wallets() do
-        puts("#{Wallet.printable(w)}")
-      end
+    for w <- wallets() do
+      puts("#{Wallet.printable(w)}")
     end
 
     puts("")

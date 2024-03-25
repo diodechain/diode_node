@@ -28,6 +28,7 @@ defmodule Chain.NodeProxy do
 
   @impl true
   def handle_call({:rpc, method, params}, from, state) do
+    state = ensure_connections(state)
     conn = Enum.random(Map.values(state.connections))
     id = state.req + 1
 

@@ -27,43 +27,37 @@ defmodule RpcTest do
     to = Transaction.to(tx) |> Base16.encode()
 
     ret = rpc("eth_getTransactionReceipt", [hash])
+    blocknumber = "0x#{peaknumber()}"
 
-    assert {200,
+    assert {:ok,
             %{
-              "id" => 1,
-              "jsonrpc" => "2.0",
-              "result" => %{
-                "blockNumber" => "0x3",
-                "contractAddress" => nil,
-                "cumulativeGasUsed" => _variable,
-                "from" => ^from,
-                "gasUsed" => "0x5208",
-                "logs" => [],
-                "logsBloom" =>
-                  "0x0000000000000000000000000000000000000000000000000000000000000000",
-                "status" => "0x1",
-                "to" => ^to,
-                "transactionHash" => ^hash,
-                "transactionIndex" => "0x0"
-              }
+              "blockNumber" => ^blocknumber,
+              "contractAddress" => nil,
+              "cumulativeGasUsed" => _variable,
+              "from" => ^from,
+              "gasUsed" => "0x5208",
+              "logs" => [],
+              "logsBloom" =>
+                "0x0000000000000000000000000000000000000000000000000000000000000000" <> _,
+              "status" => "0x1",
+              "to" => ^to,
+              "transactionHash" => ^hash,
+              "transactionIndex" => "0x0"
             }} = ret
   end
 
   test "getblock" do
+    current = peaknumber()
     tx = prepare_transaction()
     hash = Transaction.hash(tx) |> Base16.encode()
-    ret = rpc("eth_getBlockByNumber", [peaknumber(), false])
+    {:ok, next} = rpc("eth_blockNumber", [])
+    next = Base16.decode_int(next)
 
-    assert {200,
-            %{
-              "id" => 1,
-              "jsonrpc" => "2.0",
-              "result" => %{
-                "transactions" => txs
-              }
-            }} = ret
-
-    assert Enum.member?(txs, hash)
+    assert Enum.find(current..next, fn n ->
+             ret = rpc("eth_getBlockByNumber", [n, false])
+             {:ok, %{"transactions" => txs}} = ret
+             Enum.member?(txs, hash)
+           end)
   end
 
   defp to_rlp(tx) do
@@ -74,17 +68,28 @@ defmodule RpcTest do
     [from, to] = Diode.wallets() |> Enum.reverse() |> Enum.take(2)
     # Worker.set_mode(:disabled)
 
+    price =
+      Chain.RPC.gas_price(chain())
+      |> Base16.decode_int()
+
+    nonce =
+      Chain.RPC.get_transaction_count(chain(), Base16.encode(Wallet.address!(from)))
+      |> Base16.decode_int()
+
     tx =
       Rpc.create_transaction(from, <<"">>, %{
         "value" => 1000,
         "to" => Wallet.address!(to),
-        "gasPrice" => 0
+        "gasPrice" => price,
+        "chainId" => chain().chain_id(),
+        "nonce" => nonce
       })
+      |> IO.inspect()
 
-    {200, %{"result" => txhash}} = rpc("eth_sendRawTransaction", [to_rlp(tx)])
+    {:ok, txhash} = rpc("eth_sendRawTransaction", [to_rlp(tx)])
     assert txhash == Base16.encode(Transaction.hash(tx))
+    Chain.RPC.rpc!(Chains.Anvil, "evm_mine")
 
-    # Worker.set_mode(:poll)
     tx
   end
 

@@ -13,6 +13,7 @@ defmodule Chain do
   def peaknumber(chain_id), do: Chain.RPCCache.block_number(chain_id)
   def registry_address(chain_id), do: chainimpl(chain_id).registry_address()
   def developer_fleet_address(chain_id), do: chainimpl(chain_id).developer_fleet_address()
+  def transaction_hash(chain_id), do: chainimpl(chain_id).transaction_hash()
 
   if Mix.env() == :test do
     @chains [Chains.Anvil]

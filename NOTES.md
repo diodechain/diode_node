@@ -1,3 +1,8 @@
+# Scratchpade March 25th  2024
+
+tests registry 
+tests edge2
+
 # Scratchpade February 16th 2024
 
 m1bns = Hash.to_address(0x75140F88B0F4B2FBC6DADC16CC51203ADB07FE36)
