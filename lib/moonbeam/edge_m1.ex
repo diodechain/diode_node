@@ -7,7 +7,7 @@ defmodule Network.EdgeM1 do
   def handle_async_msg(msg, state) do
     case msg do
       ["getblockpeak"] ->
-        Moonbeam.RPCCache.block_number()
+        Chain.peaknumber(Chains.Moonbeam)
         |> Base16.decode()
         |> response()
 
@@ -24,7 +24,7 @@ defmodule Network.EdgeM1 do
           "stateRoot" => state_hash,
           "timestamp" => timestamp,
           "transactionsRoot" => transaction_hash
-        } = Moonbeam.RPCCache.get_block_by_number(hex_blockref(index))
+        } = Chain.RPC.get_block_by_number(Chains.Moonbeam, hex_blockref(index))
 
         response(%{
           "block_hash" => Base16.decode(hash),
@@ -58,7 +58,9 @@ defmodule Network.EdgeM1 do
         # requires https://eips.ethereum.org/EIPS/eip-1186
         # response(Moonbeam.proof(address, [0], blockref(block)))
 
-        code = Base16.decode(Moonbeam.get_code(hex_address(address), hex_blockref(block)))
+        code =
+          Chain.RPC.get_code(Chains.Moonbeam, hex_address(address), hex_blockref(block))
+          |> Base16.decode()
 
         storage_root =
           if code == "" do
@@ -69,10 +71,15 @@ defmodule Network.EdgeM1 do
 
         response(%{
           nonce:
-            Base16.decode(
-              Moonbeam.get_transaction_count(hex_address(address), hex_blockref(block))
-            ),
-          balance: Base16.decode(Moonbeam.get_balance(hex_address(address), hex_blockref(block))),
+            Chain.RPC.get_transaction_count(
+              Chains.Moonbeam,
+              hex_address(address),
+              hex_blockref(block)
+            )
+            |> Base16.decode(),
+          balance:
+            Chain.RPC.get_balance(Chains.Moonbeam, hex_address(address), hex_blockref(block))
+            |> Base16.decode(),
           storage_root: storage_root,
           code: Hash.keccak_256(code)
         })
@@ -83,7 +90,12 @@ defmodule Network.EdgeM1 do
       ["getaccountvalue", block, address, key] ->
         # requires https://eips.ethereum.org/EIPS/eip-1186
         # response(Moonbeam.proof(address, [key], blockref(block)))
-        Moonbeam.RPCCache.get_storage_at(hex_address(address), hex_key(key), hex_blockref(block))
+        Chain.RPC.get_storage_at(
+          Chains.Moonbeam,
+          hex_address(address),
+          hex_key(key),
+          hex_blockref(block)
+        )
         |> Base16.decode()
         |> response()
 
@@ -91,7 +103,8 @@ defmodule Network.EdgeM1 do
         # requires https://eips.ethereum.org/EIPS/eip-1186
         # response(Moonbeam.proof(address, keys, blockref(block)))
         Enum.map(keys, fn key ->
-          Moonbeam.RPCCache.get_storage_at(
+          Chain.RPC.get_storage_at(
+            Chains.Moonbeam,
             hex_address(address),
             hex_key(key),
             hex_blockref(block)
@@ -138,9 +151,9 @@ defmodule Network.EdgeM1 do
         tx =
           Shell.raw(CallPermit.wallet(), call,
             to: CallPermit.address(),
-            chainId: Moonbeam.chain_id(),
+            chainId: Chains.Moonbeam.chain_id(),
             gas: 12_000_000,
-            gasPrice: Base16.decode(Moonbeam.gas_price()),
+            gasPrice: Chain.RPC.gas_price(Chains.Moonbeam) |> Base16.decode_int(),
             value: 0,
             nonce: nonce
           )
@@ -157,7 +170,7 @@ defmodule Network.EdgeM1 do
           |> Hash.keccak_256()
           |> Base16.encode()
 
-        case Moonbeam.send_raw_transaction(payload) do
+        case Chain.RPC.send_raw_transaction(Chains.Moonbeam, payload) do
           ^tx_hash -> response("ok", tx_hash)
           :already_known -> response("ok", tx_hash)
         end

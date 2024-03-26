@@ -1,162 +1,145 @@
 defmodule Moonbeam do
-  require Logger
+  def chain(), do: Chains.Moonbeam
 
-  # https://github.com/moonbeam-foundation/moonbeam/blob/master/precompiles/call-permit/CallPermit.sol
-  @default_endpoint "https://moonbeam-alpha.api.onfinality.io/public"
-  @fallback "https://moonbase.unitedbloc.com"
-  # @endpoint "https://rpc.api.moonbase.moonbeam.network"
-  def endpoint() do
-    case :persistent_term.get({__MODULE__, :endpoint}, nil) do
-      nil ->
-        endpoint = default_endpoint()
-        :persistent_term.put({__MODULE__, :endpoint}, endpoint)
-        endpoint
+  # https://moonbeam.foundation/glimmer-token/transparency/
 
-      endpoint ->
-        endpoint
+  def cold() do
+    [
+      0xEC5849F7B9F7B5188E53E6546D07062B7D2B46A0,
+      0xE15A2E4F35215A553151DF283A39C7D17DB8AAEC,
+      0xEE050F48FF5FF71604D5CA32020A6BA1C070F1B2,
+      0x3AD24A37D4B6EBD24E70A2C87241A63D92A6B288,
+      0x835D6F7B649E109470F966A936308F78FDEBEC2D,
+      0x02F50D4C3861C279AA0467CAF49F8077B3C0CA60,
+      0xCE216241675657F40203679AA8F6472D8C140AB0,
+      0xF1E35633EBBB793F1D22E6CC6B279AFE8C33B381,
+      0x906EA348769389C32F2732B79615D12B2514274E,
+      0x91AD9C2608D04722400A22215D2D951DEDB11CB4,
+      0x6E87680133C34C96C86FFD101844B14FD63F0FE1,
+      0xE51DF5C29BFE022854FDE7EBC4B06A6CDB94B60E,
+      0x98091CAD1243F4A6D2454A7F0CA3258FB053C152,
+      0xB29F4D175953FAF999869036BB170E4A99DBA62C,
+      0x0344CB6A7ACB0F074237943E2FFB0BFCE6E6C1FC,
+      0xFB43CC3136A81D6DF94B92637B007F0235B92563,
+      0x418671C5E8E14095720BAE1F063DF18C6414239B,
+      0xAAB463BA7BF4ECA75D5F84AABFB077DC9B9FBF0C,
+      0xA99716FDF1A1E45969CC5469F3FADEC7C3B4666F,
+      0x72990280C6E37995F5A7446D7D420EB7BCD8FFA8,
+      0xC6956173029911A93483E00EC4C5378F1AAF37F1,
+      0xD0AE4F927DB4D4ADF162336F4F088B02F24F7E09,
+      0x3628E309C5B745EB35F92BCF81FC6F9794E0F15C,
+      0xA9349A0191C93534F8B9CA295EBF2B8A87C89062,
+      0x6F39CBA057ACB67DF748EFCE6D14B94C53B16574,
+      0x41F666AC944A4613DF26D00A5D3926E64574A6BE,
+      0xEF24BCEF8052CF5F2758EA23ED02D48C0F788BD5,
+      0xD985DD9453BB9BAE5F2BCB79F90B3ED724033CA0,
+      0x47B69AEF78183B282C6DFAD76EECFCD0676A85F3,
+      0xB00AF4494099BF419C79768CC3D2E1F45A106B54,
+      0x7882FC72720E2BD786DC1E2DDA3B37F76EF7AC1A,
+      0x2AFBDAEED55AF511D2F4F54048DB5347993C41D1,
+      0xB49E71E2516084F4697E21B7F2EBEDDBFC900887,
+      0xE5A56B7FF1AA39376588968E057F73BA9DC43AC1,
+      0xB843FA0C53382A24386C4BFD6E26156B6C1AA502,
+      0x286C93DE3767BDC37694FF5326A2EC074A271841,
+      0x4599D3FB61AFBE53EC0C74E9D3E662DF14C011BC,
+      0x18CB64D0D2B5CECB7D0F08E4BEC9C955F3A221ED,
+      0xEEE7F269E04163DEA8F9C8C075429E0B9928A6F8,
+      0xBFA14EB753E03EC28F1FCA98E60227F1E3631451,
+      0x471AC074B60DAB1CE62EEC90B766A7E3DA5719BF,
+      0x85B46641D2F1C1C207D50C1D0E04F8E57C8CF2F8,
+      0x7F8D1C2B3D770693A4C0EBC02731DC3107BCA672,
+      0x670762ABC78C65AEE1274BC2ED179DA7B8BD3B81,
+      0x7F1BA0B92943A38A55EA344676F5685AFBFE5AD5,
+      0xAC6D13F8B148ACFC5FCA4D4D6B4EAA5A78C6079C,
+      0x365CB79B68552A44ECCE2CFC698DE5EDFAF452C0,
+      0x93041C0AA0B6E96C4E5F98831C58673F2E318274,
+      0x0A2F88F2C8EC33AB7D5118A09B09EEF844E3BE72,
+      0x49700FB3DDB67D7F7E366261FCBDFAC0B90F6F5A,
+      0xB2E3E0B8CECFBD8B4F3DC1849DDF3C79C21300BD,
+      0x5A97A6F687D7C76D3EA7563A60CC615C6C939D54,
+      0xCB95C0E6FCCE0E78F62F7F809AB5EC161722FA17,
+      0x97292E7FB192323FAA3490FB084C1A450278206C,
+      0x9C2284CBBEAACF3FAE4AEA80AD5D690F4C40FEC6,
+      0x734BBB2D0B28B36FAC6DE190978A54F294199F98,
+      0xF1D1587678F6EB30B7C7A9773268B952A4B3E29F,
+      0x0AF55F1F6DAF6EFA8EBEC64965120FD4053B1017,
+      0xA5577DA5F45AA886CE77F46E93A52802DBA556F9,
+      0x8EBB465D98E7589855485CD190C7BED6A36C4C34,
+      0xFC02D8861D624D89E1C4C364A5D534AED0E75B45,
+      0x10A75C8B30543DAE7FF2ED6704C1BF769B3376B5,
+      0x0DFD2741FA7F5E6A22B1C7FB13C3554550ECC9D5,
+      0x02A28A296DFC6BE50199E6A877B0B981055DA8E7,
+      0x5489FD1637F76C6F11198A06A1DC05A7F1F7E629,
+      0xBC9429CBFA409EBFA9BA218F2C02EEDA1E4A5203,
+      0xD749A1C1A2B538609C722872637AC23BB4DF6514,
+      0xEACE0FB4D9051D5C1D006A6953CAA7E7CA140481,
+      0xA4D9AC2893F430AD101D9691D9587BE24F30AED9,
+      0xDA5531C9329426F4F3D4051291D98947F219AE20
+    ]
+  end
+
+  def circulating() do
+    [
+      0xB3E64EF8FC9DF438C9A54F4B189EDDC1807B55A5,
+      0x01BB6CE8B88F09A7D0BFB40EFF7F2AD5E0DF2E98,
+      0xE751B9EA560A200161D1B70249495E3D22EC5B00,
+      0xF02DDB48EDA520C915C0DABADC70BA12D1B49AD2,
+      0x84E84C5B3F0FD7D6EDEA829653787A8B9CB92783,
+      0x7368EF98577A419280974A60E7FE590379C21E6A,
+      0x71A30F3B36E29AC78F3E94F446B938F19F0B40E7,
+      0xF21CDD2F90C4D450BD27E01A3453BF346E6B4958,
+      0x06AC5FE4EEE12A35E996571EF1F72EA237EEC806,
+      0x8134502DDCD2598D8F40F7B35A59C77C6BFF1F6A,
+      0xCFBF79A75A35BAA595B7E0D376C87FA47F6EF3DA,
+      0x2719C3B290189DC43ABD179A35A438DC2BAA47E3,
+      0x948CDCF0102D948FD391256682D666E52CE65E86,
+      0x23E8A745062874355F391ACF4677FC69BDC52626,
+      0x98C5EECFFDB6C8EE3C18F6FBD8E498763BB40B83
+    ]
+  end
+
+  def treasuary() do
+    [0x6D6F646C70792F74727372790000000000000000]
+  end
+
+  def all() do
+    cold() ++ circulating() ++ treasuary()
+  end
+
+  def balance(address, block \\ "latest") do
+    Chain.RPC.get_balance(Chains.Moonbeam, hex_address(address), hex_blockref(block))
+    |> Base16.decode_int()
+  end
+
+  def dump(block \\ "latest") do
+    for address <- all() do
+      bal = balance(address, block)
+      IO.puts("#{hex_address(address)}: #{bal}")
+      bal
     end
   end
 
-  def default_endpoint() do
-    case System.get_env("MOONBEAM_ENDPOINT") do
-      nil -> @default_endpoint
-      endpoint -> endpoint
+  def movr_balance(address, block \\ "latest") do
+    Chain.RPC.get_balance(Chains.Moonriver, hex_address(address), hex_blockref(block))
+    |> Base16.decode_int()
+  end
+
+  def movr_dump(block \\ "latest") do
+    for address <- all() do
+      bal = movr_balance(address, block)
+      IO.puts("#{hex_address(address)}: #{bal}")
+      bal
     end
   end
 
-  def swap_endpoint() do
-    if endpoint() == default_endpoint() do
-      :persistent_term.put({__MODULE__, :endpoint}, @fallback)
-    else
-      :persistent_term.put({__MODULE__, :endpoint}, default_endpoint())
-    end
+  defp hex_blockref(ref) when ref in ["latest", "earliest"], do: ref
+  defp hex_blockref(ref), do: Base16.encode(ref, false)
+
+  defp hex_address(<<_::binary-size(20)>> = address) do
+    Base16.encode(address)
   end
 
-  def epoch() do
-    0
-  end
-
-  def peak() do
-    1000
-  end
-
-  def genesis_hash() do
-    # https://moonbase.moonscan.io/block/0
-    0x33638DDE636F9264B6472B9D976D58E757FE88BADAC53F204F3F530ECC5AACFA
-  end
-
-  def get_proof(address, keys, block \\ "latest") do
-    # requires https://eips.ethereum.org/EIPS/eip-1186
-    rpc!("eth_getProof", [address, keys, block])
-  end
-
-  def block_number() do
-    rpc!("eth_blockNumber")
-  end
-
-  def get_block_by_number(block \\ "latest", with_transactions \\ false) do
-    rpc!("eth_getBlockByNumber", [block, with_transactions])
-  end
-
-  def get_storage_at(address, slot, block \\ "latest") do
-    rpc!("eth_getStorageAt", [address, slot, block])
-  end
-
-  def get_code(address, block \\ "latest") do
-    rpc!("eth_getCode", [address, block])
-  end
-
-  def get_transaction_count(address, block \\ "latest") do
-    rpc!("eth_getTransactionCount", [address, block])
-  end
-
-  def get_balance(address, block \\ "latest") do
-    rpc!("eth_getBalance", [address, block])
-  end
-
-  def send_raw_transaction(tx) do
-    case rpc("eth_sendRawTransaction", [tx]) do
-      {:ok, tx_hash} -> tx_hash
-      {:error, %{"code" => -32603, "message" => "already known"}} -> :already_known
-      {:error, error} -> raise "RPC error: #{inspect(error)}"
-    end
-  end
-
-  def gas_price() do
-    rpc!("eth_gasPrice")
-  end
-
-  def rpc(method, params \\ []) do
-    request = %{
-      jsonrpc: "2.0",
-      method: method,
-      params: params,
-      id: 1
-    }
-
-    case post(request) do
-      %{"result" => result} -> {:ok, result}
-      %{"error" => error} -> {:error, error}
-    end
-  end
-
-  @dialyzer {:nowarn_function, post: 1, post: 2}
-  defp post(request, retry \\ true) do
-    url = endpoint()
-
-    case HTTPoison.post(url, Poison.encode!(request), [
-           {"Content-Type", "application/json"}
-         ]) do
-      {:ok, %{body: body}} ->
-        case Poison.decode(body) do
-          {:ok, response} ->
-            response
-
-          {:error, error} ->
-            maybe_retry(
-              retry,
-              "Poison error: #{inspect(error)} @ #{url} in #{inspect(body)}",
-              request
-            )
-        end
-
-      {:error, error} ->
-        maybe_retry(retry, "HTTPoison error: #{inspect(error)} @ #{url}", request)
-    end
-  end
-
-  defp maybe_retry(retry, error, request) do
-    if retry do
-      Logger.error("#{error} swapping endpoint() once")
-      swap_endpoint()
-      post(request, false)
-    else
-      raise error
-    end
-  end
-
-  def rpc!(method, params \\ []) do
-    case rpc(method, params) do
-      {:ok, result} -> result
-      {:error, error} -> raise "RPC error: #{inspect(error)}"
-    end
-  end
-
-  def call(to, from, data, block \\ "latest") do
-    rpc("eth_call", [%{to: to, data: data, from: from}, block])
-  end
-
-  def call!(to, from, data, block \\ "latest") do
-    {:ok, ret} = call(to, from, data, block)
-    ret
-  end
-
-  def estimate_gas(to, data, block \\ "latest") do
-    rpc!("eth_estimateGas", [%{to: to, data: data}, block])
-  end
-
-  def chain_id() do
-    # Moonbase Alpha (0x507)
-    1287
+  defp hex_address(address) when is_integer(address) do
+    Base16.encode(Hash.to_address(address))
   end
 end

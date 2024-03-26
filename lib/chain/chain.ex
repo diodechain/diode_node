@@ -22,7 +22,8 @@ defmodule Chain do
       Chains.DiodeStaging,
       Chains.Diode,
       Chains.Moonbeam,
-      Chains.MoonbaseAlpha
+      Chains.MoonbaseAlpha,
+      Chains.Moonriver
     ]
   end
 

@@ -64,7 +64,7 @@ defmodule CallPermit do
 
   def rpc_call(call, from \\ nil, blockref \\ "latest") do
     from = if from != nil, do: Base16.encode(from)
-    Moonbeam.call(Base16.encode(address()), from, Base16.encode(call), blockref)
+    Chain.RPC.call(Chains.Moonbeam, Base16.encode(address()), from, Base16.encode(call), blockref)
   end
 
   # CallPermit.call!(CallPermit.domain_separator())

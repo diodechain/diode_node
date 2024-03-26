@@ -30,7 +30,7 @@ defmodule Chains.Moonbeam do
   def epoch(n), do: div(Chain.blocktime(__MODULE__, n), epoch_length())
   def epoch_progress(n), do: rem(Chain.blocktime(__MODULE__, n), epoch_length()) / epoch_length()
   def epoch_length(), do: 2_592_000
-  def chain_prefix(), do: "moon"
+  def chain_prefix(), do: "glmr"
 
   def rpc_endpoints(),
     do: [
@@ -81,6 +81,40 @@ defmodule Chains.MoonbaseAlpha do
       "wss://moonbase.unitedbloc.com:1001",
       "wss://wss.api.moonbase.moonbeam.network",
       "wss://moonbeam-alpha.api.onfinality.io/public-ws"
+    ]
+
+  def registry_address(), do: Base16.decode("0xEb0aDCd736Ae9341DFb635759C5D7D6c2D51B673")
+  def developer_fleet_address(), do: Base16.decode("0x6000000000000000000000000000000000000000")
+  def transaction_hash(), do: &Hash.keccak_256/1
+end
+
+defmodule Chains.Moonriver do
+  def chain_id(), do: 1285
+  def expected_block_intervall(), do: 15
+  def epoch(n), do: div(Chain.blocktime(__MODULE__, n), epoch_length())
+  def epoch_progress(n), do: rem(Chain.blocktime(__MODULE__, n), epoch_length()) / epoch_length()
+  def epoch_length(), do: 2_592_000
+  def chain_prefix(), do: "movr"
+
+  def rpc_endpoints(),
+    do: [
+      "https://moonriver-rpc.dwellir.com",
+      "https://moonriver-rpc.publicnode.com",
+      "https://moonriver.api.onfinality.io/public",
+      "https://moonriver.drpc.org",
+      "https://moonriver.public.blastapi.io",
+      "https://moonriver.unitedbloc.com:2000",
+      "https://rpc.api.moonriver.moonbeam.network"
+    ]
+
+  def ws_endpoints(),
+    do: [
+      "wss://moonriver-rpc.dwellir.com",
+      "wss://moonriver-rpc.publicnode.com",
+      "wss://moonriver.api.onfinality.io/public-ws",
+      "wss://moonriver.drpc.org",
+      "wss://moonriver.unitedbloc.com:2001",
+      "wss://wss.api.moonriver.moonbeam.network"
     ]
 
   def registry_address(), do: Base16.decode("0xEb0aDCd736Ae9341DFb635759C5D7D6c2D51B673")

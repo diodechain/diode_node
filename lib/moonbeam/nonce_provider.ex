@@ -67,7 +67,8 @@ defmodule Moonbeam.NonceProvider do
   end
 
   def fetch_nonce() do
-    Moonbeam.get_transaction_count(
+    Chain.RPC.get_transaction_count(
+      Chains.Moonbeam,
       Wallet.base16(CallPermit.wallet()),
       "latest"
     )
