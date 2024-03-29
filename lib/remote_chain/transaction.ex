@@ -1,7 +1,7 @@
 # Diode Server
 # Copyright 2021-2024 Diode
 # Licensed under the Diode License, Version 1.1
-defmodule Chain.Transaction do
+defmodule RemoteChain.Transaction do
   @enforce_keys [:chain_id]
   defstruct nonce: 1,
             gasPrice: 0,
@@ -13,30 +13,30 @@ defmodule Chain.Transaction do
             init: nil,
             data: nil
 
-  @type t :: %Chain.Transaction{}
+  @type t :: %RemoteChain.Transaction{}
 
-  def nonce(%Chain.Transaction{nonce: nonce}), do: nonce
-  def data(%Chain.Transaction{data: nil}), do: ""
-  def data(%Chain.Transaction{data: data}), do: data
-  def gas_price(%Chain.Transaction{gasPrice: gas_price}), do: gas_price
-  def gas_limit(%Chain.Transaction{gasLimit: gas_limit}), do: gas_limit
-  def value(%Chain.Transaction{value: val}), do: val
-  def signature(%Chain.Transaction{signature: sig}), do: sig
-  def payload(%Chain.Transaction{to: nil, init: nil}), do: ""
-  def payload(%Chain.Transaction{to: nil, init: init}), do: init
-  def payload(%Chain.Transaction{data: nil}), do: ""
-  def payload(%Chain.Transaction{data: data}), do: data
-  def to(%Chain.Transaction{to: nil} = tx), do: new_contract_address(tx)
-  def to(%Chain.Transaction{to: to}), do: to
-  def chain_id(%Chain.Transaction{chain_id: chain_id}), do: chain_id
+  def nonce(%RemoteChain.Transaction{nonce: nonce}), do: nonce
+  def data(%RemoteChain.Transaction{data: nil}), do: ""
+  def data(%RemoteChain.Transaction{data: data}), do: data
+  def gas_price(%RemoteChain.Transaction{gasPrice: gas_price}), do: gas_price
+  def gas_limit(%RemoteChain.Transaction{gasLimit: gas_limit}), do: gas_limit
+  def value(%RemoteChain.Transaction{value: val}), do: val
+  def signature(%RemoteChain.Transaction{signature: sig}), do: sig
+  def payload(%RemoteChain.Transaction{to: nil, init: nil}), do: ""
+  def payload(%RemoteChain.Transaction{to: nil, init: init}), do: init
+  def payload(%RemoteChain.Transaction{data: nil}), do: ""
+  def payload(%RemoteChain.Transaction{data: data}), do: data
+  def to(%RemoteChain.Transaction{to: nil} = tx), do: new_contract_address(tx)
+  def to(%RemoteChain.Transaction{to: to}), do: to
+  def chain_id(%RemoteChain.Transaction{chain_id: chain_id}), do: chain_id
 
-  @spec from_rlp(binary()) :: Chain.Transaction.t()
+  @spec from_rlp(binary()) :: RemoteChain.Transaction.t()
   def from_rlp(bin) do
     [nonce, gas_price, gas_limit, to, value, init, rec, r, s] = Rlp.decode!(bin)
 
     to = Rlpx.bin2addr(to)
 
-    %Chain.Transaction{
+    %RemoteChain.Transaction{
       nonce: Rlpx.bin2num(nonce),
       gasPrice: Rlpx.bin2num(gas_price),
       gasLimit: Rlpx.bin2num(gas_limit),
@@ -49,7 +49,7 @@ defmodule Chain.Transaction do
     }
   end
 
-  @spec print(Chain.Transaction.t()) :: :ok
+  @spec print(RemoteChain.Transaction.t()) :: :ok
   def print(tx) do
     hash = Base16.encode(hash(tx))
     from = Base16.encode(from(tx))
@@ -74,12 +74,12 @@ defmodule Chain.Transaction do
     :ok
   end
 
-  @spec valid?(Chain.Transaction.t()) :: boolean()
+  @spec valid?(RemoteChain.Transaction.t()) :: boolean()
   def valid?(tx) do
     validate(tx) == true
   end
 
-  @spec type(Chain.Transaction.t()) :: :call | :create
+  @spec type(RemoteChain.Transaction.t()) :: :call | :create
   def type(tx) do
     if contract_creation?(tx) do
       :create
@@ -88,9 +88,9 @@ defmodule Chain.Transaction do
     end
   end
 
-  @spec validate(Chain.Transaction.t()) :: true | {non_neg_integer(), any()}
+  @spec validate(RemoteChain.Transaction.t()) :: true | {non_neg_integer(), any()}
   def validate(tx) do
-    with {1, %Chain.Transaction{}} <- {1, tx},
+    with {1, %RemoteChain.Transaction{}} <- {1, tx},
          {2, 65} <- {2, byte_size(signature(tx))},
          {4, true} <- {4, value(tx) >= 0},
          {5, true} <- {5, gas_price(tx) >= 0},
@@ -102,17 +102,17 @@ defmodule Chain.Transaction do
     end
   end
 
-  @spec contract_creation?(Chain.Transaction.t()) :: boolean()
-  def contract_creation?(%Chain.Transaction{to: to}) do
+  @spec contract_creation?(RemoteChain.Transaction.t()) :: boolean()
+  def contract_creation?(%RemoteChain.Transaction{to: to}) do
     to == nil
   end
 
-  @spec new_contract_address(Chain.Transaction.t()) :: binary()
-  def new_contract_address(%Chain.Transaction{to: to}) when to != nil do
+  @spec new_contract_address(RemoteChain.Transaction.t()) :: binary()
+  def new_contract_address(%RemoteChain.Transaction{to: to}) when to != nil do
     nil
   end
 
-  def new_contract_address(%Chain.Transaction{nonce: nonce} = tx) do
+  def new_contract_address(%RemoteChain.Transaction{nonce: nonce} = tx) do
     address = Wallet.address!(origin(tx))
 
     Rlp.encode!([address, nonce])
@@ -120,24 +120,24 @@ defmodule Chain.Transaction do
     |> Hash.to_address()
   end
 
-  @spec to_rlp(Chain.Transaction.t()) :: [...]
+  @spec to_rlp(RemoteChain.Transaction.t()) :: [...]
   def to_rlp(tx) do
     [tx.nonce, gas_price(tx), gas_limit(tx), tx.to, tx.value, payload(tx)] ++
       Secp256k1.bitcoin_to_rlp(tx.signature, tx.chain_id)
   end
 
-  @spec from(Chain.Transaction.t()) :: <<_::160>>
+  @spec from(RemoteChain.Transaction.t()) :: <<_::160>>
   def from(tx) do
     Wallet.address!(origin(tx))
   end
 
-  @spec recover(Chain.Transaction.t()) :: binary()
+  @spec recover(RemoteChain.Transaction.t()) :: binary()
   def recover(tx) do
     Secp256k1.recover!(signature(tx), to_message(tx), :kec)
   end
 
-  @spec origin(Chain.Transaction.t()) :: Wallet.t()
-  def origin(%Chain.Transaction{signature: {:fake, pubkey}}) do
+  @spec origin(RemoteChain.Transaction.t()) :: Wallet.t()
+  def origin(%RemoteChain.Transaction{signature: {:fake, pubkey}}) do
     Wallet.from_address(pubkey)
   end
 
@@ -145,34 +145,34 @@ defmodule Chain.Transaction do
     recover(tx) |> Wallet.from_pubkey()
   end
 
-  @spec sign(Chain.Transaction.t(), <<_::256>>) :: Chain.Transaction.t()
-  def sign(tx = %Chain.Transaction{}, priv) do
+  @spec sign(RemoteChain.Transaction.t(), <<_::256>>) :: RemoteChain.Transaction.t()
+  def sign(tx = %RemoteChain.Transaction{}, priv) do
     %{tx | signature: Secp256k1.sign(priv, to_message(tx), :kec)}
   end
 
-  def hash(tx = %Chain.Transaction{signature: {:fake, _pubkey}}) do
-    to_message(tx) |> Chain.transaction_hash(chain_id(tx)).()
+  def hash(tx = %RemoteChain.Transaction{signature: {:fake, _pubkey}}) do
+    to_message(tx) |> RemoteChain.transaction_hash(chain_id(tx)).()
   end
 
-  @spec hash(Chain.Transaction.t()) :: binary()
+  @spec hash(RemoteChain.Transaction.t()) :: binary()
   def hash(tx) do
-    to_rlp(tx) |> Rlp.encode!() |> Chain.transaction_hash(chain_id(tx)).()
+    to_rlp(tx) |> Rlp.encode!() |> RemoteChain.transaction_hash(chain_id(tx)).()
   end
 
-  @spec to_message(Chain.Transaction.t()) :: binary()
-  def to_message(tx = %Chain.Transaction{chain_id: nil}) do
+  @spec to_message(RemoteChain.Transaction.t()) :: binary()
+  def to_message(tx = %RemoteChain.Transaction{chain_id: nil}) do
     # pre EIP-155 encoding
     [tx.nonce, gas_price(tx), gas_limit(tx), tx.to, tx.value, payload(tx)]
     |> Rlp.encode!()
   end
 
-  def to_message(tx = %Chain.Transaction{chain_id: 0}) do
+  def to_message(tx = %RemoteChain.Transaction{chain_id: 0}) do
     # pre EIP-155 encoding
     [tx.nonce, gas_price(tx), gas_limit(tx), tx.to, tx.value, payload(tx)]
     |> Rlp.encode!()
   end
 
-  def to_message(tx = %Chain.Transaction{chain_id: chain_id}) do
+  def to_message(tx = %RemoteChain.Transaction{chain_id: chain_id}) do
     # EIP-155 encoding
     [tx.nonce, gas_price(tx), gas_limit(tx), tx.to, tx.value, payload(tx), chain_id, 0, 0]
     |> Rlp.encode!()

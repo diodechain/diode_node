@@ -2,21 +2,7 @@
 # Copyright 2021-2024 Diode
 # Licensed under the Diode License, Version 1.1
 defmodule Shell do
-  @moduledoc """
-    Examples:
-
-    me = Diode.miner() |> Wallet.address!()
-    Shell.get_balance(me)
-
-    fleetContract = Base16.decode("0x6728c7bea74db60c2fb117c15de28b0b0686c389")
-    Shell.call(fleetContract, "accountant")
-
-    registryContract = Diode.registry_address()
-    Shell.call(registryContract, "ContractStake", ["address"], [fleetContract])
-
-    addr = Chain.GenesisFactory.genesis_accounts |> hd |> elem(0)
-    Shell.call_from(Wallet.from_address(addr), registryContract, "ContractStake", ["address"], [fleetContract])
-  """
+  @moduledoc false
 
   def call(chain_id, address, name, types \\ [], values \\ [], opts \\ [])
       when is_list(types) and is_list(values) do
@@ -37,9 +23,9 @@ defmodule Shell do
   end
 
   def submit_tx(tx) do
-    id = Chain.Transaction.chain_id(tx)
-    hex = Chain.Transaction.to_rlp(tx) |> Rlp.encode!() |> Base16.encode()
-    Chain.RPC.send_raw_transaction(id, hex)
+    id = RemoteChain.Transaction.chain_id(tx)
+    hex = RemoteChain.Transaction.to_rlp(tx) |> Rlp.encode!() |> Base16.encode()
+    RemoteChain.RPC.send_raw_transaction(id, hex)
   end
 
   def await_tx(tx) do
@@ -83,7 +69,10 @@ defmodule Shell do
   @spec get_miner_stake(non_neg_integer(), binary()) :: non_neg_integer()
   def get_miner_stake(chain_id, address) do
     {value, _gas} =
-      call(Chain.registry_address(chain_id), "MinerValue", ["uint8", "address"], [0, address])
+      call(RemoteChain.registry_address(chain_id), "MinerValue", ["uint8", "address"], [
+        0,
+        address
+      ])
 
     :binary.decode_unsigned(value)
   end

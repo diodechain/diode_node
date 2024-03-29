@@ -139,11 +139,14 @@ defmodule Object.TicketV2 do
 
   def server_id(ticketv2(server_id: id)), do: id
   def chain_id(ticketv2(chain_id: chain_id)), do: chain_id
-  def epoch(t = ticketv2(block_number: n)), do: Chain.epoch(chain_id(t), n)
+  def epoch(t = ticketv2(block_number: n)), do: RemoteChain.epoch(chain_id(t), n)
 
   @impl true
   def block_number(ticketv2(block_number: n)), do: n
-  def block_hash(ticketv2(chain_id: chain_id, block_number: n)), do: Chain.blockhash(chain_id, n)
+
+  def block_hash(ticketv2(chain_id: chain_id, block_number: n)),
+    do: RemoteChain.blockhash(chain_id, n)
+
   def device_signature(ticketv2(device_signature: signature)), do: signature
   def server_signature(ticketv2(server_signature: signature)), do: signature
   def fleet_contract(ticketv2(fleet_contract: fc)), do: fc

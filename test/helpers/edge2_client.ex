@@ -90,8 +90,8 @@ defmodule Edge2Client do
         total_connections: state.conns,
         total_bytes: paid_bytes + @ticket_grace * count,
         local_address: "spam",
-        block_number: Chain.peaknumber(@chain),
-        fleet_contract: Chain.developer_fleet_address(@chain)
+        block_number: RemoteChain.peaknumber(@chain),
+        fleet_contract: RemoteChain.developer_fleet_address(@chain)
       )
       |> Ticket.device_sign(state.key)
 
@@ -345,10 +345,10 @@ defmodule Edge2Client do
     {:ok, socket} = :ssl.connect('localhost', hd(Diode.edge2_ports()), options(cert), 5000)
     wallet = clientid(n)
     key = Wallet.privkey!(wallet)
-    fleet = Chain.developer_fleet_address(@chain)
+    fleet = RemoteChain.developer_fleet_address(@chain)
 
     {conns, bytes} =
-      case TicketStore.find(Wallet.address!(wallet), fleet, Chain.epoch(@chain)) do
+      case TicketStore.find(Wallet.address!(wallet), fleet, RemoteChain.epoch(@chain)) do
         nil -> {1, 0}
         tck -> {Ticket.total_connections(tck) + 1, Ticket.total_bytes(tck)}
       end

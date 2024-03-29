@@ -27,8 +27,11 @@ end
 defmodule Chains.Moonbeam do
   def chain_id(), do: 1284
   def expected_block_intervall(), do: 15
-  def epoch(n), do: div(Chain.blocktime(__MODULE__, n), epoch_length())
-  def epoch_progress(n), do: rem(Chain.blocktime(__MODULE__, n), epoch_length()) / epoch_length()
+  def epoch(n), do: div(RemoteChain.blocktime(__MODULE__, n), epoch_length())
+
+  def epoch_progress(n),
+    do: rem(RemoteChain.blocktime(__MODULE__, n), epoch_length()) / epoch_length()
+
   def epoch_length(), do: 2_592_000
   def chain_prefix(), do: "glmr"
 
@@ -62,8 +65,11 @@ end
 defmodule Chains.MoonbaseAlpha do
   def chain_id(), do: 1287
   def expected_block_intervall(), do: 15
-  def epoch(n), do: div(Chain.blocktime(__MODULE__, n), epoch_length())
-  def epoch_progress(n), do: rem(Chain.blocktime(__MODULE__, n), epoch_length()) / epoch_length()
+  def epoch(n), do: div(RemoteChain.blocktime(__MODULE__, n), epoch_length())
+
+  def epoch_progress(n),
+    do: rem(RemoteChain.blocktime(__MODULE__, n), epoch_length()) / epoch_length()
+
   def epoch_length(), do: 2_592_000
   def chain_prefix(), do: "m1"
 
@@ -91,8 +97,11 @@ end
 defmodule Chains.Moonriver do
   def chain_id(), do: 1285
   def expected_block_intervall(), do: 15
-  def epoch(n), do: div(Chain.blocktime(__MODULE__, n), epoch_length())
-  def epoch_progress(n), do: rem(Chain.blocktime(__MODULE__, n), epoch_length()) / epoch_length()
+  def epoch(n), do: div(RemoteChain.blocktime(__MODULE__, n), epoch_length())
+
+  def epoch_progress(n),
+    do: rem(RemoteChain.blocktime(__MODULE__, n), epoch_length()) / epoch_length()
+
   def epoch_length(), do: 2_592_000
   def chain_prefix(), do: "movr"
 
@@ -125,8 +134,11 @@ end
 defmodule Chains.Anvil do
   def chain_id(), do: 31337
   def expected_block_intervall(), do: 15
-  def epoch(n), do: div(Chain.blocktime(__MODULE__, n), epoch_length())
-  def epoch_progress(n), do: rem(Chain.blocktime(__MODULE__, n), epoch_length()) / epoch_length()
+  def epoch(n), do: div(RemoteChain.blocktime(__MODULE__, n), epoch_length())
+
+  def epoch_progress(n),
+    do: rem(RemoteChain.blocktime(__MODULE__, n), epoch_length()) / epoch_length()
+
   def epoch_length(), do: 2_592_000
   def chain_prefix(), do: "av"
 

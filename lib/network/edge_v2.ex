@@ -267,7 +267,7 @@ defmodule Network.EdgeV2 do
            ] ->
         msg = Rlp.encode!(msg) |> Base16.encode()
 
-        Chain.RPCCache.get(Chains.DiodeStaging, "dio_edgev2", [msg])
+        RemoteChain.RPCCache.get(Chains.DiodeStaging, "dio_edgev2", [msg])
         |> Base16.decode()
         |> Rlp.decode!()
 
@@ -487,10 +487,10 @@ defmodule Network.EdgeV2 do
 
   defp handle_ticket(dl, state) do
     cond do
-      Ticket.block_number(dl) > Chain.peaknumber(Ticket.chain_id(dl)) ->
+      Ticket.block_number(dl) > RemoteChain.peaknumber(Ticket.chain_id(dl)) ->
         log(
           state,
-          "Ticket with future block number #{Ticket.block_number(dl)} vs. #{Chain.peaknumber(Ticket.chain_id(dl))}!"
+          "Ticket with future block number #{Ticket.block_number(dl)} vs. #{RemoteChain.peaknumber(Ticket.chain_id(dl))}!"
         )
 
         error("block number too high")

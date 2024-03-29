@@ -36,8 +36,8 @@ defmodule TicketStore do
   # Should be called on each new block
   def newblock(chain_id, blocknum) do
     if not Diode.dev_mode?() and
-         Chain.epoch_progress(chain_id, blocknum) > 0.5 do
-      epoch = Chain.epoch(chain_id, blocknum)
+         RemoteChain.epoch_progress(chain_id, blocknum) > 0.5 do
+      epoch = RemoteChain.epoch(chain_id, blocknum)
       submit_tickets(epoch - 1)
     end
   end
@@ -95,7 +95,7 @@ defmodule TicketStore do
   def add(tck, wallet) do
     chain_id = Ticket.chain_id(tck)
     tepoch = Ticket.epoch(tck)
-    epoch = Chain.epoch(chain_id)
+    epoch = RemoteChain.epoch(chain_id)
     address = Wallet.address!(wallet)
     fleet = Ticket.fleet_contract(tck)
 
@@ -114,7 +114,7 @@ defmodule TicketStore do
             {:ok, max(0, Ticket.total_bytes(tck) - Ticket.total_bytes(last))}
           else
             if address != Ticket.device_address(last) do
-              :io.format("Ticked Signed on Fork Chain~n")
+              :io.format("Ticked Signed on Fork RemoteChain~n")
               :io.format("Last: ~180p~nTick: ~180p~n", [last, tck])
               put_ticket(tck, address, fleet, tepoch)
               {:ok, Ticket.total_bytes(tck)}

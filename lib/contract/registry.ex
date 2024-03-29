@@ -40,7 +40,7 @@ defmodule Contract.Registry do
   def submit_ticket_raw_tx(ticket = [chain_id | _]) do
     Shell.transaction(
       Diode.miner(),
-      Chain.registry_address(chain_id),
+      RemoteChain.registry_address(chain_id),
       "SubmitTicketRaw",
       ["bytes32[]"],
       [ticket]
@@ -49,7 +49,7 @@ defmodule Contract.Registry do
 
   defp call(chain_id, name, types, values, blockRef) do
     {ret, _gas} =
-      Shell.call(Chain.registry_address(chain_id), name, types, values, blockRef: blockRef)
+      Shell.call(RemoteChain.registry_address(chain_id), name, types, values, blockRef: blockRef)
 
     ret
   end

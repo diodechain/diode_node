@@ -107,7 +107,7 @@ defmodule Moonbeam do
   end
 
   def balance(address, block \\ "latest") do
-    Chain.RPC.get_balance(Chains.Moonbeam, hex_address(address), hex_blockref(block))
+    RemoteChain.RPC.get_balance(Chains.Moonbeam, hex_address(address), hex_blockref(block))
     |> Base16.decode_int()
   end
 
@@ -120,7 +120,7 @@ defmodule Moonbeam do
   end
 
   def movr_balance(address, block \\ "latest") do
-    Chain.RPC.get_balance(Chains.Moonriver, hex_address(address), hex_blockref(block))
+    RemoteChain.RPC.get_balance(Chains.Moonriver, hex_address(address), hex_blockref(block))
     |> Base16.decode_int()
   end
 

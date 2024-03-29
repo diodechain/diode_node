@@ -1,7 +1,7 @@
 # Diode Server
 # Copyright 2021-2024 Diode
 # Licensed under the Diode License, Version 1.1
-defmodule Chain.RPC do
+defmodule RemoteChain.RPC do
   require Logger
 
   def get_proof(chain, address, keys, block \\ "latest") do
@@ -53,7 +53,7 @@ defmodule Chain.RPC do
   end
 
   def rpc(chain, method, params) do
-    case Chain.NodeProxy.rpc(chain, method, params) do
+    case RemoteChain.NodeProxy.rpc(chain, method, params) do
       %{"result" => result} -> {:ok, result}
       %{"error" => error} -> {:error, error}
     end

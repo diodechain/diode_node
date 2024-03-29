@@ -1,7 +1,7 @@
 # Diode Server
 # Copyright 2021-2024 Diode
 # Licensed under the Diode License, Version 1.1
-defmodule Chain.Sup do
+defmodule RemoteChain.Sup do
   # Automatically defines child_spec/1
   use Supervisor
 
@@ -10,6 +10,8 @@ defmodule Chain.Sup do
   end
 
   def init(chain) do
-    Supervisor.init([{Chain.RPCCache, chain}, {Chain.NodeProxy, chain}], strategy: :one_for_one)
+    Supervisor.init([{RemoteChain.RPCCache, chain}, {RemoteChain.NodeProxy, chain}],
+      strategy: :one_for_one
+    )
   end
 end

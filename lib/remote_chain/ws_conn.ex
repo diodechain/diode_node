@@ -1,12 +1,12 @@
 # Diode Server
 # Copyright 2021-2024 Diode
 # Licensed under the Diode License, Version 1.1
-defmodule Chain.WSConn do
+defmodule RemoteChain.WSConn do
   @moduledoc """
   Manage websocket connections to the given chain rpc node
   """
   use WebSockex
-  alias Chain.WSConn
+  alias RemoteChain.WSConn
   require Logger
 
   defstruct [
@@ -112,7 +112,7 @@ defmodule Chain.WSConn do
   end
 
   @impl true
-  # Chain.RPC.block_number(Chains.Diode)
+  # RemoteChain.RPC.block_number(Chains.Diode)
   def handle_cast({:send_request, request}, state) do
     send_frame(request, state)
     {:ok, state}

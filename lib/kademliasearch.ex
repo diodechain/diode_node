@@ -84,8 +84,6 @@ defmodule KademliaSearch do
       Object.decode!(value)
       |> Object.block_number()
 
-    # IO.puts("Found #{Chain.peak() - obj_block_num} on node #{Wallet.printable(node.node_id)}")
-
     fin =
       with nil <- fin do
         :timer.send_after(200, :finish)

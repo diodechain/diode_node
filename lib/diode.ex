@@ -46,8 +46,8 @@ defmodule Diode do
         supervisor(Channels),
         worker(PubSub, [args]),
         worker(TicketStore, [])
-        | Enum.map(Chain.chains(), fn chain ->
-            supervisor(Chain.Sup, [chain], {Chain.Sup, chain})
+        | Enum.map(RemoteChain.chains(), fn chain ->
+            supervisor(RemoteChain.Sup, [chain], {RemoteChain.Sup, chain})
           end)
       ] ++
         [

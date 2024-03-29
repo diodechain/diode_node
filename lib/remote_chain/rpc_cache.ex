@@ -1,11 +1,11 @@
 # Diode Server
 # Copyright 2021-2024 Diode
 # Licensed under the Diode License, Version 1.1
-defmodule Chain.RPCCache do
+defmodule RemoteChain.RPCCache do
   use GenServer, restart: :permanent
   require Logger
-  alias Chain.NodeProxy
-  alias Chain.RPCCache
+  alias RemoteChain.NodeProxy
+  alias RemoteChain.RPCCache
 
   defstruct [:chain, :lru, :block_number]
 
@@ -71,7 +71,7 @@ defmodule Chain.RPCCache do
   defp resolve_block(_chain, block), do: block
 
   defp name(chain) do
-    impl = Chain.chainimpl(chain) || raise "no chainimpl for #{inspect(chain)}"
+    impl = RemoteChain.chainimpl(chain) || raise "no chainimpl for #{inspect(chain)}"
     {:global, {__MODULE__, impl}}
   end
 

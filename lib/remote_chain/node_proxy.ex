@@ -1,9 +1,9 @@
-defmodule Chain.NodeProxy do
+defmodule RemoteChain.NodeProxy do
   @moduledoc """
   Manage websocket connections to the given chain rpc node
   """
   use GenServer, restart: :permanent
-  alias Chain.NodeProxy
+  alias RemoteChain.NodeProxy
   require Logger
 
   defstruct [:chain, connections: %{}, req: 100, requests: %{}, lastblocks: %{}]
@@ -59,7 +59,7 @@ defmodule Chain.NodeProxy do
     lastblocks = Map.put(lastblocks, ws_url, block_number)
 
     if Enum.count(lastblocks, fn {_, block} -> block == block_number end) >= @security_level do
-      Chain.RPCCache.set_block_number(chain, block_number)
+      RemoteChain.RPCCache.set_block_number(chain, block_number)
     end
 
     {:noreply, %{state | lastblocks: lastblocks}}
@@ -101,7 +101,7 @@ defmodule Chain.NodeProxy do
     new_urls = MapSet.difference(urls, existing)
     new_url = MapSet.to_list(new_urls) |> List.first()
 
-    pid = Chain.WSConn.start(self(), chain, new_url)
+    pid = RemoteChain.WSConn.start(self(), chain, new_url)
     Process.monitor(pid)
     state = %{state | connections: Map.put(connections, new_url, pid)}
     ensure_connections(state)
@@ -112,7 +112,7 @@ defmodule Chain.NodeProxy do
   end
 
   defp name(chain) do
-    impl = Chain.chainimpl(chain) || raise "no chainimpl for #{inspect(chain)}"
+    impl = RemoteChain.chainimpl(chain) || raise "no chainimpl for #{inspect(chain)}"
     {:global, {__MODULE__, impl}}
   end
 end

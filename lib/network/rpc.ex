@@ -213,7 +213,7 @@ defmodule Network.Rpc do
       case Map.get(opts, "to") do
         nil ->
           # Contract creation
-          %Chain.Transaction{
+          %RemoteChain.Transaction{
             to: nil,
             nonce: nonce,
             gasPrice: gas_price,
@@ -225,7 +225,7 @@ defmodule Network.Rpc do
 
         to ->
           # Normal transaction
-          %Chain.Transaction{
+          %RemoteChain.Transaction{
             to: to,
             nonce: nonce,
             gasPrice: gas_price,
@@ -237,7 +237,7 @@ defmodule Network.Rpc do
       end
 
     if sign do
-      Chain.Transaction.sign(tx, Wallet.privkey!(wallet))
+      RemoteChain.Transaction.sign(tx, Wallet.privkey!(wallet))
     else
       %{tx | signature: {:fake, Wallet.address!(wallet)}}
     end

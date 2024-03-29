@@ -133,11 +133,11 @@ defmodule Object.TicketV1 do
 
   def server_id(ticketv1(server_id: id)), do: id
   def chain_id(_ \\ nil), do: Chains.DiodeStaging.chain_id()
-  def epoch(t = ticketv1(block_number: n)), do: Chain.epoch(chain_id(t), n)
+  def epoch(t = ticketv1(block_number: n)), do: RemoteChain.epoch(chain_id(t), n)
 
   @impl true
   def block_number(ticketv1(block_number: n)), do: n
-  def block_hash(ticketv1(block_number: n)), do: Chain.blockhash(chain_id(), n)
+  def block_hash(ticketv1(block_number: n)), do: RemoteChain.blockhash(chain_id(), n)
   def device_signature(ticketv1(device_signature: signature)), do: signature
   def server_signature(ticketv1(server_signature: signature)), do: signature
   def fleet_contract(ticketv1(fleet_contract: fc)), do: fc
