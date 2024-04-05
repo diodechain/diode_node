@@ -1,3 +1,6 @@
+# Diode Server
+# Copyright 2021-2024 Diode
+# Licensed under the Diode License, Version 1.1
 defmodule RemoteChain do
   @moduledoc """
   Wrapper to access RemoteChain details. Usually each method requires the chain_id to be passed as the first argument.
@@ -22,18 +25,32 @@ defmodule RemoteChain do
       Chains.DiodeStaging,
       Chains.Diode,
       Chains.Moonbeam,
-      Chains.MoonbaseAlpha,
-      Chains.Moonriver
+      Chains.MoonbaseAlpha
     ]
+  end
+
+  @all_chains [
+    Chains.DiodeDev,
+    Chains.Anvil,
+    Chains.Moonriver | @chains
+  ]
+
+  @doc """
+  This function reads endpoints from environment variables when available. So it's possible
+  to override the default endpoints by setting the environment variables like `CHAINS_MOONBEAM_WS`.
+  """
+  def ws_endpoints(chain) do
+    name = String.upcase("#{inspect(chain)}_WS") |> String.replace(".", "_")
+    List.wrap(System.get_env(name) || chainimpl(chain).ws_endpoints())
   end
 
   def chains(), do: @chains
 
-  for chain <- @chains do
+  for chain <- @all_chains do
     def chainimpl(unquote(chain.chain_id())), do: unquote(chain)
     def chainimpl(unquote(chain.chain_prefix())), do: unquote(chain)
     def chainimpl(unquote(chain)), do: unquote(chain)
   end
 
-  def chainimpl(_), do: nil
+  def chainimpl(other), do: raise("Unknown chain #{inspect(other)}")
 end

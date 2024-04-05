@@ -248,7 +248,7 @@ defmodule Network.EdgeV2 do
   def handle_async_msg(msg, state) do
     case msg do
       ["m1:" <> cmd | rest] ->
-        Network.EdgeM1.handle_async_msg([cmd | rest], state)
+        RemoteChain.Edge.handle_async_msg(Chains.MoonbaseAlpha, [cmd | rest], state)
 
       [cmd | _rest]
       when cmd in [

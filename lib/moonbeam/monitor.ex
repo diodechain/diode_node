@@ -18,7 +18,7 @@ defmodule Monitor do
   end
 
   def dump(block \\ "latest") do
-    print("Name", "Address", "Alpha", "Moonbeam")
+    print("Name", "Address", "Moonbeam", "Alpha")
 
     for {name, address} <- nodes() do
       bal1 = balance(address, block)

@@ -10,10 +10,7 @@ defmodule RemoteChain.RPCCache do
   defstruct [:chain, :lru, :block_number]
 
   def start_link(chain) do
-    GenServer.start_link(__MODULE__, chain,
-      name: name(chain),
-      hibernate_after: 5_000
-    )
+    GenServer.start_link(__MODULE__, chain, name: name(chain), hibernate_after: 5_000)
   end
 
   @impl true
@@ -40,6 +37,20 @@ defmodule RemoteChain.RPCCache do
   def get_storage_at(chain, address, slot, block \\ "latest") do
     block = resolve_block(chain, block)
     get(chain, "eth_getStorageAt", [address, slot, block])
+  end
+
+  def get_code(chain, address, block \\ "latest") do
+    get(chain, "eth_getCode", [address, block])
+  end
+
+  def get_transaction_count(chain, address, block \\ "latest") do
+    block = resolve_block(chain, block)
+    get(chain, "eth_getTransactionCount", [address, block])
+  end
+
+  def get_balance(chain, address, block \\ "latest") do
+    block = resolve_block(chain, block)
+    get(chain, "eth_getBalance", [address, block])
   end
 
   def get(chain, method, args) do
@@ -71,13 +82,16 @@ defmodule RemoteChain.RPCCache do
   defp resolve_block(_chain, block), do: block
 
   defp name(chain) do
-    impl = RemoteChain.chainimpl(chain) || raise "no chainimpl for #{inspect(chain)}"
+    impl = RemoteChain.chainimpl(chain)
     {:global, {__MODULE__, impl}}
   end
 
   defp maybe_cache(chain, method, args) do
     {time, ret} = :timer.tc(fn -> NodeProxy.rpc!(chain, method, args) end)
-    Logger.debug("RPC #{method} #{inspect(args)} took #{time}ms")
+
+    if time > 200_000 do
+      Logger.debug("RPC #{method} #{inspect(args)} took #{div(time, 1000)}ms")
+    end
 
     if should_cache_method(method, args) and should_cache_result(ret) do
       GenServer.cast(name(chain), {:set, method, args, ret})
@@ -88,8 +102,8 @@ defmodule RemoteChain.RPCCache do
 
   defp should_cache_method("dio_edgev2", [hex]) do
     case hd(Rlp.decode!(Base16.decode(hex))) do
-      true ->
-        true
+      "ticket" ->
+        false
 
       _other ->
         # IO.inspect(other, label: "should_cache_method dio_edgev2")

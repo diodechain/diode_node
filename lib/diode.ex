@@ -6,7 +6,15 @@ require Logger
 defmodule Diode do
   use Application
 
-  def start(_type, args) do
+  def start(type, args) do
+    if Application.get_env(:diode, :no_start) do
+      Supervisor.start_link([], strategy: :rest_for_one, name: Diode.Supervisor)
+    else
+      do_start(type, args)
+    end
+  end
+
+  defp do_start(_type, args) do
     :persistent_term.put(:env, Mix.env())
     :erlang.system_flag(:backtrace_depth, 30)
 

@@ -1,3 +1,6 @@
+# Diode Server
+# Copyright 2021-2024 Diode
+# Licensed under the Diode License, Version 1.1
 defmodule RemoteChain.NodeProxy do
   @moduledoc """
   Manage websocket connections to the given chain rpc node
@@ -18,7 +21,7 @@ defmodule RemoteChain.NodeProxy do
   end
 
   def rpc(chain, method, params) do
-    GenServer.call(name(chain), {:rpc, method, params})
+    GenServer.call(name(chain), {:rpc, method, params}, 15_000)
   end
 
   def rpc!(chain, method, params) do
@@ -96,7 +99,7 @@ defmodule RemoteChain.NodeProxy do
 
   defp ensure_connections(state = %NodeProxy{chain: chain, connections: connections})
        when map_size(connections) < @security_level do
-    urls = MapSet.new(chain.ws_endpoints())
+    urls = MapSet.new(RemoteChain.ws_endpoints(chain))
     existing = MapSet.new(Map.keys(connections))
     new_urls = MapSet.difference(urls, existing)
     new_url = MapSet.to_list(new_urls) |> List.first()
@@ -112,7 +115,7 @@ defmodule RemoteChain.NodeProxy do
   end
 
   defp name(chain) do
-    impl = RemoteChain.chainimpl(chain) || raise "no chainimpl for #{inspect(chain)}"
+    impl = RemoteChain.chainimpl(chain)
     {:global, {__MODULE__, impl}}
   end
 end

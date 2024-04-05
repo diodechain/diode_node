@@ -1,14 +1,14 @@
 # Diode Server
 # Copyright 2021-2024 Diode
 # Licensed under the Diode License, Version 1.1
-defmodule Network.EdgeM1 do
+defmodule RemoteChain.Edge do
   import Network.EdgeV2, only: [response: 1, response: 2, error: 1]
+  require Logger
 
-  def handle_async_msg(msg, state) do
+  def handle_async_msg(chain, msg, state) do
     case msg do
       ["getblockpeak"] ->
-        RemoteChain.peaknumber(Chains.Moonbeam)
-        |> Base16.decode()
+        RemoteChain.peaknumber(chain)
         |> response()
 
       ["getblock", index] when is_binary(index) ->
@@ -24,7 +24,7 @@ defmodule Network.EdgeM1 do
           "stateRoot" => state_hash,
           "timestamp" => timestamp,
           "transactionsRoot" => transaction_hash
-        } = RemoteChain.RPC.get_block_by_number(Chains.Moonbeam, hex_blockref(index))
+        } = RemoteChain.RPCCache.get_block_by_number(chain, hex_blockref(index))
 
         response(%{
           "block_hash" => Base16.decode(hash),
@@ -59,7 +59,7 @@ defmodule Network.EdgeM1 do
         # response(Moonbeam.proof(address, [0], blockref(block)))
 
         code =
-          RemoteChain.RPC.get_code(Chains.Moonbeam, hex_address(address), hex_blockref(block))
+          RemoteChain.RPCCache.get_code(chain, hex_address(address), hex_blockref(block))
           |> Base16.decode()
 
         storage_root =
@@ -71,18 +71,14 @@ defmodule Network.EdgeM1 do
 
         response(%{
           nonce:
-            RemoteChain.RPC.get_transaction_count(
-              Chains.Moonbeam,
+            RemoteChain.RPCCache.get_transaction_count(
+              chain,
               hex_address(address),
               hex_blockref(block)
             )
             |> Base16.decode(),
           balance:
-            RemoteChain.RPC.get_balance(
-              Chains.Moonbeam,
-              hex_address(address),
-              hex_blockref(block)
-            )
+            RemoteChain.RPCCache.get_balance(chain, hex_address(address), hex_blockref(block))
             |> Base16.decode(),
           storage_root: storage_root,
           code: Hash.keccak_256(code)
@@ -94,8 +90,8 @@ defmodule Network.EdgeM1 do
       ["getaccountvalue", block, address, key] ->
         # requires https://eips.ethereum.org/EIPS/eip-1186
         # response(Moonbeam.proof(address, [key], blockref(block)))
-        RemoteChain.RPC.get_storage_at(
-          Chains.Moonbeam,
+        RemoteChain.RPCCache.get_storage_at(
+          chain,
           hex_address(address),
           hex_key(key),
           hex_blockref(block)
@@ -107,8 +103,8 @@ defmodule Network.EdgeM1 do
         # requires https://eips.ethereum.org/EIPS/eip-1186
         # response(Moonbeam.proof(address, keys, blockref(block)))
         Enum.map(keys, fn key ->
-          RemoteChain.RPC.get_storage_at(
-            Chains.Moonbeam,
+          RemoteChain.RPCCache.get_storage_at(
+            chain,
             hex_address(address),
             hex_key(key),
             hex_blockref(block)
@@ -121,8 +117,7 @@ defmodule Network.EdgeM1 do
         error("not implemented")
 
       ["getmetanonce", block, address] ->
-        CallPermit.nonces(address)
-        |> CallPermit.rpc_call!(nil, hex_blockref(block))
+        CallPermit.rpc_call!(chain, CallPermit.nonces(address), nil, hex_blockref(block))
         |> Base16.decode_int()
         |> response()
 
@@ -138,13 +133,20 @@ defmodule Network.EdgeM1 do
         s = Rlpx.bin2num(s)
 
         call = CallPermit.dispatch(from, to, value, call, gaslimit, deadline, v, r, s)
+        gas_price = RemoteChain.RPC.gas_price(chain) |> Base16.decode_int()
+        nonce = RemoteChain.NonceProvider.nonce(chain)
 
-        nonce = Moonbeam.NonceProvider.nonce()
-        # Can't do this pre-check because we will be receiving batches of future nonces
+        # Can't do this pre-check always because we will be receiving batches of future nonces
         # those are not yet valid but will be valid in the future, after the other txs have
         # been processed...
-        if nonce == Moonbeam.NonceProvider.fetch_nonce() do
-          {:ok, _} = CallPermit.rpc_call(call, Wallet.address!(CallPermit.wallet()))
+        if nonce == RemoteChain.NonceProvider.fetch_nonce(chain) do
+          spawn(fn ->
+            CallPermit.rpc_call(chain, call, Wallet.address!(CallPermit.wallet()))
+            |> case do
+              {:ok, _} -> :ok
+              error -> Logger.error("RTX rpc_call failed: #{inspect(error)}")
+            end
+          end)
         end
 
         # Moonbeam.estimate_gas(Base16.encode(CallPermit.address()), Base16.encode(call))
@@ -155,9 +157,9 @@ defmodule Network.EdgeM1 do
         tx =
           Shell.raw(CallPermit.wallet(), call,
             to: CallPermit.address(),
-            chainId: Chains.Moonbeam.chain_id(),
+            chainId: chain.chain_id(),
             gas: 12_000_000,
-            gasPrice: RemoteChain.RPC.gas_price(Chains.Moonbeam) |> Base16.decode_int(),
+            gasPrice: gas_price + div(gas_price, 10),
             value: 0,
             nonce: nonce
           )
@@ -169,15 +171,25 @@ defmodule Network.EdgeM1 do
           |> Base16.encode()
 
         tx_hash =
-          RemoteChain.Transaction.to_rlp(tx)
-          |> Rlp.encode!()
-          |> Hash.keccak_256()
+          RemoteChain.Transaction.hash(tx)
           |> Base16.encode()
 
-        case RemoteChain.RPC.send_raw_transaction(Chains.Moonbeam, payload) do
-          ^tx_hash -> response("ok", tx_hash)
-          :already_known -> response("ok", tx_hash)
-        end
+        Logger.info("Submitting RTX: #{tx_hash} (#{inspect(tx)})")
+        # We're pushing to the TxRelay keep alive server to ensure the TX
+        # is broadcasted even if the RPC connection goes down in the next call.
+        # This is so to preserve the nonce ordering if at all possible
+        RemoteChain.TxRelay.keep_alive(chain, tx, payload)
+
+        # In order to ensure delivery we're broadcasting to all known endpoints of this chain
+        spawn(fn ->
+          RemoteChain.RPC.send_raw_transaction(chain, payload)
+
+          for endpoint <- chain.rpc_endpoints() do
+            RemoteChain.HTTP.send_raw_transaction(endpoint, payload)
+          end
+        end)
+
+        response("ok", tx_hash)
 
       _ ->
         default(msg, state)
