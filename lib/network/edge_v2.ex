@@ -247,6 +247,9 @@ defmodule Network.EdgeV2 do
 
   def handle_async_msg(msg, state) do
     case msg do
+      ["glmr:" <> cmd | rest] ->
+        RemoteChain.Edge.handle_async_msg(Chains.Moonbeam, [cmd | rest], state)
+
       ["m1:" <> cmd | rest] ->
         RemoteChain.Edge.handle_async_msg(Chains.MoonbaseAlpha, [cmd | rest], state)
 
