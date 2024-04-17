@@ -270,7 +270,7 @@ defmodule Network.EdgeV2 do
            ] ->
         msg = Rlp.encode!(msg) |> Base16.encode()
 
-        RemoteChain.RPCCache.get(Chains.DiodeStaging, "dio_edgev2", [msg])
+        RemoteChain.RPCCache.rpc!(Chains.DiodeStaging, "dio_edgev2", [msg])
         |> Base16.decode()
         |> Rlp.decode!()
 

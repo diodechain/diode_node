@@ -66,7 +66,12 @@ defmodule RemoteChain.Edge do
           if code == "" do
             ""
           else
-            Hash.keccak_256("#{div(System.os_time(:second), 10)}")
+            RemoteChain.RPCCache.get_account_root(
+              chain,
+              hex_address(address),
+              hex_blockref(block)
+            )
+            |> Base16.decode()
           end
 
         response(%{
@@ -102,15 +107,13 @@ defmodule RemoteChain.Edge do
       ["getaccountvalues", block, address | keys] ->
         # requires https://eips.ethereum.org/EIPS/eip-1186
         # response(Moonbeam.proof(address, keys, blockref(block)))
-        Enum.map(keys, fn key ->
-          RemoteChain.RPCCache.get_storage_at(
-            chain,
-            hex_address(address),
-            hex_key(key),
-            hex_blockref(block)
-          )
-          |> Base16.decode()
-        end)
+        RemoteChain.RPCCache.get_storage_many(
+          chain,
+          hex_address(address),
+          Enum.map(keys, &hex_key/1),
+          hex_blockref(block)
+        )
+        |> Enum.map(&Base16.decode/1)
         |> response()
 
       ["sendtransaction", _tx] ->
@@ -201,7 +204,14 @@ defmodule RemoteChain.Edge do
   end
 
   defp hex_blockref(ref) when ref in ["latest", "earliest"], do: ref
-  defp hex_blockref(ref), do: Base16.encode(ref)
+
+  defp hex_blockref(ref) do
+    case Base16.encode(ref) do
+      "0x" -> "0x0"
+      "0x0" <> rest -> "0x" <> rest
+      other -> other
+    end
+  end
 
   defp hex_address(<<_::binary-size(20)>> = address) do
     Base16.encode(address)

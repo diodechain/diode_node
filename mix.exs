@@ -1,6 +1,12 @@
 # Diode Server
 # Copyright 2021-2024 Diode
 # Licensed under the Diode License, Version 1.1
+
+if String.to_integer(System.otp_release()) < 25 do
+  IO.puts("this package requires OTP 25.")
+  raise "incorrect OTP"
+end
+
 defmodule Diode.Mixfile do
   use Mix.Project
 
@@ -11,7 +17,7 @@ defmodule Diode.Mixfile do
   def project do
     [
       aliases: aliases(),
-      app: Diode,
+      app: :diode,
       compilers: Mix.compilers(),
       deps: deps(),
       description: "Diode Network Traffic Relay Node implementation",
@@ -75,19 +81,19 @@ defmodule Diode.Mixfile do
       {:debouncer, "~> 0.1"},
       {:ex_doc, "~> 0.28", only: :dev, runtime: false},
       {:keccakf1600, github: "diodechain/erlang-keccakf1600"},
+      {:eblake2, "~> 1.0"},
       {:libsecp256k1, github: "diodechain/libsecp256k1"},
       {:plug_cowboy, "~> 2.5"},
       {:poison, "~> 3.0"},
       {:profiler, github: "dominicletz/profiler"},
       {:exqlite, "~> 0.17"},
-      {:niffler, "~> 0.1"},
       {:httpoison, "~> 2.0"},
       {:oncrash, "~> 0.0"},
 
       # linting
       {:dialyxir, "~> 1.1", only: [:dev], runtime: false},
       {:credo, "~> 1.5", only: [:dev, :test], runtime: false},
-      {:while, "~> 0.1", only: [:test], runtime: false}
+      {:while, "~> 0.2", only: [:test], runtime: false}
     ]
   end
 end

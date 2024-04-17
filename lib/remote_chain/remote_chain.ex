@@ -52,5 +52,6 @@ defmodule RemoteChain do
     def chainimpl(unquote(chain)), do: unquote(chain)
   end
 
+  def chainimpl(module) when is_atom(module), do: module
   def chainimpl(other), do: raise("Unknown chain #{inspect(other)}")
 end
