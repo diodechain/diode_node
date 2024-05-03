@@ -39,6 +39,7 @@ defmodule RemoteChain.RPCCache do
 
   def get_block_by_number(chain, block \\ "latest", with_transactions \\ false) do
     block = resolve_block(chain, block)
+    IO.inspect({chain, block, with_transactions}, label: "get_block_by_number")
     rpc!(chain, "eth_getBlockByNumber", [block, with_transactions])
   end
 

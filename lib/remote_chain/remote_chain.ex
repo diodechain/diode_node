@@ -10,7 +10,12 @@ defmodule RemoteChain do
     do: chainimpl(chain_id).epoch(number || peaknumber(chain_id))
 
   def epoch_progress(chain_id, number), do: chainimpl(chain_id).epoch_progress(number)
-  def block(chain_id, number), do: RemoteChain.RPCCache.get_block_by_number(chain_id, number)
+
+  def block(chain_id, number),
+    do:
+      RemoteChain.RPCCache.get_block_by_number(chain_id, number)
+      |> IO.inspect(label: "block(#{chain_id}, #{number})")
+
   def blockhash(chain_id, number), do: block(chain_id, number)["hash"] |> Base16.decode()
   def blocktime(chain_id, number), do: block(chain_id, number)["timestamp"] |> Base16.decode_int()
   def peaknumber(chain_id), do: RemoteChain.RPCCache.block_number(chain_id)
@@ -31,7 +36,6 @@ defmodule RemoteChain do
 
   @all_chains [
     Chains.DiodeDev,
-    Chains.Anvil,
     Chains.Moonriver | @chains
   ]
 

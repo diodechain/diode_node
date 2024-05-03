@@ -3,14 +3,14 @@
 # Licensed under the Diode License, Version 1.1
 defmodule TransactionTest do
   use ExUnit.Case
-  alias Chain.Transaction
+  alias RemoteChain.Transaction
   import TestHelper
 
   test "recoding" do
     [from, to] = Diode.wallets() |> Enum.reverse() |> Enum.take(2)
 
     nonce =
-      Chain.RPC.get_transaction_count(chain(), Wallet.address!(from) |> Base16.encode())
+      RemoteChain.RPC.get_transaction_count(chain(), Wallet.address!(from) |> Base16.encode())
       |> Base16.decode_int()
 
     to = Wallet.address!(to)

@@ -1,6 +1,7 @@
 # Diode Server
 # Copyright 2021-2024 Diode
 # Licensed under the Diode License, Version 1.1
+File.rm_rf("data_test")
 ExUnit.start(seed: 0)
 
 defmodule ChainAgent do
@@ -50,7 +51,7 @@ defmodule ChainAgent do
       IO.inspect(wallets, label: "wallets")
 
       # IO.puts(out)
-      # Chain.RPC.rpc!(Chains.Anvil, "evm_setAutomine", [true])
+      # RemoteChain.RPC.rpc!(Chains.Anvil, "evm_setAutomine", [true])
       IO.puts("Anvil started")
       state
     else
@@ -83,9 +84,9 @@ defmodule TestHelper do
   @chain Chains.Anvil
 
   def chain(), do: @chain
-  def peaknumber(), do: Chain.peaknumber(@chain)
-  def developer_fleet_address(), do: Chain.developer_fleet_address(@chain)
-  def epoch(), do: Chain.epoch(@chain)
+  def peaknumber(), do: RemoteChain.peaknumber(@chain)
+  def developer_fleet_address(), do: RemoteChain.developer_fleet_address(@chain)
+  def epoch(), do: RemoteChain.epoch(@chain)
 
   def reset() do
     kill_clones()
@@ -96,7 +97,8 @@ defmodule TestHelper do
 
   def restart_chain() do
     chaintask =
-      Process.whereis(Chain.Anvil) || elem(GenServer.start(ChainAgent, [], name: Chain.Anvil), 1)
+      Process.whereis(RemoteChain.Anvil) ||
+        elem(GenServer.start(ChainAgent, [], name: RemoteChain.Anvil), 1)
 
     GenServer.call(chaintask, :restart)
   end
@@ -279,6 +281,22 @@ defmodule TestHelper do
         Process.sleep(1000)
         wait_for(fun, comment, timeout - 1)
     end
+  end
+
+  def deploy_contract(name) do
+    key = System.get_env("WALLETS") |> Enum.split(" ") |> hd()
+
+    {text, 0} =
+      System.cmd("forge", [
+        "create",
+        "--rpc-url",
+        "http://localhost:8545",
+        "--private-key",
+        key,
+        "contract_src/#{name}.sol:#{name}"
+      ])
+
+    IO.puts(text)
   end
 end
 

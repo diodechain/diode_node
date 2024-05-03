@@ -23,14 +23,19 @@ defmodule Shell do
   end
 
   def submit_tx(tx) do
-    id = RemoteChain.Transaction.chain_id(tx)
+    id =
+      RemoteChain.Transaction.chain_id(tx)
+      |> IO.inspect(label: "chain_id")
+
     hex = RemoteChain.Transaction.to_rlp(tx) |> Rlp.encode!() |> Base16.encode()
     RemoteChain.RPC.send_raw_transaction(id, hex)
   end
 
   def await_tx(tx) do
-    submit_tx(tx)
-    |> IO.inspect()
+    case submit_tx(tx) do
+      tx_id when is_binary(tx_id) -> tx_id
+      error -> raise "Failed to submit transaction: #{inspect(error)}"
+    end
   end
 
   def call_tx(_tx, _blockRef) do
@@ -55,7 +60,6 @@ defmodule Shell do
     opts =
       opts
       |> Keyword.put_new(:gas, 10_000_000)
-      |> Keyword.put_new(:gasPrice, 0)
       |> Enum.map(fn {key, value} -> {Atom.to_string(key), value} end)
       |> Map.new()
 

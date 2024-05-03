@@ -4,7 +4,7 @@
 defmodule RpcTest do
   use ExUnit.Case, async: false
   import TestHelper
-  alias Chain.Transaction
+  alias RemoteChain.Transaction
   alias Network.Rpc
 
   setup_all do
@@ -66,14 +66,13 @@ defmodule RpcTest do
 
   defp prepare_transaction() do
     [from, to] = Diode.wallets() |> Enum.reverse() |> Enum.take(2)
-    # Worker.set_mode(:disabled)
 
     price =
-      Chain.RPC.gas_price(chain())
+      RemoteChain.RPC.gas_price(chain())
       |> Base16.decode_int()
 
     nonce =
-      Chain.RPC.get_transaction_count(chain(), Base16.encode(Wallet.address!(from)))
+      RemoteChain.RPC.get_transaction_count(chain(), Base16.encode(Wallet.address!(from)))
       |> Base16.decode_int()
 
     tx =
@@ -88,12 +87,12 @@ defmodule RpcTest do
 
     {:ok, txhash} = rpc("eth_sendRawTransaction", [to_rlp(tx)])
     assert txhash == Base16.encode(Transaction.hash(tx))
-    Chain.RPC.rpc!(Chains.Anvil, "evm_mine")
+    RemoteChain.RPC.rpc!(Chains.Anvil, "evm_mine")
 
     tx
   end
 
   def rpc(method, params) do
-    Chain.RPC.rpc(chain(), method, params)
+    RemoteChain.RPC.rpc(chain(), method, params)
   end
 end

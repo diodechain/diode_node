@@ -82,21 +82,25 @@ defmodule Edge2Test do
     ["account does not exist"] =
       rpc(:client_1, ["getaccountroots", peaknumber(), Wallet.address!(Wallet.new())])
 
-    {addr, acc} = hd(Chain.GenesisFactory.genesis_accounts())
-
+    addr = hd(genesis_accounts())
     [ret, _proof] = rpc(:client_1, ["getaccount", peaknumber(), addr])
 
     ret = Rlpx.list2map(ret)
 
-    assert ret["code"] == Chain.Account.codehash(acc)
-    assert to_num(ret["balance"]) == acc.balance
+    assert to_num(ret["balance"]) == 100
+  end
+
+  defp genesis_accounts() do
+    System.get_env("WALLETS")
+    |> Enum.split(" ")
+    |> Enum.map(fn w -> Wallet.address!(Wallet.from_privkey(Base16.decode(w))) end)
   end
 
   test "getaccountvalue" do
     ["account does not exist"] =
       rpc(:client_1, ["getaccountvalue", peaknumber(), "01234567890123456789", 0])
 
-    {addr, _balance} = hd(Chain.GenesisFactory.genesis_accounts())
+    addr = hd(genesis_accounts())
 
     [ret] = rpc(:client_1, ["getaccountvalue", peaknumber(), addr, 0])
 
@@ -242,7 +246,7 @@ defmodule Edge2Test do
     assert [_tck2] = TicketStore.tickets(epoch())
 
     while epoch == epoch() do
-      Chain.RPC.rpc!(chain(), "evm_mine")
+      RemoteChain.RPC.rpc!(chain(), "evm_mine")
     end
 
     tx = Ticket.raw(tck) |> Contract.Registry.submit_ticket_raw_tx()
@@ -545,7 +549,6 @@ defmodule Edge2Test do
   # end
 
   test "getblockquick" do
-    for _ <- 1..50, do: Chain.Worker.work()
     peak = peaknumber()
 
     # Test blockquick with gap
@@ -589,7 +592,6 @@ defmodule Edge2Test do
   test "transaction" do
     [from, to] = Diode.wallets() |> Enum.reverse() |> Enum.take(2)
 
-    Chain.Worker.set_mode(:disabled)
     to = Wallet.address!(to)
 
     tx =
@@ -601,13 +603,12 @@ defmodule Edge2Test do
 
     ["ok"] = rpc(:client_1, ["sendtransaction", to_rlp(tx)])
 
-    Chain.Worker.set_mode(:poll)
-    Chain.Worker.work()
+    RemoteChain.RPC.rpc!(chain(), "evm_mine")
     tx
   end
 
   defp to_rlp(tx) do
-    tx |> Chain.Transaction.to_rlp() |> Rlp.encode!()
+    tx |> RemoteChain.Transaction.to_rlp() |> Rlp.encode!()
   end
 
   defp check_counters() do

@@ -13,7 +13,7 @@ host=$1
 # Just some rpc examples using curl
 # curl -X POST --data '{"jsonrpc":"2.0","method":"eth_getLogs","params":["0x16"],"id":73}' $host
 
-echo "Chain ID:"
+echo "RemoteChain ID:"
 curl -k -H "Content-Type: application/json" -X POST --data '{"jsonrpc":"2.0","method":"eth_chainId","id":73}' $host
 echo ""
 

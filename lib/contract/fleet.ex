@@ -23,7 +23,7 @@ defmodule Contract.Fleet do
       "SetDeviceAllowlist",
       ["address", "bool"],
       [address, bool],
-      chain_id: chain_id
+      chainId: chain_id
     )
   end
 

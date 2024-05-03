@@ -11,10 +11,10 @@ defmodule RegistryTest do
   import While
 
   setup_all do
-    Chain.reset_state()
+    RemoteChain.reset_state()
 
-    while peaknumber() < Chain.epoch_length() do
-      Chain.Worker.work()
+    while peaknumber() < RemoteChain.epoch_length() do
+      RemoteChain.RPC.rpc!(chain(), "evm_mine")
     end
 
     :ok
@@ -27,7 +27,7 @@ defmodule RegistryTest do
         total_connections: 1,
         total_bytes: 0,
         local_address: "spam",
-        block_number: peaknumber() + Chain.epoch_length(),
+        block_number: peaknumber() + RemoteChain.epoch_length(),
         fleet_contract: <<0::unsigned-size(160)>>,
         device_signature: Secp256k1.sign(clientkey(1), Hash.sha3_256("random"))
       )
@@ -47,7 +47,7 @@ defmodule RegistryTest do
         total_connections: 1,
         total_bytes: 0,
         local_address: "spam",
-        block_number: peaknumber() - Chain.epoch_length(),
+        block_number: peaknumber() - RemoteChain.epoch_length(),
         fleet_contract: <<0::unsigned-size(160)>>
       )
       |> Ticket.device_sign(clientkey(1))
@@ -59,15 +59,15 @@ defmodule RegistryTest do
 
   test "unregistered device" do
     # Ensuring queue is empty
-    Chain.Worker.work()
+    RemoteChain.RPC.rpc!(chain(), "evm_mine")
 
     # Creating new tx
     op = ac = Wallet.address!(Diode.miner())
     fleet_tx = Fleet.deploy_new(op, ac)
-    Chain.Pool.add_transaction(fleet_tx)
-    Chain.Worker.work()
+    RemoteChain.Pool.add_transaction(fleet_tx)
+    RemoteChain.RPC.rpc!(chain(), "evm_mine")
 
-    fleet = Chain.Transaction.new_contract_address(fleet_tx)
+    fleet = RemoteChain.Transaction.new_contract_address(fleet_tx)
     IO.puts("fleet: #{Base16.encode(fleet)}")
 
     client = clientid(1)
@@ -81,7 +81,7 @@ defmodule RegistryTest do
         total_connections: 1,
         total_bytes: 0,
         local_address: "spam",
-        block_number: peaknumber() - Chain.epoch_length(),
+        block_number: peaknumber() - RemoteChain.epoch_length(),
         fleet_contract: fleet
       )
       |> Ticket.device_sign(clientkey(1))
@@ -94,8 +94,8 @@ defmodule RegistryTest do
 
     # Now registering device
     tx = Fleet.set_device_allowlist(fleet, client, true)
-    Chain.Pool.add_transaction(tx)
-    Chain.Worker.work()
+    RemoteChain.Pool.add_transaction(tx)
+    RemoteChain.RPC.rpc!(chain(), "evm_mine")
 
     assert Fleet.device_allowlisted?(fleet, client) == true
 
@@ -105,7 +105,7 @@ defmodule RegistryTest do
         total_connections: 1,
         total_bytes: 0,
         local_address: "spam",
-        block_number: peaknumber() - Chain.epoch_length(),
+        block_number: peaknumber() - RemoteChain.epoch_length(),
         fleet_contract: fleet
       )
       |> Ticket.device_sign(clientkey(1))
@@ -124,7 +124,7 @@ defmodule RegistryTest do
         total_connections: 1,
         total_bytes: 0,
         local_address: "spam",
-        block_number: peaknumber() - Chain.epoch_length(),
+        block_number: peaknumber() - RemoteChain.epoch_length(),
         fleet_contract: Diode.fleet_address()
       )
       |> Ticket.device_sign(clientkey(1))

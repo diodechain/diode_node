@@ -202,39 +202,44 @@ defmodule Network.Rpc do
   def create_transaction(wallet, data, opts \\ %{}, sign \\ true) do
     # from = Wallet.address!(wallet)
 
-    gas = Map.get(opts, "gas", 0x15F90)
-    gas_price = Map.get(opts, "gasPrice", 0x3B9ACA00)
-    value = Map.get(opts, "value", 0x0)
+    {gas, opts} = Map.pop(opts, "gas", 0x15F90)
+    {value, opts} = Map.pop(opts, "value", 0x0)
     # blockRef = Map.get(opts, "blockRef", "latest")
-    chain_id = Map.get(opts, "chainId")
-    nonce = Map.get(opts, "nonce")
+    {chain_id, opts} = Map.pop(opts, "chainId")
+    {nonce, opts} = Map.pop(opts, "nonce")
+    {to, opts} = Map.pop(opts, "to")
+    {gas_price, opts} = Map.pop(opts, "gasPrice", nil)
+
+    gas_price =
+      if gas_price == nil and chain_id != nil do
+        RemoteChain.RPC.gas_price(chain_id)
+        |> Base16.decode_int()
+      else
+        gas_price
+      end
+
+    nonce =
+      if nonce == nil do
+        RemoteChain.RPC.get_transaction_count(chain_id, Base16.encode(Wallet.address!(wallet)))
+        |> Base16.decode_int()
+      end
+
+    if map_size(opts) > 0 do
+      raise "Unhandled create_transaction(opts): #{inspect(opts)}"
+    end
 
     tx =
-      case Map.get(opts, "to") do
-        nil ->
-          # Contract creation
-          %RemoteChain.Transaction{
-            to: nil,
-            nonce: nonce,
-            gasPrice: gas_price,
-            gasLimit: gas,
-            init: data,
-            value: value,
-            chain_id: chain_id
-          }
-
-        to ->
-          # Normal transaction
-          %RemoteChain.Transaction{
-            to: to,
-            nonce: nonce,
-            gasPrice: gas_price,
-            gasLimit: gas,
-            data: data,
-            value: value,
-            chain_id: chain_id
-          }
-      end
+      %RemoteChain.Transaction{
+        to: to,
+        nonce: nonce,
+        gasPrice: gas_price,
+        gasLimit: gas,
+        init: if(to == nil, do: data),
+        data: if(to != nil, do: data),
+        value: value,
+        chain_id: chain_id
+      }
+      |> IO.inspect(label: "create_transaction")
 
     if sign do
       RemoteChain.Transaction.sign(tx, Wallet.privkey!(wallet))
