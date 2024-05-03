@@ -4,10 +4,19 @@
 defmodule RemoteChain.RPCCache do
   use GenServer, restart: :permanent
   require Logger
+  # alias RemoteChain.RPC
   alias RemoteChain.NodeProxy
   alias RemoteChain.RPCCache
 
-  defstruct [:chain, :lru, :block_number, :request_rpc, :request_from, :request_collection]
+  defstruct [
+    :chain,
+    :lru,
+    :block_number,
+    :request_rpc,
+    :request_from,
+    :request_collection,
+    :block_number_requests
+  ]
 
   def start_link(chain) do
     GenServer.start_link(__MODULE__, chain, name: name(chain), hibernate_after: 5_000)
@@ -22,7 +31,8 @@ defmodule RemoteChain.RPCCache do
        block_number: nil,
        request_rpc: %{},
        request_from: %{},
-       request_collection: :gen_server.reqids_new()
+       request_collection: :gen_server.reqids_new(),
+       block_number_requests: []
      }}
   end
 
@@ -32,15 +42,16 @@ defmodule RemoteChain.RPCCache do
 
   def block_number(chain) do
     case GenServer.call(name(chain), :block_number) do
-      nil -> raise "no block_number yet"
-      number -> number
+      number when number != nil -> number
     end
   end
 
   def get_block_by_number(chain, block \\ "latest", with_transactions \\ false) do
     block = resolve_block(chain, block)
     IO.inspect({chain, block, with_transactions}, label: "get_block_by_number")
+
     rpc!(chain, "eth_getBlockByNumber", [block, with_transactions])
+    |> IO.inspect(label: "get_block_by_number")
   end
 
   def get_storage_at(chain, address, slot, block \\ "latest") do
@@ -145,11 +156,26 @@ defmodule RemoteChain.RPCCache do
   end
 
   @impl true
-  def handle_cast({:block_number, block_number}, state) do
-    {:noreply, %RPCCache{state | block_number: block_number}}
+  def handle_cast(
+        {:block_number, block_number},
+        state = %RPCCache{block_number_requests: requests}
+      ) do
+    for from <- requests do
+      GenServer.reply(from, block_number)
+    end
+
+    {:noreply, %RPCCache{state | block_number: block_number, block_number_requests: []}}
   end
 
   @impl true
+  def handle_call(
+        :block_number,
+        from,
+        state = %RPCCache{block_number: nil, block_number_requests: requests}
+      ) do
+    {:noreply, %RPCCache{state | block_number_requests: [from | requests]}}
+  end
+
   def handle_call(:block_number, _from, state = %RPCCache{block_number: number}) do
     {:reply, number, state}
   end

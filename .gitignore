@@ -4,6 +4,8 @@
 /deps
 /*.ez
 /doc
+/out
+/cache
 
 *.pem
 *.o

@@ -1,6 +1,7 @@
 # Diode Server
 # Copyright 2021-2024 Diode
 # Licensed under the Diode License, Version 1.1
+System.cmd("killall", ["anvil", "-w"])
 File.rm_rf("data_test")
 ExUnit.start(seed: 0)
 

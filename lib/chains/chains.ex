@@ -162,6 +162,43 @@ defmodule Chains.Anvil do
     do: ["ws://localhost:8545"]
 
   def registry_address(), do: Base16.decode("0xEb0aDCd736Ae9341DFb635759C5D7D6c2D51B673")
-  def developer_fleet_address(), do: Base16.decode("0x6000000000000000000000000000000000000000")
+  def developer_fleet_address(), do: ensure_contract("DevFleetContract", [wallet_address()])
+
+  def wallet_address() do
+    System.get_env("WALLETS")
+    |> String.split(" ")
+    |> hd()
+    |> Base16.decode()
+    |> Wallet.from_privkey()
+    |> Wallet.address!()
+    |> Base16.encode()
+  end
+
+  def ensure_contract(name, args) do
+    case :persistent_term.get({__MODULE__, name}, nil) do
+      nil ->
+        key = System.get_env("WALLETS") |> String.split(" ") |> hd()
+
+        {text, 0} =
+          System.cmd("forge", [
+            "create",
+            "--rpc-url",
+            "http://localhost:8545",
+            "--private-key",
+            key,
+            "test/contract_src/#{name}.sol:#{name}",
+            "--constructor-args" | args
+          ])
+
+        [_, address] = Regex.run(~r/Deployed to: (0x.{40})/, text)
+        address = Base16.decode(address)
+        :persistent_term.put({__MODULE__, name}, address)
+        address
+
+      value ->
+        value
+    end
+  end
+
   def transaction_hash(), do: &Hash.keccak_256/1
 end
