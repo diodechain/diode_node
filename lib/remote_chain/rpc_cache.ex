@@ -61,7 +61,14 @@ defmodule RemoteChain.RPCCache do
 
       {:error, reason} ->
         raise "Batch error in get_storage_many(#{inspect({chain, address, slots, block})}): #{inspect(reason)}"
+
+      :timeout ->
+        raise "Timeout error in get_storage_many(#{inspect({chain, address, slots, block})})"
     end)
+  end
+
+  def call(chain, to, from, data, block \\ "latest") do
+    rpc!(chain, "eth_call", [%{to: to, data: data, from: from}, block])
   end
 
   def get_code(chain, address, block \\ "latest") do

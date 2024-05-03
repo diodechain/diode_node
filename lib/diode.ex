@@ -105,9 +105,16 @@ defmodule Diode do
 
   def start_worker(module, args) do
     puts("Starting #{module}...")
-    {t, ret} = :timer.tc(module, :start_link, args)
-    puts("=======> #{module} loaded after #{Float.round(t / 1_000_000, 3)}s")
-    ret
+
+    case :timer.tc(module, :start_link, args) do
+      {t, {:ok, pid}} ->
+        puts("=======> #{module} loaded after #{Float.round(t / 1_000_000, 3)}s")
+        {:ok, pid}
+
+      {_t, other} ->
+        puts("=======> #{module} failed with: #{inspect(other)}")
+        other
+    end
   end
 
   def start_subwork(label, fun) do
