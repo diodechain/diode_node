@@ -38,7 +38,7 @@ defmodule KBuckets do
   @one <<1::size(1)>>
 
   def new() do
-    self_id = Diode.miner()
+    self_id = Diode.wallet()
 
     {:kbucket, self_id,
      {:leaf, "",
@@ -356,7 +356,7 @@ defmodule KBuckets do
   end
 
   def is_self(%Item{node_id: node_id}) do
-    Wallet.equal?(node_id, Diode.miner())
+    Wallet.equal?(node_id, Diode.wallet())
   end
 
   def is_self(bucket) do

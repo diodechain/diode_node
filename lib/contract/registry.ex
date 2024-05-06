@@ -39,7 +39,7 @@ defmodule Contract.Registry do
 
   def submit_ticket_raw_tx(ticket = [chain_id | _]) do
     Shell.transaction(
-      Diode.miner(),
+      Diode.wallet(),
       RemoteChain.registry_address(chain_id),
       "SubmitTicketRaw",
       ["bytes32[]"],

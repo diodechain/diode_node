@@ -23,7 +23,7 @@ defmodule RegistryTest do
   test "future ticket" do
     tck =
       ticketv1(
-        server_id: Wallet.address!(Diode.miner()),
+        server_id: Wallet.address!(Diode.wallet()),
         total_connections: 1,
         total_bytes: 0,
         local_address: "spam",
@@ -43,7 +43,7 @@ defmodule RegistryTest do
   test "zero ticket" do
     tck =
       ticketv1(
-        server_id: Wallet.address!(Diode.miner()),
+        server_id: Wallet.address!(Diode.wallet()),
         total_connections: 1,
         total_bytes: 0,
         local_address: "spam",
@@ -62,7 +62,7 @@ defmodule RegistryTest do
     RemoteChain.RPC.rpc!(chain(), "evm_mine")
 
     # Creating new tx
-    op = ac = Wallet.address!(Diode.miner())
+    op = ac = Wallet.address!(Diode.wallet())
     fleet_tx = Fleet.deploy_new(op, ac)
     RemoteChain.Pool.add_transaction(fleet_tx)
     RemoteChain.RPC.rpc!(chain(), "evm_mine")
@@ -77,7 +77,7 @@ defmodule RegistryTest do
 
     tck =
       ticketv1(
-        server_id: Wallet.address!(Diode.miner()),
+        server_id: Wallet.address!(Diode.wallet()),
         total_connections: 1,
         total_bytes: 0,
         local_address: "spam",
@@ -101,7 +101,7 @@ defmodule RegistryTest do
 
     tck =
       ticketv1(
-        server_id: Wallet.address!(Diode.miner()),
+        server_id: Wallet.address!(Diode.wallet()),
         total_connections: 1,
         total_bytes: 0,
         local_address: "spam",
@@ -120,7 +120,7 @@ defmodule RegistryTest do
 
     tck =
       ticketv1(
-        server_id: Wallet.address!(Diode.miner()),
+        server_id: Wallet.address!(Diode.wallet()),
         total_connections: 1,
         total_bytes: 0,
         local_address: "spam",

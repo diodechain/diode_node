@@ -212,8 +212,8 @@ defmodule Diode do
     Hash.sha3_256(bin)
   end
 
-  @spec miner() :: Wallet.t()
-  def miner() do
+  @spec wallet() :: Wallet.t()
+  def wallet() do
     Model.CredSql.wallet()
   end
 
@@ -320,7 +320,7 @@ defmodule Diode do
       ["uptime", Diode.uptime()],
       ["time", System.os_time()]
     ])
-    |> Object.Server.sign(Wallet.privkey!(Diode.miner()))
+    |> Object.Server.sign(Wallet.privkey!(Diode.wallet()))
   end
 
   def get_env(name, default \\ nil) do

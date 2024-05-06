@@ -23,7 +23,7 @@ defmodule Contract.BNS do
   def crash() do
     code = Base16.decode(crash_data())
 
-    Shell.raw(Diode.miner(), code, [{:to, address()}])
+    Shell.raw(Diode.wallet(), code, [{:to, address()}])
     |> Shell.call_tx("latest")
   end
 

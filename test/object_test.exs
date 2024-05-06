@@ -11,21 +11,21 @@ defmodule ObjectTest do
   test "forward/backward compatibility" do
     classic =
       {:server, "host", 1, 2, "a", "signature"}
-      |> Object.Server.sign(Wallet.privkey!(Diode.miner()))
+      |> Object.Server.sign(Wallet.privkey!(Diode.wallet()))
 
     assert Server.host(classic) == "host"
     assert Server.edge_port(classic) == 1
     assert Server.peer_port(classic) == 2
-    assert Server.key(classic) == Wallet.address!(Diode.miner())
+    assert Server.key(classic) == Wallet.address!(Diode.wallet())
 
     extended =
       {:server, "host", 1, 2, "a", "b", "c", "signature"}
-      |> Object.Server.sign(Wallet.privkey!(Diode.miner()))
+      |> Object.Server.sign(Wallet.privkey!(Diode.wallet()))
 
     assert Server.host(extended) == "host"
     assert Server.edge_port(extended) == 1
     assert Server.peer_port(extended) == 2
-    assert Server.key(extended) == Wallet.address!(Diode.miner())
+    assert Server.key(extended) == Wallet.address!(Diode.wallet())
   end
 
   test "encode/decode compat" do

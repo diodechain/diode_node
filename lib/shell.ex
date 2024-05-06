@@ -6,7 +6,7 @@ defmodule Shell do
 
   def call(chain_id, address, name, types \\ [], values \\ [], opts \\ [])
       when is_list(types) and is_list(values) do
-    call_from(chain_id, Diode.miner(), address, name, types, values, opts)
+    call_from(chain_id, Diode.wallet(), address, name, types, values, opts)
   end
 
   def call_from(chain_id, wallet, address, name, types \\ [], values \\ [], opts \\ [])

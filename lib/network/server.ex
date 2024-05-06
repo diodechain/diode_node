@@ -180,7 +180,7 @@ defmodule Network.Server do
   end
 
   def handle_call({:ensure_node_connection, node_id, address, port}, _from, state) do
-    if Wallet.equal?(Diode.miner(), node_id) do
+    if Wallet.equal?(Diode.wallet(), node_id) do
       client = Enum.find(state.self_conns, fn pid -> Process.alive?(pid) end)
 
       if client != nil do
@@ -209,7 +209,7 @@ defmodule Network.Server do
   end
 
   def handle_call({:register, node_id}, {pid, _}, state) do
-    if Wallet.equal?(Diode.miner(), node_id) do
+    if Wallet.equal?(Diode.wallet(), node_id) do
       state = %{state | self_conns: [pid | state.self_conns]}
       {:reply, {:ok, hd(state.ports)}, state}
     else
@@ -315,7 +315,7 @@ defmodule Network.Server do
     # Can be :server or :client
     role = Keyword.get(opts, :role, :server)
 
-    w = Diode.miner()
+    w = Diode.wallet()
     public = Wallet.pubkey_long!(w)
     private = Wallet.privkey!(w)
     cert = Secp256k1.selfsigned(private, public)

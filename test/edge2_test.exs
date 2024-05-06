@@ -24,6 +24,8 @@ defmodule Edge2Test do
   end
 
   setup_all do
+    spawn(Edge2Test, :tick, [])
+
     IO.puts("Starting clients")
     Diode.ticket_grace(@ticket_grace)
     :persistent_term.put(:no_tickets, false)
@@ -38,6 +40,12 @@ defmodule Edge2Test do
     end)
   end
 
+  def tick() do
+    # IO.inspect(Wallet.printable(Diode.wallet()))
+    Process.sleep(500)
+    tick()
+  end
+
   test "connect" do
     # Test that clients are connected
     assert call(:client_1, :ping) == {:ok, :pong}
@@ -48,8 +56,8 @@ defmodule Edge2Test do
     # Test that clients are connected to this node
     {:ok, peer_1} = call(:client_1, :peerid)
     {:ok, peer_2} = call(:client_2, :peerid)
-    assert Wallet.equal?(Diode.miner(), peer_1)
-    assert Wallet.equal?(Diode.miner(), peer_2)
+    assert Wallet.equal?(Diode.wallet(), peer_1)
+    assert Wallet.equal?(Diode.wallet(), peer_2)
 
     # Test that clients connected match the test file identities
     [id1, id2] = Map.keys(conns)
@@ -123,7 +131,7 @@ defmodule Edge2Test do
 
     tck =
       ticketv1(
-        server_id: Wallet.address!(Diode.miner()),
+        server_id: Wallet.address!(Diode.wallet()),
         total_connections: 1,
         total_bytes: 0,
         local_address: "spam",
@@ -175,7 +183,7 @@ defmodule Edge2Test do
     assert Ticket.device_blob(tck) == Ticket.device_blob(loc2)
 
     assert Secp256k1.verify(
-             Diode.miner(),
+             Diode.wallet(),
              Ticket.server_blob(loc2),
              Ticket.server_signature(loc2),
              :kec
@@ -184,8 +192,8 @@ defmodule Edge2Test do
     public = Secp256k1.recover!(Ticket.server_signature(loc2), Ticket.server_blob(loc2), :kec)
     id = Wallet.from_pubkey(public) |> Wallet.address!()
 
-    assert Wallet.address!(Diode.miner()) == Wallet.address!(Wallet.from_pubkey(public))
-    assert id == Wallet.address!(Diode.miner())
+    assert Wallet.address!(Diode.wallet()) == Wallet.address!(Wallet.from_pubkey(public))
+    assert id == Wallet.address!(Diode.wallet())
 
     obj = Diode.self()
     assert(Object.key(obj) == id)
@@ -222,7 +230,7 @@ defmodule Edge2Test do
 
     tck =
       ticketv1(
-        server_id: Wallet.address!(Diode.miner()),
+        server_id: Wallet.address!(Diode.wallet()),
         total_connections: 1,
         total_bytes: 0,
         local_address: "spam",
@@ -318,7 +326,7 @@ defmodule Edge2Test do
 
     ch =
       channel(
-        server_id: Wallet.address!(Diode.miner()),
+        server_id: Wallet.address!(Diode.wallet()),
         block_number: peaknumber(),
         fleet_contract: developer_fleet_address(),
         type: "broadcast",
@@ -384,7 +392,7 @@ defmodule Edge2Test do
   # test "channel-mailbox" do
   #   ch =
   #     channel(
-  #       server_id: Wallet.address!(Diode.miner()),
+  #       server_id: Wallet.address!(Diode.wallet()),
   #       block_number: peaknumber(),
   #       fleet_contract: developer_fleet_address(),
   #       type: "mailbox",

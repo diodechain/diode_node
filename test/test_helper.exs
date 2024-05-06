@@ -43,7 +43,12 @@ defmodule ChainAgent do
           |> Wallet.from_privkey()
         end
 
+      # SSL Servers already started here
       Model.CredSql.set_wallet(hd(wallets))
+      Supervisor.terminate_child(Diode.Supervisor, Network.EdgeV2)
+      Supervisor.terminate_child(Diode.Supervisor, Network.PeerHandler)
+      Supervisor.restart_child(Diode.Supervisor, Network.EdgeV2)
+      Supervisor.restart_child(Diode.Supervisor, Network.PeerHandler)
 
       wallets = Enum.map(wallets, fn w -> Base16.encode(Wallet.privkey!(w)) end) |> Enum.join(" ")
       System.put_env("WALLETS", wallets)

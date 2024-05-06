@@ -8,7 +8,7 @@ defmodule KBucketsTest do
 
   setup do
     # Setting
-    # before = Diode.miner()
+    # before = Diode.wallet()
     Model.CredSql.set_wallet(node_id("abcd"))
   end
 

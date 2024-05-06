@@ -39,7 +39,7 @@ defmodule Model.CredSql do
     end
 
     Diode.puts("====== Coinbase ======")
-    Diode.puts("#{Wallet.printable(Diode.miner())}")
+    Diode.puts("#{Wallet.printable(Diode.wallet())}")
     Diode.puts("")
 
     {:ok, %{}}

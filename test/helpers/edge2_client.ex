@@ -86,7 +86,7 @@ defmodule Edge2Client do
 
     tck =
       ticketv1(
-        server_id: Wallet.address!(Diode.miner()),
+        server_id: Wallet.address!(Diode.wallet()),
         total_connections: state.conns,
         total_bytes: paid_bytes + @ticket_grace * count,
         local_address: "spam",

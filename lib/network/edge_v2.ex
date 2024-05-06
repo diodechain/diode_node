@@ -171,7 +171,7 @@ defmodule Network.EdgeV2 do
 
       ["ticket" | [block, fleet, total_connections, total_bytes, local_address, device_signature]] ->
         ticketv1(
-          server_id: Wallet.address!(Diode.miner()),
+          server_id: Wallet.address!(Diode.wallet()),
           fleet_contract: fleet,
           total_connections: to_num(total_connections),
           total_bytes: to_num(total_bytes),
@@ -195,7 +195,7 @@ defmodule Network.EdgeV2 do
       ] ->
         ticketv2(
           chain_id: to_num(chain_id),
-          server_id: Wallet.address!(Diode.miner()),
+          server_id: Wallet.address!(Diode.wallet()),
           fleet_contract: fleet,
           total_connections: to_num(total_connections),
           total_bytes: to_num(total_bytes),
@@ -286,7 +286,7 @@ defmodule Network.EdgeV2 do
           obj =
             channel(
               chain_id: to_num(chain_id),
-              server_id: Diode.miner() |> Wallet.address!(),
+              server_id: Diode.wallet() |> Wallet.address!(),
               block_number: to_num(block_number),
               fleet_contract: fleet,
               type: type,
@@ -514,7 +514,7 @@ defmodule Network.EdgeV2 do
       #   error("device not whitelisted")
 
       true ->
-        dl = Ticket.server_sign(dl, Wallet.privkey!(Diode.miner()))
+        dl = Ticket.server_sign(dl, Wallet.privkey!(Diode.wallet()))
         ret = TicketStore.add(dl, device_id(state))
 
         # address = Ticket.device_address(dl)
@@ -587,7 +587,7 @@ defmodule Network.EdgeV2 do
 
         Object.Channel.server_id(channel)
         |> Wallet.from_address()
-        |> Wallet.equal?(Diode.miner())
+        |> Wallet.equal?(Diode.wallet())
         |> if do
           pid = Channels.ensure(channel)
           local_portopen(device_address(state), state.pid, portname, flags, pid, ref)

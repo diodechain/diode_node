@@ -9,7 +9,7 @@ defmodule Contract.Fleet do
 
   # def deploy_new(operator, accountant) do
   #   Shell.constructor(
-  #     Diode.miner(),
+  #     Diode.wallet(),
   #     deployment_code(),
   #     ["address", "address", "address"],
   #     [Diode.registry_address(), operator, accountant]
@@ -18,7 +18,7 @@ defmodule Contract.Fleet do
 
   def set_device_allowlist(chain_id, fleet, address, bool) when is_boolean(bool) do
     Shell.transaction(
-      Diode.miner(),
+      Diode.wallet(),
       fleet,
       "SetDeviceAllowlist",
       ["address", "bool"],
