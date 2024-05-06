@@ -14,6 +14,9 @@ config :logger,
 config :logger, :console, format: "$time $metadata[$level] $message\n"
 
 if Mix.env() == :test do
+  {_, _} = System.cmd("killall", ["anvil", "-w"])
+  File.rm_rf("data_test")
+
   if System.get_env("RPC_PORT") == nil do
     System.put_env("RPC_PORT", "18001")
     System.put_env("EDGE2_PORT", "18003")

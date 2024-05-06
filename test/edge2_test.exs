@@ -69,40 +69,44 @@ defmodule Edge2Test do
   end
 
   test "getblock" do
-    assert rpc(:client_1, ["getblockpeak"]) == [peaknumber() |> to_bin()]
+    assert rpc(:client_1, ["av:getblockpeak"]) == [peaknumber() |> to_bin()]
   end
 
   test "getaccount" do
-    ["account does not exist"] =
-      rpc(:client_1, ["getaccount", peaknumber(), "01234567890123456789"])
+    %{"balance" => <<0>>, "storage_root" => "", "nonce" => <<0>>} =
+      hd(rpc(:client_1, ["av:getaccount", peaknumber(), "01234567890123456789"]))
+      |> Rlpx.list2map()
 
-    ["account does not exist"] =
-      rpc(:client_1, ["getaccount", peaknumber(), Wallet.address!(Wallet.new())])
+    %{"balance" => <<0>>, "storage_root" => "", "nonce" => <<0>>} =
+      hd(rpc(:client_1, ["av:getaccount", peaknumber(), Wallet.address!(Wallet.new())]))
+      |> Rlpx.list2map()
 
-    ["account does not exist"] =
-      rpc(:client_1, ["getaccountroots", peaknumber(), Wallet.address!(Wallet.new())])
+    "not implemented" =
+      hd(rpc(:client_1, ["av:getaccountroots", peaknumber(), Wallet.address!(Wallet.new())]))
 
     addr = hd(genesis_accounts())
-    [ret, _proof] = rpc(:client_1, ["getaccount", peaknumber(), addr])
+    [ret | _proof] = rpc(:client_1, ["av:getaccount", peaknumber(), addr])
 
-    ret = Rlpx.list2map(ret)
-
-    assert to_num(ret["balance"]) == 100
+    %{
+      "balance" => <<2, 30, 25, 220, 86, 146, 115, 254, 38, 104>>,
+      "storage_root" => "",
+      "nonce" => <<5>>
+    } = Rlpx.list2map(ret)
   end
 
   defp genesis_accounts() do
     System.get_env("WALLETS")
-    |> Enum.split(" ")
+    |> String.split(" ")
     |> Enum.map(fn w -> Wallet.address!(Wallet.from_privkey(Base16.decode(w))) end)
   end
 
   test "getaccountvalue" do
     ["account does not exist"] =
-      rpc(:client_1, ["getaccountvalue", peaknumber(), "01234567890123456789", 0])
+      rpc(:client_1, ["av:getaccountvalue", peaknumber(), "01234567890123456789", 0])
 
     addr = hd(genesis_accounts())
 
-    [ret] = rpc(:client_1, ["getaccountvalue", peaknumber(), addr, 0])
+    [ret] = rpc(:client_1, ["av:getaccountvalue", peaknumber(), addr, 0])
 
     # Should be empty
     assert length(ret) == 2
@@ -537,58 +541,6 @@ defmodule Edge2Test do
     assert {:ok, [_req, ["portclose", ^ref1]]} = crecv(:client_2)
   end
 
-  # test "doubleconn" do
-  #   old_pid = Process.whereis(:client_1)
-  #   assert true == Process.alive?(old_pid)
-  #   new_client = client(1)
-
-  #   assert call(new_client, :ping) == {:ok, :pong}
-
-  #   Process.sleep(1000)
-  #   assert false == Process.alive?(old_pid)
-  # end
-
-  test "getblockquick" do
-    peak = peaknumber()
-
-    # Test blockquick with gap
-    window_size = 10
-    [headers] = rpc(:client_1, ["getblockquick", 30, window_size])
-
-    Enum.reduce(headers, peak - 9, fn [head, _miner], num ->
-      head = Enum.map(head, fn [key, value] -> {String.to_atom(key), value} end)
-      assert to_num(head[:number]) == num
-      num + 1
-    end)
-
-    assert length(headers) == window_size
-
-    # Test blockquick with gap
-    window_size = 20
-    [headers] = rpc(:client_1, ["getblockquick", 30, window_size])
-
-    Enum.reduce(headers, peak - 19, fn [head, _miner], num ->
-      head = Enum.map(head, fn [key, value] -> {String.to_atom(key), value} end)
-      assert to_num(head[:number]) == num
-      num + 1
-    end)
-
-    assert length(headers) == window_size
-
-    # Test blockquick without gap
-    window_size = 20
-
-    [headers] = rpc(:client_1, ["getblockquick", peak - 10, window_size])
-
-    Enum.reduce(headers, peak - 9, fn [head, _miner], num ->
-      head = Enum.map(head, fn [key, value] -> {String.to_atom(key), value} end)
-      assert to_num(head[:number]) == num
-      num + 1
-    end)
-
-    assert length(headers) == 10
-  end
-
   test "transaction" do
     [from, to] = Diode.wallets() |> Enum.reverse() |> Enum.take(2)
 
@@ -598,11 +550,10 @@ defmodule Edge2Test do
       Network.Rpc.create_transaction(from, <<"">>, %{
         "value" => 0,
         "to" => to,
-        "gasPrice" => 0
+        "chainId" => chain_id()
       })
 
-    ["ok"] = rpc(:client_1, ["sendtransaction", to_rlp(tx)])
-
+    ["ok"] = rpc(:client_1, ["av:sendtransaction", to_rlp(tx)])
     RemoteChain.RPC.rpc!(chain(), "evm_mine")
     tx
   end

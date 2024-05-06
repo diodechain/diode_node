@@ -46,10 +46,10 @@ defmodule KademliaTest do
           GenServer.call(pid, {:rpc, [PeerHandler.ping()]}, 15_000)
         rescue
           _error ->
-            IO.inspect(Process.info(pid, :current_stacktrace), label: "stacktrace")
+            IO.puts(inspect(Process.info(pid, :current_stacktrace)))
         catch
           _type, _error ->
-            IO.inspect(Process.info(pid, :current_stacktrace), label: "stacktrace")
+            IO.puts(inspect(Process.info(pid, :current_stacktrace)))
         end
 
       assert ret == [PeerHandler.pong()]

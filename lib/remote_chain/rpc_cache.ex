@@ -48,10 +48,7 @@ defmodule RemoteChain.RPCCache do
 
   def get_block_by_number(chain, block \\ "latest", with_transactions \\ false) do
     block = resolve_block(chain, block)
-    IO.inspect({chain, block, with_transactions}, label: "get_block_by_number")
-
     rpc!(chain, "eth_getBlockByNumber", [block, with_transactions])
-    |> IO.inspect(label: "get_block_by_number")
   end
 
   def get_storage_at(chain, address, slot, block \\ "latest") do
@@ -147,8 +144,13 @@ defmodule RemoteChain.RPCCache do
   end
 
   def rpc!(chain, method, params) do
-    %{"result" => ret} = rpc(chain, method, params)
-    ret
+    case rpc(chain, method, params) do
+      %{"result" => ret} ->
+        ret
+
+      other ->
+        raise "RPC error in #{inspect(chain)}.#{method}(#{inspect(params)}): #{inspect(other)}"
+    end
   end
 
   def rpc(chain, method, params) do
@@ -258,9 +260,19 @@ defmodule RemoteChain.RPCCache do
     end
   end
 
-  def resolve_block(chain, "latest"), do: block_number(chain)
-  def resolve_block(_chain, block) when is_integer(block), do: block
-  def resolve_block(_chain, "0x" <> _ = block), do: Base16.decode_int(block)
+  def resolve_block(chain, "latest"), do: hex_blockref(block_number(chain))
+  def resolve_block(_chain, block) when is_integer(block), do: hex_blockref(block)
+  def resolve_block(_chain, "0x" <> _ = block), do: hex_blockref(Base16.decode_int(block))
+
+  defp hex_blockref(ref) when ref in ["latest", "earliest"], do: ref
+
+  defp hex_blockref(ref) do
+    case Base16.encode(ref, false) do
+      "0x" -> "0x0"
+      "0x0" <> rest -> "0x" <> rest
+      other -> other
+    end
+  end
 
   defp name(chain) do
     impl = RemoteChain.chainimpl(chain)

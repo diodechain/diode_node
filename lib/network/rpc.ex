@@ -210,8 +210,12 @@ defmodule Network.Rpc do
     {to, opts} = Map.pop(opts, "to")
     {gas_price, opts} = Map.pop(opts, "gasPrice", nil)
 
+    if chain_id == nil do
+      raise "Missing chainId"
+    end
+
     gas_price =
-      if gas_price == nil and chain_id != nil do
+      if gas_price == nil do
         RemoteChain.RPC.gas_price(chain_id)
         |> Base16.decode_int()
       else
@@ -228,18 +232,16 @@ defmodule Network.Rpc do
       raise "Unhandled create_transaction(opts): #{inspect(opts)}"
     end
 
-    tx =
-      %RemoteChain.Transaction{
-        to: to,
-        nonce: nonce,
-        gasPrice: gas_price,
-        gasLimit: gas,
-        init: if(to == nil, do: data),
-        data: if(to != nil, do: data),
-        value: value,
-        chain_id: chain_id
-      }
-      |> IO.inspect(label: "create_transaction")
+    tx = %RemoteChain.Transaction{
+      to: to,
+      nonce: nonce,
+      gasPrice: gas_price,
+      gasLimit: gas,
+      init: if(to == nil, do: data),
+      data: if(to != nil, do: data),
+      value: value,
+      chain_id: chain_id
+    }
 
     if sign do
       RemoteChain.Transaction.sign(tx, Wallet.privkey!(wallet))

@@ -245,111 +245,117 @@ defmodule Network.EdgeV2 do
     end
   end
 
-  def handle_async_msg(msg, state) do
-    case msg do
-      ["glmr:" <> cmd | rest] ->
-        RemoteChain.Edge.handle_async_msg(Chains.Moonbeam, [cmd | rest], state)
+  def handle_async_msg([cmd | rest] = msg, state) do
+    chain =
+      Enum.find(RemoteChain.chains(), fn chain ->
+        prefix = chain.chain_prefix() <> ":"
+        String.starts_with?(cmd, prefix)
+      end)
 
-      ["m1:" <> cmd | rest] ->
-        RemoteChain.Edge.handle_async_msg(Chains.MoonbaseAlpha, [cmd | rest], state)
+    if chain do
+      prefix = chain.chain_prefix() <> ":"
+      cmd = binary_part(cmd, byte_size(prefix), byte_size(cmd) - byte_size(prefix))
+      RemoteChain.Edge.handle_async_msg(chain, [cmd | rest], state)
+    else
+      case msg do
+        [cmd | _rest]
+        when cmd in [
+               "getblockpeak",
+               "getblock",
+               "getblockheader",
+               "getblockheader2",
+               "getblockquick",
+               "getblockquick2",
+               "getstateroots",
+               "getaccount",
+               "getaccountroots",
+               "getaccountvalue",
+               "getaccountvalues",
+               "sendtransaction"
+             ] ->
+          msg = Rlp.encode!(msg) |> Base16.encode()
 
-      [cmd | _rest]
-      when cmd in [
-             "getblockpeak",
-             "getblock",
-             "getblockheader",
-             "getblockheader2",
-             "getblockquick",
-             "getblockquick2",
-             "getstateroots",
-             "getaccount",
-             "getaccountroots",
-             "getaccountvalue",
-             "getaccountvalues",
-             "sendtransaction"
-           ] ->
-        msg = Rlp.encode!(msg) |> Base16.encode()
+          RemoteChain.RPCCache.rpc!(RemoteChain.diode_l1_fallback(), "dio_edgev2", [msg])
+          |> Base16.decode()
+          |> Rlp.decode!()
 
-        RemoteChain.RPCCache.rpc!(Chains.DiodeStaging, "dio_edgev2", [msg])
-        |> Base16.decode()
-        |> Rlp.decode!()
+        ["ping"] ->
+          response("pong")
 
-      ["ping"] ->
-        response("pong")
+        ["channel", chain_id, block_number, fleet, type, name, params, signature] ->
+          obj =
+            channel(
+              chain_id: to_num(chain_id),
+              server_id: Diode.miner() |> Wallet.address!(),
+              block_number: to_num(block_number),
+              fleet_contract: fleet,
+              type: type,
+              name: name,
+              params: params,
+              signature: signature
+            )
 
-      ["channel", chain_id, block_number, fleet, type, name, params, signature] ->
-        obj =
-          channel(
-            chain_id: to_num(chain_id),
-            server_id: Diode.miner() |> Wallet.address!(),
-            block_number: to_num(block_number),
-            fleet_contract: fleet,
-            type: type,
-            name: name,
-            params: params,
-            signature: signature
-          )
+          device = Object.Channel.device_address(obj)
 
-        device = Object.Channel.device_address(obj)
+          cond do
+            not Wallet.equal?(device, device_id(state)) ->
+              error("invalid channel signature")
 
-        cond do
-          not Wallet.equal?(device, device_id(state)) ->
-            error("invalid channel signature")
+            not Contract.Fleet.device_allowlisted?(fleet, device) ->
+              error("device not whitelisted for this fleet")
 
-          not Contract.Fleet.device_allowlisted?(fleet, device) ->
-            error("device not whitelisted for this fleet")
+            not Object.Channel.valid_type?(obj) ->
+              error("invalid channel type")
 
-          not Object.Channel.valid_type?(obj) ->
-            error("invalid channel type")
+            not Object.Channel.valid_params?(obj) ->
+              error("invalid channel parameters")
 
-          not Object.Channel.valid_params?(obj) ->
-            error("invalid channel parameters")
+            true ->
+              key = Object.Channel.key(obj)
 
-          true ->
-            key = Object.Channel.key(obj)
+              case Kademlia.find_value(key) do
+                nil ->
+                  Kademlia.store(obj)
+                  Object.encode_list!(obj)
 
-            case Kademlia.find_value(key) do
-              nil ->
-                Kademlia.store(obj)
-                Object.encode_list!(obj)
+                binary ->
+                  Object.encode_list!(Object.decode!(binary))
+              end
+              |> response()
+          end
 
-              binary ->
-                Object.encode_list!(Object.decode!(binary))
-            end
-            |> response()
-        end
+        ["isonline", key] ->
+          online = Map.get(Network.Server.get_connections(Network.EdgeV2), key) != nil
+          response(online)
 
-      ["isonline", key] ->
-        online = Map.get(Network.Server.get_connections(Network.EdgeV2), key) != nil
-        response(online)
+        ["getobject", key] ->
+          case Kademlia.find_value(key) do
+            nil -> nil
+            binary -> Object.encode_list!(Object.decode!(binary))
+          end
+          |> response()
 
-      ["getobject", key] ->
-        case Kademlia.find_value(key) do
-          nil -> nil
-          binary -> Object.encode_list!(Object.decode!(binary))
-        end
-        |> response()
+        ["getnode", node] ->
+          case Kademlia.find_node(node) do
+            nil -> nil
+            item -> Object.encode_list!(KBuckets.object(item))
+          end
+          |> response()
 
-      ["getnode", node] ->
-        case Kademlia.find_node(node) do
-          nil -> nil
-          item -> Object.encode_list!(KBuckets.object(item))
-        end
-        |> response()
+        ["portopen", device_id, port, flags] ->
+          portopen(state, device_id, to_num(port), flags)
 
-      ["portopen", device_id, port, flags] ->
-        portopen(state, device_id, to_num(port), flags)
+        ["portopen", device_id, port] ->
+          portopen(state, device_id, to_num(port), "rw")
 
-      ["portopen", device_id, port] ->
-        portopen(state, device_id, to_num(port), "rw")
+        nil ->
+          log(state, "Unhandled message: #{truncate(msg)}")
+          error(400, "that is not rlp")
 
-      nil ->
-        log(state, "Unhandled message: #{truncate(msg)}")
-        error(400, "that is not rlp")
-
-      _ ->
-        log(state, "Unhandled message: #{truncate(msg)}")
-        error(401, "bad input")
+        _ ->
+          log(state, "Unhandled message: #{truncate(msg)}")
+          error(401, "bad input")
+      end
     end
   end
 

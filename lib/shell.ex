@@ -23,10 +23,7 @@ defmodule Shell do
   end
 
   def submit_tx(tx) do
-    id =
-      RemoteChain.Transaction.chain_id(tx)
-      |> IO.inspect(label: "chain_id")
-
+    id = RemoteChain.Transaction.chain_id(tx)
     hex = RemoteChain.Transaction.to_rlp(tx) |> Rlp.encode!() |> Base16.encode()
     RemoteChain.RPC.send_raw_transaction(id, hex)
   end

@@ -1,8 +1,6 @@
 # Diode Server
 # Copyright 2021-2024 Diode
 # Licensed under the Diode License, Version 1.1
-System.cmd("killall", ["anvil", "-w"])
-File.rm_rf("data_test")
 ExUnit.start(seed: 0)
 
 defmodule ChainAgent do
@@ -49,7 +47,6 @@ defmodule ChainAgent do
 
       wallets = Enum.map(wallets, fn w -> Base16.encode(Wallet.privkey!(w)) end) |> Enum.join(" ")
       System.put_env("WALLETS", wallets)
-      IO.inspect(wallets, label: "wallets")
 
       # IO.puts(out)
       # RemoteChain.RPC.rpc!(Chains.Anvil, "evm_setAutomine", [true])
@@ -62,7 +59,6 @@ defmodule ChainAgent do
           await(state)
 
         other ->
-          IO.inspect(other, label: "await")
           raise "Unexpected message: #{inspect(other)}"
       end
     end

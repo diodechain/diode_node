@@ -11,10 +11,9 @@ defmodule RemoteChain do
 
   def epoch_progress(chain_id, number), do: chainimpl(chain_id).epoch_progress(number)
 
-  def block(chain_id, number),
-    do:
-      RemoteChain.RPCCache.get_block_by_number(chain_id, number)
-      |> IO.inspect(label: "block(#{chain_id}, #{number})")
+  def block(chain_id, number) do
+    RemoteChain.RPCCache.get_block_by_number(chain_id, number)
+  end
 
   def blockhash(chain_id, number), do: block(chain_id, number)["hash"] |> Base16.decode()
   def blocktime(chain_id, number), do: block(chain_id, number)["timestamp"] |> Base16.decode_int()
@@ -24,8 +23,11 @@ defmodule RemoteChain do
   def transaction_hash(chain_id), do: chainimpl(chain_id).transaction_hash()
 
   if Mix.env() == :test do
-    @chains [Chains.Anvil]
+    def diode_l1_fallback(), do: Chains.DiodeStaging
+    @chains [Chains.DiodeStaging, Chains.Anvil]
   else
+    def diode_l1_fallback(), do: Chains.Diode
+
     @chains [
       Chains.DiodeStaging,
       Chains.Diode,

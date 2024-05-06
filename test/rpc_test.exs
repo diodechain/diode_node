@@ -83,7 +83,6 @@ defmodule RpcTest do
         "chainId" => chain().chain_id(),
         "nonce" => nonce
       })
-      |> IO.inspect()
 
     {:ok, txhash} = rpc("eth_sendRawTransaction", [to_rlp(tx)])
     assert txhash == Base16.encode(Transaction.hash(tx))
