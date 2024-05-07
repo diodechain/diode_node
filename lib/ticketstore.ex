@@ -90,8 +90,6 @@ defmodule TicketStore do
   @doc """
     Handling a ConnectionTicket
   """
-  @spec add(Ticket.t(), Wallet.t()) ::
-          {:ok, non_neg_integer()} | {:too_low, Ticket.t()} | {:too_old, integer()}
   def add(tck, wallet) do
     chain_id = Ticket.chain_id(tck)
     tepoch = Ticket.epoch(tck)

@@ -14,11 +14,16 @@ defmodule Diode do
     end
   end
 
+  @env Mix.env()
+  @spec env :: :prod | :test | :dev
+  def env() do
+    :persistent_term.get(:env, @env)
+  end
+
   defp do_start(_type, args) do
-    :persistent_term.put(:env, Mix.env())
     :erlang.system_flag(:backtrace_depth, 30)
 
-    puts("====== ENV #{Mix.env()} ======")
+    puts("====== ENV #{env()} ======")
     puts("Build       : #{version()}")
     puts("Edge    Port: #{Enum.join(edge2_ports(), ",")}")
     puts("Peer    Port: #{peer2_port()}")
@@ -165,11 +170,6 @@ defmodule Diode do
         otp_app: Diode
       )
     end
-  end
-
-  @spec env :: :prod | :test | :dev
-  def env() do
-    :persistent_term.get(:env)
   end
 
   @version Mix.Project.config()[:full_version]

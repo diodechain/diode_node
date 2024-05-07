@@ -278,7 +278,7 @@ defmodule Edge2Test do
       RemoteChain.RPC.rpc!(chain(), "evm_mine")
     end
 
-    assert "0x1" = Contract.Registry.call(chain(), "previousEpochStart") |> Base16.decode_int()
+    assert 12 == Contract.Registry.call(chain(), "previousEpochStart") |> Base16.decode_int()
 
     tx = Ticket.raw(tck) |> Contract.Registry.submit_ticket_raw_tx()
     assert "0x" = Shell.call_tx(tx, "latest")

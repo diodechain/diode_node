@@ -15,10 +15,7 @@ defmodule Contract.BNS do
   def resolve_entry(name, blockRef \\ "latest") do
     [destination, owner, name, lockEnd, leaseEnd] =
       ["address", "address", "string", "uint256", "uint256"]
-      |> ABI.decode_types(
-        call("ResolveEntry", ["string"], [name], blockRef)
-        |> IO.inspect(limit: 1000)
-      )
+      |> ABI.decode_types(call("ResolveEntry", ["string"], [name], blockRef))
 
     %{destination: destination, owner: owner, name: name, lockEnd: lockEnd, leaseEnd: leaseEnd}
   end

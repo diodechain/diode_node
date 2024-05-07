@@ -32,18 +32,19 @@ defmodule Shell do
 
   def await_tx(tx) do
     case submit_tx(tx) do
-      tx_id when is_binary(tx_id) -> await_tx_id(tx_id)
+      tx_id when is_binary(tx_id) -> await_tx_id({tx_id, tx})
       error -> raise "Failed to submit transaction: #{inspect(error)}"
     end
   end
 
   def await_tx_id({tx_id, tx}) do
-    case RemoteChain.RPC.get_transaction_by_hash(Chains.Moonbeam, tx_id) do
+    case RemoteChain.RPC.get_transaction_by_hash(Transaction.chain_id(tx), tx_id) do
       nil ->
         IO.puts("Awaiting transaction (nil?!): #{tx_id}")
         submit_tx(tx)
         Process.sleep(1000)
         await_tx_id({tx_id, tx})
+
       %{"blockNumber" => nil} ->
         IO.puts("Awaiting transaction: #{tx_id}")
         Process.sleep(1000)

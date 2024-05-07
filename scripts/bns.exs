@@ -92,10 +92,7 @@ missing =
 IO.puts("Missing: #{length(missing)}")
 DetsPlus.sync(:moon_cache)
 
-wallet =
-  Wallet.from_privkey(
-    Base16.decode(System.get_env("PRIVATE"))
-  )
+wallet = Wallet.from_privkey(Base16.decode(System.get_env("PRIVATE")))
 
 bns = Base16.decode("0x8a093e3A83F63A00FFFC4729aa55482845a49294")
 missing = Enum.shuffle(missing) |> Enum.chunk_every(20)

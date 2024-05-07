@@ -22,7 +22,6 @@ defmodule ABI do
       # if is_dynamic(type) do
       if type in ["string", "bytes"] do
         # for dynamic types the decoded value in the header is the offset of the data
-        IO.inspect(value, label: "string_offset")
         base = binary_part(data, value, byte_size(data) - value)
         {len, rest} = decode("uint256", base)
         slots = div(len, 32) + 1

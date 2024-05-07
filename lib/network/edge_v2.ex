@@ -336,7 +336,7 @@ defmodule Network.EdgeV2 do
           |> response()
 
         ["getnode", node] ->
-          case Kademlia.find_node(node) |> IO.inspect(label: "getnode") do
+          case Kademlia.find_node(node) do
             nil -> nil
             item -> Object.encode_list!(KBuckets.object(item))
           end

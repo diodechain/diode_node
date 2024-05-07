@@ -33,7 +33,6 @@ defmodule Object.Channel do
   end
 
   @impl true
-  @spec key(channel()) :: Object.key()
   def key(channel(fleet_contract: fleet, type: type, name: name, params: params)) do
     params = Rlp.encode!(params) |> Hash.keccak_256()
     Diode.hash(<<fleet::binary-size(20), type::binary, name::binary, params::binary>>)

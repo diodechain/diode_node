@@ -135,7 +135,8 @@ defmodule RemoteChain.RPCCache do
     else
       # since this is a heuristic, it can be wrong and might miss some changes
       # so we force fresh every week
-      base = div(block + Base16.decode_int(address), 50_000) |> Base16.encode(false)
+      base =
+        div(Base16.decode_int(block) + Base16.decode_int(address), 50_000) |> Base16.encode(false)
 
       Enum.join([base | keys])
       |> Hash.keccak_256()

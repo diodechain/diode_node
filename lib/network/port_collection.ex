@@ -34,10 +34,6 @@ defmodule Network.PortCollection do
       2) w = Write
       3) s = Shared
   """
-  alias Network.PortCollection
-  defstruct pid: nil, refs: %{}
-  @type t :: %PortCollection{pid: pid(), refs: %{Port.ref() => Port.t()}}
-
   defmodule PortClient do
     defstruct pid: nil, mon: nil, ref: nil, write: true, trace: false
 
@@ -71,6 +67,10 @@ defmodule Network.PortCollection do
             trace: boolean()
           }
   end
+
+  alias Network.PortCollection
+  defstruct pid: nil, refs: %{}
+  @type t :: %PortCollection{pid: pid(), refs: %{Port.ref() => Port.t()}}
 
   @spec put(PortCollection.t(), Port.t()) :: PortCollection.t()
   def put(pc, port) do

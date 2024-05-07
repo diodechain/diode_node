@@ -26,6 +26,6 @@ defmodule Mix.Tasks.GitVersion do
         :io.format("Couldn't check git version ~p~n", [other])
     end
 
-    Mix.shell().info(Enum.join(args, " "))
+    IO.puts(Enum.join(args, " "))
   end
 end
