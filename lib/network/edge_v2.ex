@@ -336,7 +336,7 @@ defmodule Network.EdgeV2 do
           |> response()
 
         ["getnode", node] ->
-          case Kademlia.find_node(node) do
+          case Kademlia.find_node(node) |> IO.inspect(label: "getnode") do
             nil -> nil
             item -> Object.encode_list!(KBuckets.object(item))
           end
@@ -348,15 +348,16 @@ defmodule Network.EdgeV2 do
         ["portopen", device_id, port] ->
           portopen(state, device_id, to_num(port), "rw")
 
-        nil ->
-          log(state, "Unhandled message: #{truncate(msg)}")
-          error(400, "that is not rlp")
-
         _ ->
           log(state, "Unhandled message: #{truncate(msg)}")
           error(401, "bad input")
       end
     end
+  end
+
+  def handle_async_msg(msg, state) do
+    log(state, "Unhandled message: #{truncate(msg)}")
+    error(401, "bad input")
   end
 
   def response(arg) do

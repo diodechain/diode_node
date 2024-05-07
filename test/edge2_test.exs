@@ -5,7 +5,7 @@ defmodule Edge2Test do
   use ExUnit.Case, async: false
   alias Network.Server, as: Server
   alias Network.EdgeV2, as: EdgeHandler
-  alias Object.TicketV1, as: Ticket
+  alias Object.TicketV2, as: Ticket
   alias Object.Channel, as: Channel
   import TestHelper
   import Ticket
@@ -130,7 +130,8 @@ defmodule Edge2Test do
     IO.puts("peaknumber(): #{peaknumber()}")
 
     tck =
-      ticketv1(
+      ticketv2(
+        chain_id: chain().chain_id(),
         server_id: Wallet.address!(Diode.wallet()),
         total_connections: 1,
         total_bytes: 0,
@@ -140,10 +141,13 @@ defmodule Edge2Test do
       )
       |> Ticket.device_sign(clientkey(1))
 
+    assert Ticket.device_address(tck) == Wallet.address!(clientid(1))
+
     # The first ticket submission should work
     ret =
       rpc(:client_1, [
-        "ticket",
+        "ticketv2",
+        Ticket.chain_id(tck) |> to_bin(),
         Ticket.block_number(tck) |> to_bin(),
         Ticket.fleet_contract(tck),
         Ticket.total_connections(tck) |> to_bin(),
@@ -157,7 +161,8 @@ defmodule Edge2Test do
 
     # Submitting a second ticket with the same count should fail
     assert rpc(:client_1, [
-             "ticket",
+             "ticketv2",
+             Ticket.chain_id(tck) |> to_bin(),
              Ticket.block_number(tck) |> to_bin(),
              Ticket.fleet_contract(tck),
              Ticket.total_connections(tck),
@@ -167,6 +172,7 @@ defmodule Edge2Test do
            ]) ==
              [
                "too_low",
+               Ticket.chain_id(tck) |> to_bin(),
                Ticket.block_hash(tck),
                Ticket.total_connections(tck) |> to_bin(),
                Ticket.total_bytes(tck) |> to_bin(),
@@ -228,8 +234,17 @@ defmodule Edge2Test do
     TicketStore.clear()
     ensure_clients()
 
+    old = peaknumber()
+    RemoteChain.RPC.rpc!(chain(), "evm_mine")
+
+    while old == peaknumber() do
+      # The websocket conn should auto-refresh
+      Process.sleep(100)
+    end
+
     tck =
-      ticketv1(
+      ticketv2(
+        chain_id: chain().chain_id(),
         server_id: Wallet.address!(Diode.wallet()),
         total_connections: 1,
         total_bytes: 0,
@@ -241,7 +256,8 @@ defmodule Edge2Test do
 
     # The first ticket submission should work
     assert rpc(:client_1, [
-             "ticket",
+             "ticketv2",
+             Ticket.chain_id(tck) |> to_bin(),
              Ticket.block_number(tck) |> to_bin(),
              Ticket.fleet_contract(tck),
              Ticket.total_connections(tck) |> to_bin(),
@@ -258,11 +274,35 @@ defmodule Edge2Test do
     assert [_tck2] = TicketStore.tickets(epoch())
 
     while epoch == epoch() do
+      RemoteChain.RPC.rpc!(chain(), "evm_increaseTime", [chain().epoch_length() + 1])
       RemoteChain.RPC.rpc!(chain(), "evm_mine")
     end
 
+    assert "0x1" = Contract.Registry.call(chain(), "previousEpochStart") |> Base16.decode_int()
+
     tx = Ticket.raw(tck) |> Contract.Registry.submit_ticket_raw_tx()
-    assert {"", _gas_cost} = Shell.call_tx(tx, "latest")
+    assert "0x" = Shell.call_tx(tx, "latest")
+    Shell.await_tx(tx)
+
+    Shell.transaction(Diode.wallet(), chain().registry_address(), "EndEpochForAllFleets", [], [],
+      chainId: chain().chain_id()
+    )
+    |> Shell.await_tx()
+
+    assert "0x1" =
+             Contract.Registry.call(
+               chain(),
+               "relayRewards",
+               ["address"],
+               [Diode.wallet() |> Wallet.address!() |> Base16.encode()]
+             )
+
+    # epoch = epoch()
+
+    # while epoch == epoch() do
+    #   RemoteChain.RPC.rpc!(chain(), "evm_increaseTime", [chain().epoch_length() + 1])
+    #   RemoteChain.RPC.rpc!(chain(), "evm_mine")
+    # end
   end
 
   test "port" do
@@ -558,7 +598,7 @@ defmodule Edge2Test do
       Network.Rpc.create_transaction(from, <<"">>, %{
         "value" => 0,
         "to" => to,
-        "chainId" => chain_id()
+        "chainId" => chain().chain_id()
       })
 
     ["ok"] = rpc(:client_1, ["av:sendtransaction", to_rlp(tx)])

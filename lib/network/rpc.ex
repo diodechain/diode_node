@@ -226,6 +226,8 @@ defmodule Network.Rpc do
       if nonce == nil do
         RemoteChain.RPC.get_transaction_count(chain_id, Base16.encode(Wallet.address!(wallet)))
         |> Base16.decode_int()
+      else
+        nonce
       end
 
     if map_size(opts) > 0 do

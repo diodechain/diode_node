@@ -3,6 +3,7 @@
 # Licensed under the Diode License, Version 1.1
 defmodule Shell do
   @moduledoc false
+  alias RemoteChain.Transaction
 
   def call(chain_id, address, name, types \\ [], values \\ [], opts \\ [])
       when is_list(types) and is_list(values) do
@@ -11,14 +12,15 @@ defmodule Shell do
 
   def call_from(chain_id, wallet, address, name, types \\ [], values \\ [], opts \\ [])
       when is_list(types) and is_list(values) do
-    opts =
+    {blockRef, opts} =
       opts
       |> Keyword.put_new(:gas, 10_000_000)
+      |> Keyword.put_new(:nonce, 0)
       |> Keyword.put_new(:gasPrice, 0)
-      |> Keyword.put_new(:chain_id, chain_id)
+      |> Keyword.put_new(:chainId, chain_id)
+      |> Keyword.pop(:blockRef, "latest")
 
     tx = transaction(wallet, address, name, types, values, opts, false)
-    blockRef = Keyword.get(opts, :blockRef, "latest")
     call_tx(tx, blockRef)
   end
 
@@ -30,19 +32,42 @@ defmodule Shell do
 
   def await_tx(tx) do
     case submit_tx(tx) do
-      tx_id when is_binary(tx_id) -> tx_id
+      tx_id when is_binary(tx_id) -> await_tx_id(tx_id)
       error -> raise "Failed to submit transaction: #{inspect(error)}"
     end
   end
 
-  def call_tx(_tx, _blockRef) do
-    :todo
+  def await_tx_id({tx_id, tx}) do
+    case RemoteChain.RPC.get_transaction_by_hash(Chains.Moonbeam, tx_id) do
+      nil ->
+        IO.puts("Awaiting transaction (nil?!): #{tx_id}")
+        submit_tx(tx)
+        Process.sleep(1000)
+        await_tx_id({tx_id, tx})
+      %{"blockNumber" => nil} ->
+        IO.puts("Awaiting transaction: #{tx_id}")
+        Process.sleep(1000)
+        await_tx_id({tx_id, tx})
+
+      %{"blockNumber" => block_number} ->
+        block_number
+    end
   end
 
-  def transaction(wallet, address, name, types, values, opts \\ [], sign \\ true)
+  def call_tx(tx, blockRef) do
+    RemoteChain.RPC.call!(
+      Transaction.chain_id(tx),
+      Transaction.to(tx) |> Base16.encode(),
+      Transaction.from(tx) |> Base16.encode(),
+      Transaction.payload(tx) |> Base16.encode(),
+      blockRef
+    )
+  end
+
+  def transaction(wallet, to, name, types, values, opts \\ [], sign \\ true)
       when is_list(types) and is_list(values) do
     # https://solidity.readthedocs.io/en/v0.4.24/abi-spec.html
-    opts = Keyword.put(opts, :to, address)
+    opts = Keyword.put(opts, :to, to)
     callcode = ABI.encode_call(name, types, values)
     raw(wallet, callcode, opts, sign)
   end

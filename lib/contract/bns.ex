@@ -13,7 +13,14 @@ defmodule Contract.BNS do
   end
 
   def resolve_entry(name, blockRef \\ "latest") do
-    call("ResolveEntry", ["string"], [name], blockRef)
+    [destination, owner, name, lockEnd, leaseEnd] =
+      ["address", "address", "string", "uint256", "uint256"]
+      |> ABI.decode_types(
+        call("ResolveEntry", ["string"], [name], blockRef)
+        |> IO.inspect(limit: 1000)
+      )
+
+    %{destination: destination, owner: owner, name: name, lockEnd: lockEnd, leaseEnd: leaseEnd}
   end
 
   def crash_data() do
@@ -53,7 +60,7 @@ defmodule Contract.BNS do
   end
 
   defp call(name, types, values, blockRef) do
-    {ret, _gas} = Shell.call(address(), name, types, values, blockRef: blockRef)
-    ret
+    Shell.call(Chains.Diode, address(), name, types, values, blockRef: blockRef)
+    |> Base16.decode()
   end
 end

@@ -35,7 +35,7 @@ defmodule Object do
         device_signature,
         server_signature
       ]) do
-    {recordname(ext), server_id, chain_id, Rlpx.bin2num(block_num), fleet_contract,
+    {recordname(ext), server_id, Rlpx.bin2num(chain_id), Rlpx.bin2num(block_num), fleet_contract,
      Rlpx.bin2num(total_connections), Rlpx.bin2num(total_bytes), local_address, device_signature,
      server_signature}
   end

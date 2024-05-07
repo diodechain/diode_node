@@ -2,11 +2,10 @@
 # Copyright 2021-2024 Diode
 # Licensed under the Diode License, Version 1.1
 defmodule Edge2Client do
-  alias Object.TicketV1, as: Ticket
+  alias Object.TicketV2, as: Ticket
   require ExUnit.Assertions
   import Ticket
   @chain Chains.Anvil
-
   @ticket_grace 4096
 
   def ensure_clients() do
@@ -85,7 +84,8 @@ defmodule Edge2Client do
     count = div(unpaid_bytes + 400 - paid_bytes, @ticket_grace)
 
     tck =
-      ticketv1(
+      ticketv2(
+        chain_id: @chain.chain_id(),
         server_id: Wallet.address!(Diode.wallet()),
         total_connections: state.conns,
         total_bytes: paid_bytes + @ticket_grace * count,
