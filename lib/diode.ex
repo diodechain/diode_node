@@ -217,6 +217,10 @@ defmodule Diode do
     Model.CredSql.wallet()
   end
 
+  def address() do
+    Wallet.address!(wallet())
+  end
+
   @spec wallets() :: [Wallet.t()]
   @doc """
     Decode env parameter such as

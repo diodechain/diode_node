@@ -37,7 +37,7 @@ names =
   end)
   |> Enum.filter(fn name ->
     String.printable?(name) and not String.contains?(name, "satanmeth") and
-      not String.starts_with?(name, "drive-") and not String.starts_with?(name, "diodetest-") and
+      not String.starts_with?(name, "diodetest-") and
       not String.starts_with?(name, "test-")
   end)
   |> Enum.sort()
@@ -63,11 +63,12 @@ missing =
 
       owner ->
         owner = Hash.to_address(owner)
-        IO.inspect({name, Base16.encode(owner)})
 
         m_owner =
           case DetsPlus.lookup(:moon_cache, addr) do
             [] ->
+              IO.inspect({name, Base16.encode(owner)})
+
               m_owner =
                 RemoteChain.RPCCache.get_storage_at(
                   Chains.Moonbeam,
@@ -92,10 +93,10 @@ missing =
 IO.puts("Missing: #{length(missing)}")
 DetsPlus.sync(:moon_cache)
 
-wallet = Wallet.from_privkey(Base16.decode(System.get_env("PRIVATE")))
+wallet = Wallet.from_privkey(Base16.decode(String.trim(File.read!("diode_glmr.key"))))
 
 bns = Base16.decode("0x8a093e3A83F63A00FFFC4729aa55482845a49294")
-missing = Enum.shuffle(missing) |> Enum.chunk_every(20)
+missing = Enum.shuffle(missing) |> Enum.chunk_every(50)
 
 for chunk <- missing do
   nonce =
@@ -130,7 +131,13 @@ for chunk <- missing do
     [{id1, tx1}, {id2, tx2}]
   end
   |> List.flatten()
-  |> Enum.each(&Shell.await_tx_id/1)
+  |> Enum.reverse()
+  |> Enum.with_index()
+  |> Enum.reverse()
+  |> Enum.each(fn {tx, idx} ->
+    IO.puts("Checking TX#{idx} ...")
+    Shell.await_tx_id(tx)
+  end)
 end
 
 # IO.inspect({name, Contract.BNS.resolve_entry(name)})

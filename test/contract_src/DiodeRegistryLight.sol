@@ -55,7 +55,6 @@ contract DiodeRegistryLight is Initializable {
      * well as on the Fleet level.
      *
      */
-    address[] public relayArray;
     mapping(address => uint256) public relayRewards;
 
     uint256 public currentEpoch;
@@ -184,9 +183,11 @@ contract DiodeRegistryLight is Initializable {
     }
 
     function EndEpoch() public {
-        // This call is private and only done in the per block call
-        if (currentEpoch == Epoch()) revert("Can't end the current epoch");
+        require(currentEpoch != Epoch(), "Can't end the current epoch");
+        doEndEpoch();
+    }
 
+    function doEndEpoch() internal {
         // Update epoch
         currentEpoch = Epoch();
         previousEpochStart = currentEpochStart;
@@ -194,35 +195,19 @@ contract DiodeRegistryLight is Initializable {
     }
 
     function EndEpochForAllFleets() public {
-        // Each fleet has a total value
-        // We do have a fixed amount of revenue to distribute
-        // Each fleets value should be distributed by share
-        // We need to calculcate those shares first, by generating the total sum
-
-        // ==ConnectionTickets (CTs)
-        // CTs are calculcated as worth 1kb or traffic or 1024 totalBytes in
-        // TrafficTickets (TTs) by default
-
-        // ==Reward
-        // Distribute each round %1 percent of Fleet Contract Stake
-
         EndEpoch();
         for (uint f = 0; f < fleetArray.length; f++) {
             EndEpochForFleet(fleetArray[f]);
         }
-        // Global cleanup
-        delete fleetArray;
     }
 
     function EndEpochForFleet(IFleetContract fleetContract) public {
         FleetStats storage fleet = fleetStats[address(fleetContract)];
         if (!fleet.exists) return;
+        if (fleet.currentEpoch >= currentEpoch) return;
+        fleet.currentEpoch = currentEpoch;
 
-        uint256 epoch = fleet.currentEpoch++;
-        if (epoch >= currentEpoch) return;
-
-        uint256 fleetBalance = fleet.currentBalance;
-        uint256 reward = fleetBalance / 100;
+        uint256 reward = fleet.currentBalance / 100;
         // No traffic => no reward, and no tax
         if (fleet.score == 0) reward = 0;
 
@@ -251,9 +236,6 @@ contract DiodeRegistryLight is Initializable {
             uint value = (reward * node.score) / fleet.score;
 
             if (value > 0) {
-                if (relayRewards[nodeAddress] == 0) {
-                    relayArray.push(nodeAddress);
-                }
                 relayRewards[nodeAddress] += value;
                 rest -= value;
             }
@@ -277,7 +259,7 @@ contract DiodeRegistryLight is Initializable {
      *
      * Connection tickets
      *
-     * [0] block height
+     * [0] epoch
      * [1] fleet contract address
      * [2] node address
      * [3] total connections
@@ -315,7 +297,7 @@ contract DiodeRegistryLight is Initializable {
     }
 
     function SubmitTicket(
-        uint256 blockHeight,
+        uint256 epoch,
         IFleetContract fleetContract,
         address nodeAddress,
         uint256 totalConnections,
@@ -323,13 +305,16 @@ contract DiodeRegistryLight is Initializable {
         bytes32 localAddress,
         bytes32[3] memory signature
     ) public {
-        require(blockHeight < block.number, "Ticket from the future?");
-        require(blockHeight > previousEpochStart, "Wrong epoch");
-        require(totalConnections | totalBytes != 0, "Invalid ticket value");
+        if (Epoch() != currentEpoch) {
+            doEndEpoch();
+        }
+        EndEpochForFleet(fleetContract);
+        require(epoch + 1 == currentEpoch, "Wrong epoch");
+        require((totalConnections | totalBytes) != 0, "Invalid ticket value");
 
         // ======= CLIENT SIGNATURE RECOVERY =======
         bytes32[] memory message = new bytes32[](6);
-        message[0] = blockhash(blockHeight);
+        message[0] = bytes32(epoch);
         message[1] = Utils.addressToBytes32(address(fleetContract));
         message[2] = Utils.addressToBytes32(nodeAddress);
         message[3] = bytes32(totalConnections);
@@ -388,14 +373,6 @@ contract DiodeRegistryLight is Initializable {
 
     function FleetArrayLength() external view returns (uint) {
         return fleetArray.length;
-    }
-
-    function RelayArray() external view returns (address[] memory) {
-        return relayArray;
-    }
-
-    function RelayArrayLength() external view returns (uint) {
-        return relayArray.length;
     }
 
     function GetFleet(

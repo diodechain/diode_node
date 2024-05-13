@@ -8,7 +8,7 @@ defmodule Object.TicketV2 do
   Record.defrecord(:ticketv2,
     server_id: nil,
     chain_id: nil,
-    block_number: nil,
+    epoch: nil,
     fleet_contract: nil,
     total_connections: nil,
     total_bytes: nil,
@@ -21,7 +21,7 @@ defmodule Object.TicketV2 do
           record(:ticketv2,
             server_id: binary(),
             chain_id: binary(),
-            block_number: integer(),
+            epoch: integer(),
             fleet_contract: binary(),
             total_connections: integer(),
             total_bytes: integer(),
@@ -33,7 +33,7 @@ defmodule Object.TicketV2 do
           record(:ticketv2,
             server_id: binary(),
             chain_id: binary(),
-            block_number: integer(),
+            epoch: integer(),
             fleet_contract: binary(),
             total_connections: integer(),
             total_bytes: integer(),
@@ -87,7 +87,7 @@ defmodule Object.TicketV2 do
 
     [
       chain_id(tck),
-      block_number(tck),
+      epoch(tck),
       fleet_contract(tck),
       server_id(tck),
       total_connections(tck),
@@ -102,7 +102,7 @@ defmodule Object.TicketV2 do
   def summary(tck) do
     [
       chain_id(tck),
-      block_hash(tck),
+      epoch(tck),
       total_connections(tck),
       total_bytes(tck),
       local_address(tck),
@@ -121,7 +121,7 @@ defmodule Object.TicketV2 do
     #   message[5] = localAddress;
     [
       chain_id(tck),
-      block_hash(tck),
+      epoch(tck),
       fleet_contract(tck),
       server_id(tck),
       total_connections(tck),
@@ -139,13 +139,12 @@ defmodule Object.TicketV2 do
 
   def server_id(ticketv2(server_id: id)), do: id
   def chain_id(ticketv2(chain_id: chain_id)), do: chain_id
-  def epoch(t = ticketv2(block_number: n)), do: RemoteChain.epoch(chain_id(t), n)
+  def epoch(ticketv2(epoch: epoch)), do: epoch
 
   @impl true
-  def block_number(ticketv2(block_number: n)), do: n
-
-  def block_hash(ticketv2(chain_id: chain_id, block_number: n)),
-    do: RemoteChain.blockhash(chain_id, n)
+  # Block number is used as a hint for age of the object to
+  # be able to discard older objects. Using epoch is enough
+  def block_number(t = ticketv2(epoch: epoch)), do: epoch * 0xFFFFFFFFFFFFFFFF + total_bytes(t)
 
   def device_signature(ticketv2(device_signature: signature)), do: signature
   def server_signature(ticketv2(server_signature: signature)), do: signature

@@ -40,10 +40,7 @@ defmodule Shell do
   def await_tx_id({tx_id, tx}) do
     case RemoteChain.RPC.get_transaction_by_hash(Transaction.chain_id(tx), tx_id) do
       nil ->
-        IO.puts("Awaiting transaction (nil?!): #{tx_id}")
-        submit_tx(tx)
-        Process.sleep(1000)
-        await_tx_id({tx_id, tx})
+        raise "Awaiting transaction (nil?!): #{tx_id} #{inspect(Base16.encode(Transaction.hash(tx)))}"
 
       %{"blockNumber" => nil} ->
         IO.puts("Awaiting transaction: #{tx_id}")

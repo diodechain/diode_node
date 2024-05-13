@@ -169,7 +169,41 @@ defmodule Chains.Anvil do
       ])
 
   def developer_fleet_address(),
-    do: ensure_contract("DevFleetContract", [foundation_address() |> Base16.encode()])
+    do:
+      ensure_contract("DevFleetContract", [foundation_address() |> Base16.encode()], fn address ->
+        Shell.transaction(
+          Diode.wallet(),
+          diode_token_address(),
+          "mint",
+          ["address", "uint256"],
+          [
+            Diode.address(),
+            100_000_000_000_000_000
+          ],
+          chainId: chain_id()
+        )
+        |> Shell.await_tx()
+
+        Shell.transaction(
+          Diode.wallet(),
+          diode_token_address(),
+          "approve",
+          ["address", "uint256"],
+          [registry_address(), 100_000_000_000_000_000],
+          chainId: chain_id()
+        )
+        |> Shell.await_tx()
+
+        Shell.transaction(
+          Diode.wallet(),
+          registry_address(),
+          "ContractStake",
+          ["address", "uint256"],
+          [address, 100_000_000_000_000_000],
+          chainId: chain_id()
+        )
+        |> Shell.await_tx()
+      end)
 
   def bridge_address(), do: wallet_address()
   def foundation_address(), do: wallet_address()
@@ -191,7 +225,7 @@ defmodule Chains.Anvil do
     |> Wallet.address!()
   end
 
-  def ensure_contract(name, args) do
+  def ensure_contract(name, args, postfun \\ nil) do
     case :persistent_term.get({__MODULE__, name}, nil) do
       nil ->
         key = System.get_env("WALLETS") |> String.split(" ") |> hd()
@@ -214,6 +248,7 @@ defmodule Chains.Anvil do
         [_, address] = Regex.run(~r/Deployed to: (0x.{40})/, text)
         address = Base16.decode(address)
         :persistent_term.put({__MODULE__, name}, address)
+        if postfun != nil, do: postfun.(address)
         address
 
       value ->

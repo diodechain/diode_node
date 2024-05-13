@@ -185,7 +185,7 @@ defmodule Network.EdgeV2 do
         "ticketv2"
         | [
             chain_id,
-            block,
+            epoch,
             fleet,
             total_connections,
             total_bytes,
@@ -200,7 +200,7 @@ defmodule Network.EdgeV2 do
           total_connections: to_num(total_connections),
           total_bytes: to_num(total_bytes),
           local_address: local_address,
-          block_number: to_num(block),
+          epoch: to_num(epoch),
           device_signature: device_signature
         )
         |> handle_ticket(state)
@@ -497,13 +497,21 @@ defmodule Network.EdgeV2 do
 
   defp handle_ticket(dl, state) do
     cond do
-      Ticket.block_number(dl) > RemoteChain.peaknumber(Ticket.chain_id(dl)) ->
+      Ticket.epoch(dl) + 1 < RemoteChain.epoch(Ticket.chain_id(dl)) ->
         log(
           state,
-          "Ticket with future block number #{Ticket.block_number(dl)} vs. #{RemoteChain.peaknumber(Ticket.chain_id(dl))}!"
+          "Ticket with low epoch #{Ticket.epoch(dl)} vs. #{RemoteChain.epoch(Ticket.chain_id(dl))}!"
         )
 
-        error("block number too high")
+        error("epoch number too low")
+
+      Ticket.epoch(dl) > RemoteChain.epoch(Ticket.chain_id(dl)) ->
+        log(
+          state,
+          "Ticket with wrong epoch #{Ticket.epoch(dl)} vs. #{RemoteChain.epoch(Ticket.chain_id(dl))}!"
+        )
+
+        error("epoch number too high")
 
       not Ticket.device_address?(dl, device_id(state)) ->
         log(state, "Received invalid ticket signature!")

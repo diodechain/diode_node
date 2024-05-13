@@ -95,11 +95,7 @@ defmodule Edge2Test do
     addr = hd(genesis_accounts())
     [ret | _proof] = rpc(:client_1, ["av:getaccount", peaknumber(), addr])
 
-    %{
-      "balance" => <<2, 30, 25, 220, 86, 146, 115, 254, 38, 104>>,
-      "storage_root" => "",
-      "nonce" => <<5>>
-    } = Rlpx.list2map(ret)
+    %{"balance" => _, "storage_root" => "", "nonce" => <<_nonce>>} = Rlpx.list2map(ret)
   end
 
   defp genesis_accounts() do
@@ -109,15 +105,18 @@ defmodule Edge2Test do
   end
 
   test "getaccountvalue" do
-    ["account does not exist"] =
-      rpc(:client_1, ["av:getaccountvalue", peaknumber(), "01234567890123456789", 0])
+    # ["account does not exist"] =
+    [
+      <<0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0>>
+    ] = rpc(:client_1, ["av:getaccountvalue", peaknumber(), "01234567890123456789", 0])
 
     addr = hd(genesis_accounts())
 
-    [ret] = rpc(:client_1, ["av:getaccountvalue", peaknumber(), addr, 0])
-
-    # Should be empty
-    assert length(ret) == 2
+    [
+      <<0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0>>
+    ] = rpc(:client_1, ["av:getaccountvalue", peaknumber(), addr, 0])
   end
 
   test "ticket" do
@@ -136,7 +135,7 @@ defmodule Edge2Test do
         total_connections: 1,
         total_bytes: 0,
         local_address: "spam",
-        block_number: peaknumber(),
+        epoch: epoch(),
         fleet_contract: developer_fleet_address()
       )
       |> Ticket.device_sign(clientkey(1))
@@ -148,7 +147,7 @@ defmodule Edge2Test do
       rpc(:client_1, [
         "ticketv2",
         Ticket.chain_id(tck) |> to_bin(),
-        Ticket.block_number(tck) |> to_bin(),
+        Ticket.epoch(tck) |> to_bin(),
         Ticket.fleet_contract(tck),
         Ticket.total_connections(tck) |> to_bin(),
         Ticket.total_bytes(tck) |> to_bin(),
@@ -163,7 +162,7 @@ defmodule Edge2Test do
     assert rpc(:client_1, [
              "ticketv2",
              Ticket.chain_id(tck) |> to_bin(),
-             Ticket.block_number(tck) |> to_bin(),
+             Ticket.epoch(tck) |> to_bin(),
              Ticket.fleet_contract(tck),
              Ticket.total_connections(tck),
              Ticket.total_bytes(tck),
@@ -173,7 +172,7 @@ defmodule Edge2Test do
              [
                "too_low",
                Ticket.chain_id(tck) |> to_bin(),
-               Ticket.block_hash(tck),
+               Ticket.epoch(tck) |> to_bin(),
                Ticket.total_connections(tck) |> to_bin(),
                Ticket.total_bytes(tck) |> to_bin(),
                Ticket.local_address(tck),
@@ -234,6 +233,9 @@ defmodule Edge2Test do
     TicketStore.clear()
     ensure_clients()
 
+    fleet = Contract.Registry.fleet(chain().chain_id(), developer_fleet_address())
+    assert fleet.currentBalance > 100_000
+
     old = peaknumber()
     RemoteChain.RPC.rpc!(chain(), "evm_mine")
 
@@ -245,11 +247,11 @@ defmodule Edge2Test do
     tck =
       ticketv2(
         chain_id: chain().chain_id(),
-        server_id: Wallet.address!(Diode.wallet()),
+        server_id: Diode.address(),
         total_connections: 1,
         total_bytes: 0,
         local_address: "spam",
-        block_number: peaknumber(),
+        epoch: epoch(),
         fleet_contract: developer_fleet_address()
       )
       |> Ticket.device_sign(clientkey(1))
@@ -258,7 +260,7 @@ defmodule Edge2Test do
     assert rpc(:client_1, [
              "ticketv2",
              Ticket.chain_id(tck) |> to_bin(),
-             Ticket.block_number(tck) |> to_bin(),
+             Ticket.epoch(tck) |> to_bin(),
              Ticket.fleet_contract(tck),
              Ticket.total_connections(tck) |> to_bin(),
              Ticket.total_bytes(tck) |> to_bin(),
@@ -270,39 +272,59 @@ defmodule Edge2Test do
                ""
              ]
 
-    epoch = epoch()
+    initial_epoch = epoch()
+    epoch = initial_epoch
+    r_epoch = Contract.Registry.current_epoch(chain())
+    assert epoch == r_epoch
     assert [_tck2] = TicketStore.tickets(epoch())
 
     while epoch == epoch() do
-      RemoteChain.RPC.rpc!(chain(), "evm_increaseTime", [chain().epoch_length() + 1])
+      RemoteChain.RPC.rpc!(chain(), "evm_increaseTime", [div(chain().epoch_length(), 3)])
       RemoteChain.RPC.rpc!(chain(), "evm_mine")
     end
 
-    assert 12 == Contract.Registry.call(chain(), "previousEpochStart") |> Base16.decode_int()
+    assert epoch + 1 == epoch()
+
+    # 'currentEpoch' hasn't increased yet will only increase once a ticket is submitted or EndEpoch is called
+    r_epoch2 = Contract.Registry.current_epoch(chain())
+    assert epoch == r_epoch2
 
     tx = Ticket.raw(tck) |> Contract.Registry.submit_ticket_raw_tx()
     assert "0x" = Shell.call_tx(tx, "latest")
     Shell.await_tx(tx)
+
+    # 'currentEpoch' must have increased
+    r_epoch3 = Contract.Registry.current_epoch(chain())
+    assert r_epoch3 == epoch()
+
+    # 'fleet.score' must have increased
+    fleet2 = Contract.Registry.fleet(chain().chain_id(), developer_fleet_address())
+
+    assert fleet2.score > fleet.score
+
+    # Finish next epoch to claim rewards
+    epoch = epoch()
+
+    while epoch == epoch() do
+      RemoteChain.RPC.rpc!(chain(), "evm_increaseTime", [div(chain().epoch_length(), 3)])
+      RemoteChain.RPC.rpc!(chain(), "evm_mine")
+    end
+
+    assert Ticket.server_id(tck) == Diode.address()
 
     Shell.transaction(Diode.wallet(), chain().registry_address(), "EndEpochForAllFleets", [], [],
       chainId: chain().chain_id()
     )
     |> Shell.await_tx()
 
-    assert "0x1" =
-             Contract.Registry.call(
-               chain(),
-               "relayRewards",
-               ["address"],
-               [Diode.wallet() |> Wallet.address!() |> Base16.encode()]
-             )
+    assert Contract.Registry.current_epoch(chain()) == initial_epoch + 2
 
-    # epoch = epoch()
+    fleet3 = Contract.Registry.fleet(chain().chain_id(), developer_fleet_address())
 
-    # while epoch == epoch() do
-    #   RemoteChain.RPC.rpc!(chain(), "evm_increaseTime", [chain().epoch_length() + 1])
-    #   RemoteChain.RPC.rpc!(chain(), "evm_mine")
-    # end
+    assert fleet3.currentEpoch > fleet2.currentEpoch
+    assert fleet3.score == 0
+
+    assert Contract.Registry.relay_rewards(chain(), Diode.address()) > 0
   end
 
   test "port" do

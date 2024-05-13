@@ -97,7 +97,7 @@ defmodule TicketStore do
     address = Wallet.address!(wallet)
     fleet = Ticket.fleet_contract(tck)
 
-    if epoch - 1 < tepoch do
+    if tepoch in [epoch, epoch - 1] do
       last = find(address, fleet, tepoch)
 
       case last do
@@ -156,7 +156,7 @@ defmodule TicketStore do
 
     fleet_value =
       EtsLru.fetch(@ticket_value_cache, {:fleet, chain_id, fleet, epoch}, fn ->
-        Contract.Registry.fleet_value(chain_id, 0, fleet, n)
+        Contract.Registry.fleet(chain_id, fleet, n).currentBalance
       end)
 
     ticket_value = value(tck) * fleet_value
@@ -176,7 +176,7 @@ defmodule TicketStore do
 
     fleet_value =
       EtsLru.fetch(@ticket_value_cache, {:fleet, chain_id, fleet, epoch}, fn ->
-        Contract.Registry.fleet_value(chain_id, 0, fleet, n)
+        Contract.Registry.fleet(chain_id, fleet, n).currentBalance
       end)
 
     ticket_value = value(tck) * fleet_value

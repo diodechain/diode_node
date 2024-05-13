@@ -90,7 +90,7 @@ defmodule Edge2Client do
         total_connections: state.conns,
         total_bytes: paid_bytes + @ticket_grace * count,
         local_address: "spam",
-        block_number: RemoteChain.peaknumber(@chain),
+        epoch: RemoteChain.epoch(@chain) - 1,
         fleet_contract: RemoteChain.developer_fleet_address(@chain)
       )
       |> Ticket.device_sign(state.key)
