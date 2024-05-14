@@ -41,7 +41,7 @@ defmodule Network.EdgeV2 do
         last_message: Time.utc_now(),
         last_ticket: nil,
         pid: self(),
-        ports: %PortCollection{},
+        ports: %PortCollection{pid: self()},
         sender: Network.Sender.new(state.socket),
         unpaid_bytes: 0,
         unpaid_rx_bytes: 0
@@ -72,25 +72,6 @@ defmodule Network.EdgeV2 do
 
   def handle_call({:socket_do, fun}, _from, state) do
     {:reply, fun.(state.socket), state}
-  end
-
-  def handle_call({PortCollection, cmd}, from, state) do
-    case PortCollection.handle_call(state.ports, cmd, from) do
-      {:reply, ret, pc} ->
-        {:reply, ret, %{state | ports: pc}}
-
-      {:noreply, pc} ->
-        {:noreply, %{state | ports: pc}}
-
-      {:error, reason} ->
-        Debouncer.apply(
-          self(),
-          fn -> send(state.pid, {:check_activity, state.last_message}) end,
-          15_000
-        )
-
-        {:reply, {:error, reason}, state}
-    end
   end
 
   @impl true
@@ -232,7 +213,7 @@ defmodule Network.EdgeV2 do
         {nil, %{state | ports: ports}}
 
       ["portclose", ref] ->
-        case PortCollection.portclose(state.portspc, ref) do
+        case PortCollection.portclose(state.ports, ref) do
           {:error, reason} ->
             {error(reason), state}
 
@@ -462,14 +443,15 @@ defmodule Network.EdgeV2 do
     {:stop, :normal, state}
   end
 
-  def handle_info({:DOWN, mon, _type, _object, _info}, state) do
-    ports = PortCollection.handle_down(state.ports, mon)
-    {:noreply, %{state | ports: ports}}
-  end
-
   def handle_info(msg, state) do
-    log(state, "Unhandled info: #{inspect(msg)}")
-    {:noreply, state}
+    case PortCollection.maybe_handle_info(msg, state.ports) do
+      ports = %PortCollection{} ->
+        {:noreply, %{state | ports: ports}}
+
+      false ->
+        log(state, "Unhandled info: #{inspect(msg)}")
+        {:noreply, state}
+    end
   end
 
   defp handle_request(state, request_id, method_params, _opts) do

@@ -96,8 +96,9 @@ defmodule Edge2Client do
       |> Ticket.device_sign(state.key)
 
     data = [
-      "ticket",
-      Ticket.block_number(tck),
+      "ticketv2",
+      Ticket.chain_id(tck),
+      Ticket.epoch(tck),
       Ticket.fleet_contract(tck),
       Ticket.total_connections(tck),
       Ticket.total_bytes(tck),
@@ -134,7 +135,7 @@ defmodule Edge2Client do
           state
           | conns: to_num(conns),
             paid_bytes: to_num(bytes),
-            unpaid_bytes: bytes + state.unpaid_bytes + byte_size(msg)
+            unpaid_bytes: to_num(bytes) + state.unpaid_bytes + byte_size(msg)
         }
 
         create_ticket(socket, state)

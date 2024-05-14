@@ -40,7 +40,7 @@ defmodule Network.PeerHandler do
         last_publish: nil,
         last_send: nil,
         msg_count: 0,
-        ports: %PortCollection{},
+        ports: %PortCollection{pid: self()},
         random_blocks: 0,
         server: nil,
         stable: false,
@@ -79,19 +79,6 @@ defmodule Network.PeerHandler do
   def handle_call({:rpc, call}, from, state) do
     calls = :queue.in({call, from}, state.calls)
     ssl_send(%{state | calls: calls}, call)
-  end
-
-  def handle_call({PortCollection, cmd}, from, state) do
-    case PortCollection.handle_call(state.ports, cmd, from) do
-      {:reply, ret, pc} ->
-        {:reply, ret, %{state | ports: pc}}
-
-      {:noreply, pc} ->
-        {:noreply, %{state | ports: pc}}
-
-      {:error, reason} ->
-        {:reply, {:error, reason}, state}
-    end
   end
 
   defp encode(msg) do
@@ -167,14 +154,15 @@ defmodule Network.PeerHandler do
     {:stop, :normal, state}
   end
 
-  def handle_info({:DOWN, mon, _type, _object, _info}, state) do
-    ports = PortCollection.handle_down(state.ports, mon)
-    {:noreply, %{state | ports: ports}}
-  end
-
   def handle_info(msg, state) do
-    log(state, "unhandled info: #{inspect(msg)}")
-    {:noreply, state}
+    case PortCollection.maybe_handle_info(msg, state.ports) do
+      ports = %PortCollection{} ->
+        {:noreply, %{state | ports: ports}}
+
+      false ->
+        log(state, "Unhandled info: #{inspect(msg)}")
+        {:noreply, state}
+    end
   end
 
   # Provides a `chain_id` for potential of checking server registration in the corresponding Diode Registry contract

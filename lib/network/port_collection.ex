@@ -133,9 +133,9 @@ defmodule Network.PortCollection do
     # Todo: Check for network access based on contract
     resp =
       try do
-        GenServer.call(
+        call(
           pid,
-          {__MODULE__, {:portopen, this, ref, flags, portname, device_address}},
+          {:portopen, this, ref, flags, portname, device_address},
           35_000
         )
       catch
@@ -175,7 +175,7 @@ defmodule Network.PortCollection do
         }
 
         port = %Port{state: :open, clients: [client], ref: ref, trace: trace}
-        GenServer.call(this, {__MODULE__, {:add_port, port}})
+        call(this, {:add_port, port})
         :ok
 
       {:error, reason} ->
@@ -188,16 +188,49 @@ defmodule Network.PortCollection do
     end
   end
 
-  def handle_call(pc, _from, {:monitor, pid}) do
+  def maybe_handle({:DOWN, mon, _type, _object, _info}, pc = %PortCollection{}) do
+    handle_down(pc, mon)
+  end
+
+  def maybe_handle_info({__MODULE__, cmd}, pc = %PortCollection{}) do
+    handle_cast(cmd, pc)
+  end
+
+  def maybe_handle_info({{__MODULE__, req_id}, cmd}, pc = %PortCollection{}) do
+    case handle_call(cmd, req_id, pc) do
+      {:reply, ret, pc} ->
+        send(req_id, {req_id, ret})
+        pc
+
+      {:noreply, pc} ->
+        pc
+
+      {:error, reason} ->
+        # Debouncer.apply(
+        #   self(),
+        #   fn -> send(state.pid, {:check_activity, state.last_message}) end,
+        #   15_000
+        # )
+
+        send(req_id, {req_id, {:error, reason}})
+        pc
+    end
+  end
+
+  def maybe_handle_info(_other, _pc) do
+    false
+  end
+
+  defp handle_call({:monitor, pid}, _from, pc) do
     {:reply, Process.monitor(pid), pc}
   end
 
-  def handle_call(pc, _from, {:add_port, port}) do
+  defp handle_call({:add_port, port}, _from, pc) do
     {:reply, :ok, put(pc, port)}
   end
 
   @max_preopen_ports 5
-  def handle_call(pc, from, {:portopen, pid, ref, flags, portname, device_address}) do
+  defp handle_call({:portopen, pid, ref, flags, portname, device_address}, from, pc) do
     trace = if String.contains?(flags, "t"), do: pid
     trace(trace, :state, "exec portopen #{Base16.encode(ref)}")
 
@@ -246,8 +279,16 @@ defmodule Network.PortCollection do
     end
   end
 
-  def handle_down(pc, mon) do
-    case get_clientmon(pc, mon) do
+  defp handle_cast({:portclose, ref}, pc) do
+    close(pc, get_clientref(pc, ref))
+  end
+
+  defp handle_down(pc, mon) do
+    close(pc, get_clientmon(pc, mon))
+  end
+
+  defp close(pc, tuple) do
+    case tuple do
       nil ->
         pc
 
@@ -268,7 +309,7 @@ defmodule Network.PortCollection do
         {:error, "port does not exist"}
 
       port = %Port{state: :pre_open, from: from} ->
-        GenServer.reply(from, {:ok, ref})
+        send(from, {from, {:ok, ref}})
         pc = PortCollection.put(pc, %Port{port | state: :open, from: nil})
         {:ok, pc}
     end
@@ -276,7 +317,7 @@ defmodule Network.PortCollection do
 
   def deny_portopen(pc, ref, reason) do
     port = %Port{state: :pre_open} = PortCollection.get(pc, ref)
-    GenServer.reply(port.from, {:error, reason})
+    send(port.from, {port.from, {:error, reason}})
     portclose(pc, port)
   end
 
@@ -292,7 +333,7 @@ defmodule Network.PortCollection do
 
   def portclose(pc, port = %Port{}) do
     for client <- port.clients do
-      GenServer.cast(client.pid, {:portclose, port.ref})
+      cast(client.pid, {:portclose, port.ref})
       Process.demonitor(client.mon, [:flush])
     end
 
@@ -321,8 +362,25 @@ defmodule Network.PortCollection do
     if self() == this do
       Process.monitor(pid)
     else
-      GenServer.call(this, {__MODULE__, {:monitor, pid}}, :infinity)
+      call(this, {:monitor, pid}, :infinity)
     end
+  end
+
+  defp call(pid, cmd, timeout \\ 5000) do
+    Process.link(pid)
+    req_id = :erlang.alias([:reply])
+    send(pid, {{__MODULE__, req_id}, cmd})
+
+    receive do
+      {^req_id, reply} -> reply
+    after
+      timeout ->
+        raise {:error, :timeout}
+    end
+  end
+
+  defp cast(pid, cmd) do
+    send(pid, {__MODULE__, cmd})
   end
 
   defp trace(nil, _state, _format), do: :nop
