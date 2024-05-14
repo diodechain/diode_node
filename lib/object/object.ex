@@ -70,6 +70,7 @@ defmodule Object do
   def decode_rlp_list!([
         ext = "channel",
         server_id,
+        chain_id,
         block_num,
         fleet_contract,
         type,
@@ -77,8 +78,8 @@ defmodule Object do
         params,
         signature
       ]) do
-    {recordname(ext), server_id, Rlpx.bin2num(block_num), fleet_contract, type, name, params,
-     signature}
+    {recordname(ext), server_id, Rlpx.bin2num(chain_id), Rlpx.bin2num(block_num), fleet_contract,
+     type, name, params, signature}
   end
 
   def decode_rlp_list!([ext = "data", block_num, name, value, signature]) do

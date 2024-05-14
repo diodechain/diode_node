@@ -272,6 +272,8 @@ defmodule RemoteChain.RPCCache do
     end
   end
 
+  defp name(nil), do: raise("Chain `nil` not found")
+
   defp name(chain) do
     impl = RemoteChain.chainimpl(chain)
     {:global, {__MODULE__, impl}}

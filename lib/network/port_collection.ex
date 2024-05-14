@@ -69,6 +69,7 @@ defmodule Network.PortCollection do
   end
 
   alias Network.PortCollection
+  @enforce_keys [:pid]
   defstruct pid: nil, refs: %{}
   @type t :: %PortCollection{pid: pid(), refs: %{Port.ref() => Port.t()}}
 
@@ -188,8 +189,11 @@ defmodule Network.PortCollection do
     end
   end
 
-  def maybe_handle({:DOWN, mon, _type, _object, _info}, pc = %PortCollection{}) do
-    handle_down(pc, mon)
+  def maybe_handle_info({:DOWN, mon, _type, _object, _info}, pc = %PortCollection{}) do
+    case close(pc, get_clientmon(pc, mon)) do
+      ^pc -> false
+      pc2 -> pc2
+    end
   end
 
   def maybe_handle_info({__MODULE__, cmd}, pc = %PortCollection{}) do
@@ -281,10 +285,6 @@ defmodule Network.PortCollection do
 
   defp handle_cast({:portclose, ref}, pc) do
     close(pc, get_clientref(pc, ref))
-  end
-
-  defp handle_down(pc, mon) do
-    close(pc, get_clientmon(pc, mon))
   end
 
   defp close(pc, tuple) do

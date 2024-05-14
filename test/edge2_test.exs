@@ -388,6 +388,7 @@ defmodule Edge2Test do
 
     ch =
       channel(
+        chain_id: chain().chain_id(),
         server_id: Wallet.address!(Diode.wallet()),
         block_number: peaknumber(),
         fleet_contract: developer_fleet_address(),
@@ -401,6 +402,7 @@ defmodule Edge2Test do
     [channel] =
       rpc(:client_1, [
         "channel",
+        Channel.chain_id(ch),
         Channel.block_number(ch),
         Channel.fleet_contract(ch),
         Channel.type(ch),
@@ -416,6 +418,7 @@ defmodule Edge2Test do
     [channel2] =
       rpc(:client_2, [
         "channel",
+        Channel.chain_id(ch),
         Channel.block_number(ch2),
         Channel.fleet_contract(ch2),
         Channel.type(ch2),

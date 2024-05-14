@@ -43,8 +43,8 @@ defmodule Object.Channel do
     valid_type?(ch) and valid_device?(ch) and valid_params?(ch)
   end
 
-  def valid_device?(ch = channel(fleet_contract: fleet)) do
-    Contract.Fleet.device_allowlisted?(fleet, device_address(ch))
+  def valid_device?(ch = channel(chain_id: chain_id, fleet_contract: fleet)) do
+    Contract.Fleet.device_allowlisted?(chain_id, fleet, device_address(ch))
   end
 
   def valid_params?(channel(params: [])), do: true
@@ -82,6 +82,7 @@ defmodule Object.Channel do
     channel(ch, signature: Secp256k1.sign(private, message(ch), :kec))
   end
 
+  def chain_id(channel(chain_id: chain_id)), do: chain_id
   @impl true
   def block_number(channel(block_number: block_number)), do: block_number
   def server_id(channel(server_id: server_id)), do: server_id

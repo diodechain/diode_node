@@ -282,7 +282,7 @@ defmodule Network.EdgeV2 do
             not Wallet.equal?(device, device_id(state)) ->
               error("invalid channel signature")
 
-            not Contract.Fleet.device_allowlisted?(fleet, device) ->
+            not Contract.Fleet.device_allowlisted?(to_num(chain_id), fleet, device) ->
               error("device not whitelisted for this fleet")
 
             not Object.Channel.valid_type?(obj) ->
