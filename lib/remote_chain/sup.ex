@@ -12,12 +12,12 @@ defmodule RemoteChain.Sup do
   def init(chain) do
     Supervisor.init(
       [
-        {RemoteChain.RPCCache, chain},
         {RemoteChain.NodeProxy, chain},
+        {RemoteChain.RPCCache, chain},
         {RemoteChain.NonceProvider, chain},
         {RemoteChain.TxRelay, chain}
       ],
-      strategy: :one_for_one
+      strategy: :rest_for_one
     )
   end
 end

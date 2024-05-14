@@ -3,6 +3,7 @@
 # Licensed under the Diode License, Version 1.1
 defmodule Shell do
   @moduledoc false
+  alias RemoteChain.NodeProxy
   alias RemoteChain.Transaction
 
   def call(chain_id, address, name, types \\ [], values \\ [], opts \\ [])
@@ -38,16 +39,27 @@ defmodule Shell do
   end
 
   def await_tx_id({tx_id, tx}) do
+    NodeProxy.subscribe_block(Transaction.chain_id(tx))
+
     case RemoteChain.RPC.get_transaction_by_hash(Transaction.chain_id(tx), tx_id) do
       nil ->
+        NodeProxy.unsubscribe_block(Transaction.chain_id(tx))
+
         raise "Awaiting transaction (nil?!): #{tx_id} #{inspect(Base16.encode(Transaction.hash(tx)))}"
 
       %{"blockNumber" => nil} ->
         IO.puts("Awaiting transaction: #{tx_id}")
-        Process.sleep(1000)
-        await_tx_id({tx_id, tx})
+
+        receive do
+          {{NodeProxy, _chain}, :block_number, _block_number} ->
+            await_tx_id({tx_id, tx})
+        after
+          5000 ->
+            await_tx_id({tx_id, tx})
+        end
 
       %{"blockNumber" => block_number} ->
+        NodeProxy.unsubscribe_block(Transaction.chain_id(tx))
         block_number
     end
   end

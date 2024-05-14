@@ -24,6 +24,8 @@ defmodule RemoteChain.RPCCache do
 
   @impl true
   def init(chain) do
+    # NodeProxy.subscribe_block(chain)
+
     {:ok,
      %__MODULE__{
        chain: chain,
@@ -34,10 +36,6 @@ defmodule RemoteChain.RPCCache do
        request_collection: :gen_server.reqids_new(),
        block_number_requests: []
      }}
-  end
-
-  def set_block_number(chain, block_number) do
-    GenServer.cast(name(chain), {:block_number, block_number})
   end
 
   def block_number(chain) do
@@ -159,18 +157,6 @@ defmodule RemoteChain.RPCCache do
   end
 
   @impl true
-  def handle_cast(
-        {:block_number, block_number},
-        state = %RPCCache{block_number_requests: requests}
-      ) do
-    for from <- requests do
-      GenServer.reply(from, block_number)
-    end
-
-    {:noreply, %RPCCache{state | block_number: block_number, block_number_requests: []}}
-  end
-
-  @impl true
   def handle_call(
         :block_number,
         from,
@@ -219,6 +205,17 @@ defmodule RemoteChain.RPCCache do
   end
 
   @impl true
+  def handle_info(
+        {{NodeProxy, _chain}, :block_number, block_number},
+        state = %RPCCache{block_number_requests: requests}
+      ) do
+    for from <- requests do
+      GenServer.reply(from, block_number)
+    end
+
+    {:noreply, %RPCCache{state | block_number: block_number, block_number_requests: []}}
+  end
+
   def handle_info(
         msg,
         state = %RPCCache{
