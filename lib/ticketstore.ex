@@ -6,6 +6,7 @@ defmodule TicketStore do
   alias Model.TicketSql
   alias Model.Ets
   use GenServer
+  require Logger
 
   @ticket_value_cache :ticket_value_cache
 
@@ -51,17 +52,17 @@ defmodule TicketStore do
       |> Enum.filter(fn tck ->
         Ticket.raw(tck)
         |> Contract.Registry.submit_ticket_raw_tx()
-        |> Shell.call_tx!("latest")
+        |> Shell.call_tx("latest")
         |> case do
-          {"", _gas_cost} ->
+          "0x" ->
             true
 
-          {{:evmc_revert, reason}, _} ->
-            :io.format("TicketStore:submit_tickets(~p) ticket error: ~p~n", [epoch, reason])
+          {:error, %{"message" => reason}} ->
+            Logger.error("TicketStore:submit_tickets(#{epoch}) ticket error: #{inspect(reason)}")
             false
 
           other ->
-            :io.format("TicketStore:submit_tickets(~p) ticket error: ~p~n", [epoch, other])
+            Logger.error("TicketStore:submit_tickets(#{epoch}) ticket error: #{inspect(other)}")
             false
         end
       end)
@@ -79,10 +80,14 @@ defmodule TicketStore do
           Shell.submit_tx(tx)
 
         {{:evmc_revert, reason}, _} ->
-          :io.format("TicketStore:submit_tickets(~p) transaction error: ~p~n", [epoch, reason])
+          Logger.error(
+            "TicketStore:submit_tickets(#{epoch}) transaction error: #{inspect(reason)}"
+          )
 
         other ->
-          :io.format("TicketStore:submit_tickets(~p) transaction error: ~p~n", [epoch, other])
+          Logger.error(
+            "TicketStore:submit_tickets(#{epoch}) transaction error: #{inspect(other)}"
+          )
       end
     end
   end
@@ -112,8 +117,8 @@ defmodule TicketStore do
             {:ok, max(0, Ticket.total_bytes(tck) - Ticket.total_bytes(last))}
           else
             if address != Ticket.device_address(last) do
-              :io.format("Ticked Signed on Fork RemoteChain~n")
-              :io.format("Last: ~180p~nTick: ~180p~n", [last, tck])
+              Logger.warning("Ticked Signed on Fork RemoteChain")
+              Logger.warning("Last: #{inspect(last)}\nTck: #{inspect(tck)}", [last, tck])
               put_ticket(tck, address, fleet, tepoch)
               {:ok, Ticket.total_bytes(tck)}
             else

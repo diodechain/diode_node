@@ -29,17 +29,17 @@ defmodule RemoteChain do
     def diode_l1_fallback(), do: Chains.Diode
 
     @chains [
-      Chains.DiodeStaging,
       Chains.Diode,
       Chains.Moonbeam,
       Chains.MoonbaseAlpha
     ]
   end
 
-  @all_chains [
-    Chains.DiodeDev,
-    Chains.Moonriver | @chains
-  ]
+  @all_chains Enum.uniq([
+                Chains.DiodeDev,
+                Chains.DiodeStaging,
+                Chains.Moonriver | @chains
+              ])
 
   @doc """
   This function reads endpoints from environment variables when available. So it's possible

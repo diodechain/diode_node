@@ -1,5 +1,6 @@
 defmodule Mix.Tasks.GitVersion do
   use Mix.Task
+  require Logger
 
   @impl Mix.Task
   def run(args) do
@@ -19,11 +20,11 @@ defmodule Mix.Tasks.GitVersion do
             if bin != original, do: File.write!("mix.exs", bin)
 
           other ->
-            :io.format("Couldn't parse version ~p~n", [other])
+            Logger.error("Couldn't parse version #{inspect(other)}")
         end
 
       other ->
-        :io.format("Couldn't check git version ~p~n", [other])
+        Logger.error("Couldn't check git version #{inspect(other)}")
     end
 
     IO.puts(Enum.join(args, " "))

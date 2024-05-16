@@ -11,7 +11,7 @@ defmodule Diode.Mixfile do
   use Mix.Project
 
   @vsn "1.1.0"
-  @full_vsn "v1.1.0-26-g578aa22-dirty"
+  @full_vsn "v1.1.0-37-gb148d83-dirty"
   @url "https://github.com/diodechain/diode_server"
 
   def project do

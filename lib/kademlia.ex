@@ -65,7 +65,6 @@ defmodule Kademlia do
       find_nodes(key)
       |> Enum.take(@k)
 
-    # :io.format("Storing #{value} at ~p as #{Base16.encode(key)}~n", [Enum.map(nearest, &port/1)])
     rpc(nodes, [Client.store(), hash(key), value])
   end
 
@@ -455,7 +454,6 @@ defmodule Kademlia do
   end
 
   def do_find_nodes(key, k, cmd) do
-    # :io.format("KademliaSearch.find_nodes(key=#{Base16.encode(key)}, nearest=~p, k=#{k}, cmd=#{cmd})~n", [Enum.map(nearest, &port/1)])
     get_cached(
       fn {cmd, key} ->
         KademliaSearch.find_nodes(key, find_node_lookup(key), k, cmd)

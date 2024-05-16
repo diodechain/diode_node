@@ -79,10 +79,10 @@ defmodule Stats do
     if :persistent_term.get(@key) > 0 do
       case Process.get(:batch, :persistent_term.get(@key)) do
         0 ->
-          :io.format(" Stats~n")
+          IO.puts(" Stats")
 
-          :io.format(
-            "======================================================== MICROS ======= COUNT ===~n"
+          IO.puts(
+            "======================================================== MICROS ======= COUNT ==="
           )
 
           done_counters =
@@ -113,8 +113,8 @@ defmodule Stats do
             :io.format("| ~s: ~14B | ~10B |~n", [key, time, cnt])
           end
 
-          :io.format(
-            "=================================================================================~n~n"
+          IO.puts(
+            "=================================================================================\n"
           )
 
           Process.put(:batch, :persistent_term.get(@key))

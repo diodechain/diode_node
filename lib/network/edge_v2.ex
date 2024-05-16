@@ -768,7 +768,5 @@ defmodule Network.EdgeV2 do
   defp random_ref() do
     Random.uint31h()
     |> to_bin()
-
-    # :io.format("REF ~p~n", [ref])
   end
 end

@@ -7,6 +7,7 @@ defmodule KademliaSearch do
     and executed the specified cmd query in the network.
   """
   use GenServer
+  require Logger
 
   @max_oid 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF + 1
   @alpha 3
@@ -49,7 +50,7 @@ defmodule KademliaSearch do
   end
 
   def handle_info({:EXIT, worker_pid, reason}, state = %KademliaSearch{tasks: tasks}) do
-    :io.format("~p received :EXIT ~p~n", [__MODULE__, reason])
+    Logger.info("#{__MODULE__} received :EXIT #{inspect(reason)}")
     tasks = Enum.reject(tasks, fn pid -> pid == worker_pid end)
     tasks = [start_worker(state) | tasks]
     {:noreply, %KademliaSearch{state | tasks: tasks}}
@@ -168,7 +169,6 @@ defmodule KademliaSearch do
           Kademlia.rpc(node, [cmd, key])
           |> import_network_items()
 
-    # :io.format("Kademlia.rpc(#{inspect node}, #{cmd}, #{Base16.encode(key)}) -> ~1200p~n", [ret])
     send(father, {:kadret, ret, node, self()})
 
     receive do

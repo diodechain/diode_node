@@ -2,6 +2,8 @@
 # Copyright 2021-2024 Diode
 # Licensed under the Diode License, Version 1.1
 defmodule Network.Rpc do
+  require Logger
+
   def handle_jsonrpc(rpcs, opts \\ [])
 
   def handle_jsonrpc(%{"_json" => rpcs}, opts) when is_list(rpcs) do
@@ -36,8 +38,6 @@ defmodule Network.Rpc do
   end
 
   def handle_jsonrpc(body_params, opts) when is_map(body_params) do
-    # :io.format("handle_jsonrpc: ~p~n", [body_params])
-
     {id, method} =
       case body_params do
         %{"method" => method, "id" => id} -> {id, method}
@@ -52,11 +52,9 @@ defmodule Network.Rpc do
         execute_rpc(method, params, opts)
       rescue
         e in ErlangError ->
-          :io.format("Network.Rpc: ErlangError ~p in ~p: ~0p~n", [
-            e,
-            {method, params},
-            __STACKTRACE__
-          ])
+          Logger.error(
+            "Network.Rpc: ErlangError #{inspect(e)} in #{inspect({method, params})}: #{inspect(__STACKTRACE__)}"
+          )
 
           {nil, 400, %{"message" => "Bad Request"}}
       catch
@@ -65,11 +63,7 @@ defmodule Network.Rpc do
       end
 
     if Diode.dev_mode?() do
-      :io.format("~s = ~p~n", [method, result])
-
-      # if error != nil or (is_map(result) and Map.has_key?(result, "error")) do
-      #   :io.format("params: ~p~n", [params])
-      # end
+      Logger.info("#{method} = #{inspect(result)}")
     end
 
     {ret, code} =
@@ -104,7 +98,7 @@ defmodule Network.Rpc do
   end
 
   defp execute([], [method, params]) do
-    :io.format("Unhandled: ~p ~p~n", [method, params])
+    Logger.info("Unhandled RPC: #{inspect({method, params})}")
     result("what method?", 422)
   end
 

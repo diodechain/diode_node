@@ -7,6 +7,7 @@ defmodule Network.PeerHandler do
   alias Model.KademliaSql
   alias Network.PortCollection
   alias Network.PortCollection.Port
+  require Logger
 
   # @hello 0
   # @response 1
@@ -294,7 +295,10 @@ defmodule Network.PeerHandler do
         {:noreply, %{state | last_send: data}}
 
       {:error, reason} ->
-        :io.format("connection dropped for ~p last message I sent was: ~180p", [reason, prev])
+        Logger.error(
+          "Peer connection dropped for #{reason} last message I sent was: #{inspect(prev)}"
+        )
+
         {:stop, :normal, state}
     end
   end
@@ -305,7 +309,7 @@ defmodule Network.PeerHandler do
 
   def on_nodeid(node) do
     OnCrash.call(fn reason ->
-      :io.format("Node ~p down for: ~180p~n", [Wallet.printable(node), reason])
+      Logger.info("Node #{Wallet.printable(node)} down for: #{inspect(reason)}")
       GenServer.cast(Kademlia, {:failed_node, node})
     end)
   end

@@ -230,7 +230,7 @@ defmodule TestHelper do
         {:exit_status, status}
 
       msg ->
-        IO.puts("RECEIVED: #{inspect msg}")
+        IO.puts("RECEIVED: #{inspect(msg)}")
     end
 
     clone_loop(port, file)

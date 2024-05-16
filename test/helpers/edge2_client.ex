@@ -9,7 +9,6 @@ defmodule Edge2Client do
   @ticket_grace 4096
 
   def ensure_clients() do
-    # :io.format("ensure_clients()~n")
     ensure_client(:client_1, 1)
     whitelist_client(1)
     ensure_client(:client_2, 2)
@@ -40,8 +39,6 @@ defmodule Edge2Client do
   end
 
   def ensure_client(atom, n) do
-    # :io.format("ensure_client(~p)~n", [atom])
-
     try do
       case rpc(atom, ["ping"]) do
         ["pong"] ->
@@ -209,7 +206,6 @@ defmodule Edge2Client do
         end
 
       {pid, :quit} ->
-        # :io.format("Got quit!~n")
         send(pid, {:ret, :ok})
 
       {pid, :bytes} ->
@@ -244,24 +240,20 @@ defmodule Edge2Client do
       nil ->
         case state.recv do
           nil ->
-            # :io.format("handle_msg => state.data: ~p~n", [msg])
             %{state | data: :queue.in(msg, state.data)}
 
           from ->
             send(from, {:ret, msg})
-            # :io.format("handle_msg => recv (~p): ~p~n", [from, msg])
             %{state | recv: nil}
         end
 
       from ->
         send(from, {:ret, msg})
-        # :io.format("handle_msg => recv_id (~p): ~p~n", [from, msg])
         %{state | recv_id: Map.delete(state.recv_id, req)}
     end
   end
 
   def rpc(pid, data) do
-    # :io.format("rpc(~p, ~p)~n", [pid, data])
     req = req_id()
 
     with {:ok, _} <- csend(pid, data, req),
@@ -273,18 +265,12 @@ defmodule Edge2Client do
   end
 
   def req_id() do
-    # :io.format("req_id()~n")
-
     id = Process.get(:req_id, 1)
     Process.put(:req_id, id + 1)
-    ret = to_bin(id)
-
-    # :io.format("req_id()= ~p~n", [ret])
-    ret
+    to_bin(id)
   end
 
   def csend(pid, data, req \\ req_id()) do
-    # :io.format("csend(~p, ~p, ~p)~n", [pid, data, req])
     call(pid, {:send, Rlp.encode!([req | [data]])})
   end
 
@@ -322,13 +308,9 @@ defmodule Edge2Client do
     send(pid, {self(), cmd})
 
     receive do
-      {:ret, crecv} ->
-        # :io.format("call(~p, ~p ~p) => [~p]~n", [pid, cmd, timeout, crecv])
-        {:ok, crecv}
+      {:ret, crecv} -> {:ok, crecv}
     after
-      timeout ->
-        # :io.format("call(~p, ~p ~p) => timeout!~n", [pid, cmd, timeout])
-        {:error, :timeout}
+      timeout -> {:error, :timeout}
     end
   end
 
@@ -351,7 +333,6 @@ defmodule Edge2Client do
   end
 
   def client(n) do
-    # :io.format("client(~p)~n", [n])
     cert = "./test/pems/device#{n}_certificate.pem"
     {:ok, socket} = :ssl.connect('localhost', hd(Diode.edge2_ports()), options(cert), 5000)
     wallet = clientid(n)

@@ -132,7 +132,7 @@ defmodule Object.TicketV1 do
   end
 
   def server_id(ticketv1(server_id: id)), do: id
-  def chain_id(_ \\ nil), do: Chains.DiodeStaging.chain_id()
+  def chain_id(_ \\ nil), do: RemoteChain.diode_l1_fallback().chain_id()
   def epoch(t = ticketv1(block_number: n)), do: RemoteChain.epoch(chain_id(t), n)
 
   @impl true

@@ -102,19 +102,14 @@ defmodule Network.Server do
   def handle_client_exit(state = %{clients: clients}, pid, reason) do
     case Map.get(clients, pid) do
       nil ->
-        :io.format("~0p Connection setup failed before register (~0p)~n", [
-          state.protocol,
-          {pid, reason}
-        ])
-
+        Logger.warning("#{inspect(state.protocol)} Connection failed (#{inspect({pid, reason})})")
         {:noreply, state}
 
       key ->
-        if reason != :normal do
-          :io.format("~0p Connection failed (~0p)~n", [
-            state.protocol,
-            {pid, reason}
-          ])
+        if reason not in [:normal, :closed] do
+          Logger.warning(
+            "#{inspect(state.protocol)} Connection failed (#{inspect({pid, reason})})"
+          )
         end
 
         clients = Map.drop(clients, [pid, key])
@@ -131,7 +126,7 @@ defmodule Network.Server do
   end
 
   def handle_acceptor_exit(state = %{acceptors: acceptors}, port, pid, reason) do
-    :io.format("~p acceptor crashed ~p~n", [state.protocol, reason])
+    Logger.error("#{state.protocol} acceptor crashed: #{inspect(reason)}")
 
     acceptors =
       Map.delete(acceptors, pid)
@@ -152,7 +147,7 @@ defmodule Network.Server do
   end
 
   def handle_info(msg, state) do
-    :io.format("~p unhandled info: ~0p~n", [state.protocol, msg])
+    Logger.warning("#{state.protocol} unhandled info: #{inspect(msg)}")
     {:noreply, state}
   end
 
@@ -244,9 +239,8 @@ defmodule Network.Server do
       {other_pid, _timestamp} ->
         # hm, another pid is given for the node_id logging this
 
-        :io.format(
-          "~p Handshake anomaly(~p): #{Wallet.printable(node_id)} is already connected: ~180p~n",
-          [state.protocol, pid, {other_pid, Process.alive?(other_pid)}]
+        Logger.info(
+          "#{state.protocol} Handshake anomaly(#{inspect(pid)}): #{Wallet.printable(node_id)} is already connected: #{inspect({other_pid, Process.alive?(other_pid)})}"
         )
 
         clients =
