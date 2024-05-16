@@ -46,7 +46,7 @@ defmodule Network.Channel do
     end
   end
 
-  def handle_cast({:pccb_portsend, port, data}, state) do
+  def handle_cast({:pccb_portsend, port, _port_client, data}, state) do
     for {ref, _port} <- state.ports.refs do
       if ref != port.ref do
         PortCollection.portsend(state.ports, ref, data)

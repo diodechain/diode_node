@@ -23,7 +23,7 @@ defmodule Network.PortCollection do
     Port GenServers who are sender/receiver have to implement these calls:application
 
     - handle_cast({:pccb_portopen, port, device_address}, state)
-    - handle_cast({:pccb_portsend, port, data}, state)
+    - handle_cast({:pccb_portsend, port, port_client, data}, state)
     - handle_cast({:pccb_portclose, port}, state)
 
 
@@ -126,7 +126,6 @@ defmodule Network.PortCollection do
   end
 
   def request_portopen(device_address, this, portname, flags, pid, ref) do
-    mon = monitor(this, pid)
     trace = if String.contains?(flags, "t"), do: this
 
     #  Receives an open request from another local connected edge worker.
@@ -168,6 +167,8 @@ defmodule Network.PortCollection do
 
     case resp do
       {:ok, cref} ->
+        mon = monitor(this, pid)
+
         client = %PortClient{
           pid: pid,
           mon: mon,
@@ -181,16 +182,16 @@ defmodule Network.PortCollection do
         :ok
 
       {:error, reason} ->
-        Process.demonitor(mon, [:flush])
         {:error, reason}
 
       :error ->
-        Process.demonitor(mon, [:flush])
         {:error, "unexpected error"}
     end
   end
 
-  def maybe_handle_info({:DOWN, mon, _type, _object, _info}, pc = %PortCollection{}) do
+  def maybe_handle_info({:DOWN, mon, _type, object, _info}, pc = %PortCollection{}) do
+    IO.inspect({{mon, object}, get_clientmon(pc, mon), pc}, label: "DOWN")
+
     case close(pc, get_clientmon(pc, mon)) do
       ^pc -> false
       pc2 -> pc2
@@ -289,6 +290,7 @@ defmodule Network.PortCollection do
   end
 
   defp close(pc, tuple) do
+    IO.inspect({tuple}, label: "close")
     case tuple do
       nil ->
         pc
@@ -334,6 +336,7 @@ defmodule Network.PortCollection do
 
   def portclose(pc, port = %Port{}) do
     for client <- port.clients do
+      IO.inspect({port}, label: "portclose")
       cast(client.pid, {:portclose, port.ref})
       Process.demonitor(client.mon, [:flush])
     end
@@ -351,7 +354,7 @@ defmodule Network.PortCollection do
 
         for client <- clients do
           if client.write do
-            GenServer.cast(client.pid, {:pccb_portsend, port, data})
+            GenServer.cast(client.pid, {:pccb_portsend, port, client, data})
           end
         end
 
@@ -368,14 +371,20 @@ defmodule Network.PortCollection do
   end
 
   defp call(pid, cmd, timeout \\ 5000) do
-    Process.link(pid)
+    ref = Process.monitor(pid)
     req_id = :erlang.alias([:reply])
     send(pid, {{__MODULE__, req_id}, cmd})
 
     receive do
-      {^req_id, reply} -> reply
+      {^req_id, reply} ->
+        Process.demonitor(ref, [:flush])
+        reply
+
+      {:DOWN, ^ref, :process, _pid, reason} ->
+        raise {:error, reason}
     after
       timeout ->
+        Process.demonitor(ref, [:flush])
         raise {:error, :timeout}
     end
   end

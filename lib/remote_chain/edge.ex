@@ -116,8 +116,12 @@ defmodule RemoteChain.Edge do
         |> Enum.map(&Base16.decode/1)
         |> response()
 
-      ["sendtransaction", _tx] ->
-        error("not implemented")
+      ["sendtransaction", payload] ->
+        case RemoteChain.RPC.send_raw_transaction(chain, Base16.encode(payload)) do
+          :already_known -> response("ok")
+          tx_hash when is_binary(tx_hash) -> response("ok")
+          {:error, error} -> error(error)
+        end
 
       ["getmetanonce", block, address] ->
         CallPermit.rpc_call!(chain, CallPermit.nonces(address), nil, hex_blockref(block))

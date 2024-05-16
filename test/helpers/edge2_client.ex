@@ -170,7 +170,7 @@ defmodule Edge2Client do
         end
 
       {pid, :peek} ->
-        send(pid, {:ret, :queue.peek(state.data)})
+        send(pid, {:ret, :queue.to_list(state.data)})
         clientloop(socket, state)
 
       {pid, :recv} ->
@@ -290,6 +290,16 @@ defmodule Edge2Client do
 
   def crecv(pid) do
     case call(pid, :recv) do
+      {:ok, crecv} ->
+        {:ok, crecv}
+
+      error ->
+        error
+    end
+  end
+
+  def cpeek(pid) do
+    case call(pid, :peek) do
       {:ok, crecv} ->
         {:ok, crecv}
 

@@ -5,10 +5,11 @@ ExUnit.start(seed: 0)
 
 defmodule ChainAgent do
   use GenServer
-  defstruct port: nil, out: ""
+  defstruct port: nil, out: "", log: nil
 
   def init(_args) do
-    {:ok, %ChainAgent{}}
+    log = File.open!("anvil.log", [:write, :binary])
+    {:ok, %ChainAgent{log: log}}
   end
 
   def handle_call(:restart, _from, state = %{port: port}) do
@@ -73,9 +74,9 @@ defmodule ChainAgent do
     end
   end
 
-  def handle_info({port0, {:data, msg}}, state = %{out: out, port: port}) do
+  def handle_info({port0, {:data, msg}}, state = %{log: log, out: out, port: port}) do
     if port0 == port do
-      IO.puts(msg)
+      IO.puts(log, msg)
       {:noreply, %{state | out: out <> msg}}
     else
       {:noreply, %{state | out: out}}

@@ -48,13 +48,12 @@ defmodule Shell do
         raise "Awaiting transaction (nil?!): #{tx_id} #{inspect(Base16.encode(Transaction.hash(tx)))}"
 
       %{"blockNumber" => nil} ->
-        IO.puts("Awaiting transaction: #{tx_id}")
-
         receive do
           {{NodeProxy, _chain}, :block_number, _block_number} ->
             await_tx_id({tx_id, tx})
         after
           5000 ->
+            IO.puts("Awaiting transaction: #{tx_id}")
             await_tx_id({tx_id, tx})
         end
 

@@ -14,6 +14,8 @@
 *.cprof
 *.sq3
 *.csv
+*.log
+*.key
 .erlang.cookie
 fprof.trace
 blocks.dat

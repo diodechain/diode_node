@@ -6,6 +6,7 @@ defmodule Network.EdgeV2 do
   require Logger
   alias Network.PortCollection
   alias Network.PortCollection.Port
+  alias Network.PortCollection.PortClient
   alias Object.Ticket
   alias Object.Channel
   import Object.TicketV1, only: :macros
@@ -31,6 +32,7 @@ defmodule Network.EdgeV2 do
 
   def do_init(state) do
     PubSub.subscribe({:edge, device_address(state)})
+    IO.inspect({:edge, Base16.encode(device_address(state)), self()}, label: "EdgeV2")
 
     state =
       Map.merge(state, %{
@@ -62,19 +64,6 @@ defmodule Network.EdgeV2 do
   end
 
   @impl true
-  def handle_call(fun, from, state) when is_function(fun) do
-    fun.(from, state)
-  end
-
-  def handle_call(:socket, _from, state) do
-    {:reply, state.socket, state}
-  end
-
-  def handle_call({:socket_do, fun}, _from, state) do
-    {:reply, fun.(state.socket), state}
-  end
-
-  @impl true
   def handle_cast({:pccb_portopen, %Port{ref: ref, portname: portname}, device_address}, state) do
     state =
       send_socket(state, {:port, ref}, random_ref(), ["portopen", portname, ref, device_address])
@@ -87,7 +76,10 @@ defmodule Network.EdgeV2 do
     {:noreply, state}
   end
 
-  def handle_cast({:pccb_portsend, %Port{trace: trace, ref: ref}, data}, state) do
+  def handle_cast(
+        {:pccb_portsend, %Port{trace: trace, ref: ref}, %PortClient{ref: _ref}, data},
+        state
+      ) do
     trace = {trace, name(state), "exec portsend to #{Base16.encode(ref)}"}
     {:noreply, send_socket(state, {:port, ref}, random_ref(), ["portsend", ref, data], trace)}
   end
@@ -418,12 +410,6 @@ defmodule Network.EdgeV2 do
     handle_data(data, %{state | last_message: Time.utc_now()})
   end
 
-  def handle_info({:topic, _topic, _message}, state) do
-    throw(:notimpl)
-    # state = send_socket(state, random_ref(), [topic, message])
-    {:noreply, state}
-  end
-
   def handle_info({:stop_unpaid, b0}, state = %{unpaid_bytes: b}) do
     log(state, "connection closed because unpaid #{b0}(#{b}) bytes.")
     {:stop, :normal, state}
@@ -444,6 +430,8 @@ defmodule Network.EdgeV2 do
   end
 
   def handle_info(msg, state) do
+    log(state, "info: #{inspect(msg)}")
+
     case PortCollection.maybe_handle_info(msg, state.ports) do
       ports = %PortCollection{} ->
         {:noreply, %{state | ports: ports}}
@@ -643,8 +631,8 @@ defmodule Network.EdgeV2 do
 
   defp local_portopen(device_address, this, portname, flags, pid, ref) do
     case PortCollection.request_portopen(device_address, this, portname, flags, pid, ref) do
-      {:error, reason} ->
-        error(reason)
+      {:error, _reason} ->
+        error(ref)
 
       :ok ->
         response("ok", ref)
@@ -768,13 +756,17 @@ defmodule Network.EdgeV2 do
   end
 
   defp validate_flags(bytes) do
-    Enum.all?(String.to_charlist(bytes), fn
+    flags = String.to_charlist(bytes)
+
+    # flags must be a subset of "rwst"
+    # and must contain at least one of "r" or "w"
+    Enum.all?(flags, fn
       ?r -> true
       ?w -> true
       ?s -> true
       ?t -> true
       _ -> false
-    end)
+    end) and (?r in flags or ?w in flags)
   end
 
   defp random_ref() do

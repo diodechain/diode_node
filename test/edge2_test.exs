@@ -514,13 +514,13 @@ defmodule Edge2Test do
     # Connecting to "right" port id
     client2id = Wallet.address!(clientid(2))
     assert csend(:client_1, ["portopen", client2id, @port]) == {:ok, :ok}
-
     {:ok, [_req, ["portopen", @port, ref1, access_id]]} = crecv(:client_2)
     assert access_id == Wallet.address!(clientid(1))
 
+    IO.inspect(Base16.encode(client2id), label: "client2")
     kill(:client_2)
 
-    {:ok, [_req, [_reason, ref2]]} = crecv(:client_1)
+    {:ok, [_req, [_reason, ref2]]} = crecv(:client_1) |> IO.inspect()
     assert ref1 == ref2
   end
 
@@ -530,7 +530,7 @@ defmodule Edge2Test do
     client2id = Wallet.address!(clientid(2))
     assert csend(:client_1, ["portopen", client2id, @port]) == {:ok, :ok}
     Process.sleep(1000)
-    assert call(:client_1, :peek) == {:ok, :empty}
+    assert call(:client_1, :peek) == {:ok, []}
 
     {:ok, [req, ["portopen", @port, ref1, access_id]]} = crecv(:client_2)
     assert access_id == Wallet.address!(clientid(1))
@@ -590,18 +590,27 @@ defmodule Edge2Test do
     ["ok", ref3] = rpc(:client_1, ["portopen", client2id, @port, "rws"])
     assert ref3 != ref2
 
+    # Client1 owns ref2 and ref3
+    # Client2 owns ref1
+
+    IO.inspect({ref1, ref2, ref3}, label: "refs")
+
     for _ <- 1..10 do
       # Sending traffic
       assert rpc(:client_2, ["portsend", ref1, "ping from 2!"]) == ["ok"]
-      {:ok, [_req, ["portsend", ^ref3, "ping from 2!"]]} = crecv(:client_1)
-      {:ok, [_req, ["portsend", ^ref1, "ping from 2!"]]} = crecv(:client_1)
+      {:ok, [_req, ["portsend", ret1, "ping from 2!"]]} = crecv(:client_1)
+      {:ok, [_req, ["portsend", ret2, "ping from 2!"]]} = crecv(:client_1)
+
+      assert Enum.sort([ref2, ref3]) == Enum.sort([ret1, ret2])
     end
 
-    # Closing port ref1
-    assert rpc(:client_1, ["portclose", ref1]) == ["ok"]
+    # Closing port ref2 (same value as ref1)
+    assert rpc(:client_1, ["portclose", ref2]) == ["ok"]
 
     # Other port ref3 still working
     assert rpc(:client_1, ["portsend", ref3, "ping from 3!"]) == ["ok"]
+    Process.sleep(100)
+    IO.inspect(cpeek(:client_2), label: "peek")
     {:ok, [_req, ["portsend", ^ref1, "ping from 3!"]]} = crecv(:client_2)
 
     # Sending to closed port
