@@ -40,6 +40,7 @@ defmodule Network.PortCollection do
     @type t :: %PortClient{
             pid: pid(),
             mon: reference(),
+            ref: reference(),
             write: boolean(),
             trace: boolean()
           }
@@ -254,7 +255,7 @@ defmodule Network.PortCollection do
         client = %PortClient{
           mon: mon,
           pid: pid,
-          ref: ref,
+          ref: make_ref(),
           write: String.contains?(flags, "r"),
           trace: trace
         }
@@ -278,7 +279,7 @@ defmodule Network.PortCollection do
           existing_port ->
             port = %Port{existing_port | clients: [client | existing_port.clients]}
             pc = PortCollection.put(pc, port)
-            {:reply, existing_port.ref, pc}
+            {:reply, client.ref, pc}
         end
     end
   end
@@ -308,8 +309,8 @@ defmodule Network.PortCollection do
       nil ->
         {:error, "port does not exist"}
 
-      port = %Port{state: :pre_open, from: from} ->
-        send(from, {from, {:ok, ref}})
+      port = %Port{state: :pre_open, from: from, clients: [client]} ->
+        send(from, {from, {:ok, client.ref}})
         pc = PortCollection.put(pc, %Port{port | state: :open, from: nil})
         {:ok, pc}
     end
