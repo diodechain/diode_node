@@ -216,7 +216,6 @@ defmodule TestHelper do
 
       # :io.format("port clone_#{num}: ~p~n", [port])
       true = Process.register(port, String.to_atom("clone_#{num}"))
-
       clone_loop(port, file)
     end)
   end
@@ -225,9 +224,13 @@ defmodule TestHelper do
     receive do
       {^port, {:data, msg}} ->
         IO.write(file, msg)
+        clone_loop(port, file)
+
+      {^port, {:exit_status, status}} ->
+        {:exit_status, status}
 
       msg ->
-        :io.format("RECEIVED: ~p~n", [msg])
+        IO.puts("RECEIVED: #{inspect msg}")
     end
 
     clone_loop(port, file)
