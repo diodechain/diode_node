@@ -7,7 +7,6 @@ defmodule Network.PeerHandler do
   alias Model.KademliaSql
   alias Network.PortCollection
   alias Network.PortCollection.Port
-  alias Network.PortCollection.PortClient
 
   # @hello 0
   # @response 1
@@ -73,8 +72,8 @@ defmodule Network.PeerHandler do
     ssl_send(state, [:portclose, ref])
   end
 
-  def handle_cast({:pccb_portsend, _port, %PortClient{ref: ref}, data}, state) do
-    ssl_send(state, [:portsend, ref, data])
+  def handle_cast({:pccb_portsend, port, data}, state) do
+    ssl_send(state, [:portsend, port.ref, data])
   end
 
   def handle_call({:rpc, call}, from, state) do

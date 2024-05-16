@@ -2,7 +2,7 @@
 # Copyright 2021-2024 Diode
 # Licensed under the Diode License, Version 1.1
 defmodule MapMerkleTreeTest do
-  use ExUnit.Case
+  use ExUnit.Case, async: true
 
   defp new() do
     MapMerkleTree.new()

@@ -22,7 +22,7 @@ defmodule Shell do
       |> Keyword.pop(:blockRef, "latest")
 
     tx = transaction(wallet, address, name, types, values, opts, false)
-    call_tx(tx, blockRef)
+    call_tx!(tx, blockRef)
   end
 
   def submit_tx(tx) do
@@ -63,8 +63,18 @@ defmodule Shell do
     end
   end
 
-  def call_tx(tx, blockRef) do
+  def call_tx!(tx, blockRef) do
     RemoteChain.RPC.call!(
+      Transaction.chain_id(tx),
+      Transaction.to(tx) |> Base16.encode(),
+      Transaction.from(tx) |> Base16.encode(),
+      Transaction.payload(tx) |> Base16.encode(),
+      blockRef
+    )
+  end
+
+  def call_tx(tx, blockRef) do
+    RemoteChain.RPC.call(
       Transaction.chain_id(tx),
       Transaction.to(tx) |> Base16.encode(),
       Transaction.from(tx) |> Base16.encode(),

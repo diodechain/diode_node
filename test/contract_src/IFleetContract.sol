@@ -9,5 +9,6 @@ pragma solidity >=0.7.6;
  */
 interface IFleetContract {
     function Accountant() external view returns (address);
+    function DeviceAllowlist(address _client) external view returns (bool);
     function deviceWhitelist(address _client) external view returns (bool);
 }

@@ -23,7 +23,7 @@ defmodule Network.PortCollection do
     Port GenServers who are sender/receiver have to implement these calls:application
 
     - handle_cast({:pccb_portopen, port, device_address}, state)
-    - handle_cast({:pccb_portsend, port, port_client, data}, state)
+    - handle_cast({:pccb_portsend, port, data}, state)
     - handle_cast({:pccb_portclose, port}, state)
 
 
@@ -35,6 +35,7 @@ defmodule Network.PortCollection do
       3) s = Shared
   """
   defmodule PortClient do
+    @enforce_keys [:ref]
     defstruct pid: nil, mon: nil, ref: nil, write: true, trace: false
 
     @type t :: %PortClient{
@@ -189,9 +190,7 @@ defmodule Network.PortCollection do
     end
   end
 
-  def maybe_handle_info({:DOWN, mon, _type, object, _info}, pc = %PortCollection{}) do
-    IO.inspect({{mon, object}, get_clientmon(pc, mon), pc}, label: "DOWN")
-
+  def maybe_handle_info({:DOWN, mon, _type, _object, _info}, pc = %PortCollection{}) do
     case close(pc, get_clientmon(pc, mon)) do
       ^pc -> false
       pc2 -> pc2
@@ -280,17 +279,22 @@ defmodule Network.PortCollection do
           existing_port ->
             port = %Port{existing_port | clients: [client | existing_port.clients]}
             pc = PortCollection.put(pc, port)
-            {:reply, client.ref, pc}
+            {:reply, {:ok, client.ref}, pc}
         end
     end
   end
 
-  defp handle_cast({:portclose, ref}, pc) do
-    close(pc, get_clientref(pc, ref))
+  defp handle_cast({:portclose, client_ref}, pc) do
+    close(pc, get_clientref(pc, client_ref))
+  end
+
+  defp handle_cast({:portsend, client_ref, data}, pc) do
+    {_client, port} = get_clientref(pc, client_ref)
+    GenServer.cast(self(), {:pccb_portsend, port, data})
+    pc
   end
 
   defp close(pc, tuple) do
-    IO.inspect({tuple}, label: "close")
     case tuple do
       nil ->
         pc
@@ -336,8 +340,7 @@ defmodule Network.PortCollection do
 
   def portclose(pc, port = %Port{}) do
     for client <- port.clients do
-      IO.inspect({port}, label: "portclose")
-      cast(client.pid, {:portclose, port.ref})
+      cast(client.pid, {:portclose, client.ref})
       Process.demonitor(client.mon, [:flush])
     end
 
@@ -349,12 +352,12 @@ defmodule Network.PortCollection do
       nil ->
         {:error, "port does not exist"}
 
-      %Port{state: :open, clients: clients, trace: trace} = port ->
+      %Port{state: :open, clients: clients, trace: trace} ->
         trace(trace, :state, "recv portsend from #{Base16.encode(ref)}")
 
         for client <- clients do
           if client.write do
-            GenServer.cast(client.pid, {:pccb_portsend, port, client, data})
+            cast(client.pid, {:portsend, client.ref, data})
           end
         end
 

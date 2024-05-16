@@ -2,17 +2,14 @@
 # Copyright 2021-2024 Diode
 # Licensed under the Diode License, Version 1.1
 defmodule TransactionTest do
-  use ExUnit.Case
+  use ExUnit.Case, async: true
   alias RemoteChain.Transaction
   import TestHelper
 
   test "recoding" do
     [from, to] = Diode.wallets() |> Enum.reverse() |> Enum.take(2)
 
-    nonce =
-      RemoteChain.RPC.get_transaction_count(chain(), Wallet.address!(from) |> Base16.encode())
-      |> Base16.decode_int()
-
+    nonce = :rand.uniform(1000)
     to = Wallet.address!(to)
 
     tx =
@@ -44,7 +41,8 @@ defmodule TransactionTest do
 
     tx =
       Network.Rpc.create_transaction(from, <<"0xff">>, %{
-        "nonce" => 0
+        "nonce" => 0,
+        "chainId" => chain().chain_id()
       })
 
     assert Transaction.contract_creation?(tx) == true

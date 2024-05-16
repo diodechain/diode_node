@@ -126,8 +126,6 @@ defmodule Edge2Test do
     TicketStore.clear()
     ensure_clients()
 
-    IO.puts("peaknumber(): #{peaknumber()}")
-
     tck =
       ticketv2(
         chain_id: chain().chain_id(),
@@ -155,7 +153,6 @@ defmodule Edge2Test do
         Ticket.device_signature(tck)
       ])
 
-    IO.puts("peaknumber(): #{peaknumber()}")
     assert ret == ["thanks!", ""]
 
     # Submitting a second ticket with the same count should fail
@@ -290,7 +287,7 @@ defmodule Edge2Test do
     assert epoch == r_epoch2
 
     tx = Ticket.raw(tck) |> Contract.Registry.submit_ticket_raw_tx()
-    assert "0x" = Shell.call_tx(tx, "latest")
+    assert "0x" = Shell.call_tx!(tx, "latest")
     Shell.await_tx(tx)
 
     # 'currentEpoch' must have increased
@@ -517,10 +514,9 @@ defmodule Edge2Test do
     {:ok, [_req, ["portopen", @port, ref1, access_id]]} = crecv(:client_2)
     assert access_id == Wallet.address!(clientid(1))
 
-    IO.inspect(Base16.encode(client2id), label: "client2")
     kill(:client_2)
 
-    {:ok, [_req, [_reason, ref2]]} = crecv(:client_1) |> IO.inspect()
+    {:ok, [_req, [_reason, ref2]]} = crecv(:client_1)
     assert ref1 == ref2
   end
 
@@ -593,8 +589,6 @@ defmodule Edge2Test do
     # Client1 owns ref2 and ref3
     # Client2 owns ref1
 
-    IO.inspect({ref1, ref2, ref3}, label: "refs")
-
     for _ <- 1..10 do
       # Sending traffic
       assert rpc(:client_2, ["portsend", ref1, "ping from 2!"]) == ["ok"]
@@ -610,7 +604,6 @@ defmodule Edge2Test do
     # Other port ref3 still working
     assert rpc(:client_1, ["portsend", ref3, "ping from 3!"]) == ["ok"]
     Process.sleep(100)
-    IO.inspect(cpeek(:client_2), label: "peek")
     {:ok, [_req, ["portsend", ^ref1, "ping from 3!"]]} = crecv(:client_2)
 
     # Sending to closed port

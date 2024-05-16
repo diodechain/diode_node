@@ -2,7 +2,7 @@
 # Copyright 2021-2024 Diode
 # Licensed under the Diode License, Version 1.1
 defmodule Secp256k1Test do
-  use ExUnit.Case
+  use ExUnit.Case, async: true
 
   test "generate" do
     {public, private} = Secp256k1.generate()

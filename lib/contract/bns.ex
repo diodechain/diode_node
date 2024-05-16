@@ -28,7 +28,7 @@ defmodule Contract.BNS do
     code = Base16.decode(crash_data())
 
     Shell.raw(Diode.wallet(), code, [{:to, address()}])
-    |> Shell.call_tx("latest")
+    |> Shell.call_tx!("latest")
   end
 
   def crash_rpc() do

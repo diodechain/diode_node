@@ -12,11 +12,20 @@ defmodule ChainAgent do
     {:ok, %ChainAgent{log: log}}
   end
 
-  def handle_call(:restart, _from, state = %{port: port}) do
-    System.cmd("killall", ["anvil"])
+  def handle_call(:restart, _from, state) do
+    {:reply, :ok, do_restart(state)}
+  end
+
+  defp do_restart(state = %{port: port}) do
+    System.cmd("killall", ["-w", "anvil"])
 
     if port != nil do
-      Port.close(port)
+      try do
+        Port.close(port)
+      rescue
+        _ -> :ok
+      end
+
       Process.sleep(500)
     end
 
@@ -30,16 +39,10 @@ defmodule ChainAgent do
         :stderr_to_stdout
       ])
 
-    state = await(%{state | port: port, out: ""})
-    {:reply, :ok, state}
+    await(%{state | port: port, out: ""})
   end
 
-  defp restart(what) do
-    Supervisor.terminate_child(Diode.Supervisor, what)
-    Supervisor.restart_child(Diode.Supervisor, what)
-  end
-
-  defp await(state = %{port: port, out: out}) do
+  defp await(state = %{port: port, out: out, log: log}) do
     if String.contains?(out, "Listening on") do
       wallets =
         for n <- 0..9 do
@@ -51,21 +54,29 @@ defmodule ChainAgent do
 
       # SSL Servers already started here
       Model.CredSql.set_wallet(hd(wallets))
-      restart(Network.EdgeV2)
-      restart(Network.PeerHandler)
-      restart(Kademlia)
+      restart_service(Network.EdgeV2)
+      restart_service(Network.PeerHandler)
+      restart_service(Kademlia)
 
       wallets = Enum.map(wallets, fn w -> Base16.encode(Wallet.privkey!(w)) end) |> Enum.join(" ")
       System.put_env("WALLETS", wallets)
 
       # IO.puts(out)
       # RemoteChain.RPC.rpc!(Chains.Anvil, "evm_setAutomine", [true])
-      IO.puts("Anvil started")
+      IO.puts(log, "Anvil started")
       state
     else
       receive do
         {^port, {:data, data}} ->
           state = %{state | out: out <> data}
+          await(state)
+
+        {^port, {:exit_status, status}} ->
+          IO.puts(log, "Anvil exited with status #{status}")
+          do_restart(%{state | port: nil})
+
+        {_other_port, {:exit_status, _status}} ->
+          # this is another previously closed port
           await(state)
 
         other ->
@@ -74,12 +85,26 @@ defmodule ChainAgent do
     end
   end
 
+  defp restart_service(what) do
+    Supervisor.terminate_child(Diode.Supervisor, what)
+    Supervisor.restart_child(Diode.Supervisor, what)
+  end
+
+  def handle_info({port0, {:exit_status, status}}, state = %{log: log, port: port}) do
+    if port0 == port do
+      IO.puts(log, "Anvil exited with status #{status}")
+      {:noreply, do_restart(%{state | port: nil})}
+    else
+      {:noreply, state}
+    end
+  end
+
   def handle_info({port0, {:data, msg}}, state = %{log: log, out: out, port: port}) do
     if port0 == port do
       IO.puts(log, msg)
       {:noreply, %{state | out: out <> msg}}
     else
-      {:noreply, %{state | out: out}}
+      {:noreply, state}
     end
   end
 end

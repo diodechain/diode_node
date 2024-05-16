@@ -6,7 +6,6 @@ defmodule Network.EdgeV2 do
   require Logger
   alias Network.PortCollection
   alias Network.PortCollection.Port
-  alias Network.PortCollection.PortClient
   alias Object.Ticket
   alias Object.Channel
   import Object.TicketV1, only: :macros
@@ -32,7 +31,6 @@ defmodule Network.EdgeV2 do
 
   def do_init(state) do
     PubSub.subscribe({:edge, device_address(state)})
-    IO.inspect({:edge, Base16.encode(device_address(state)), self()}, label: "EdgeV2")
 
     state =
       Map.merge(state, %{
@@ -77,7 +75,7 @@ defmodule Network.EdgeV2 do
   end
 
   def handle_cast(
-        {:pccb_portsend, %Port{trace: trace, ref: ref}, %PortClient{ref: _ref}, data},
+        {:pccb_portsend, %Port{trace: trace, ref: ref}, data},
         state
       ) do
     trace = {trace, name(state), "exec portsend to #{Base16.encode(ref)}"}
@@ -430,8 +428,6 @@ defmodule Network.EdgeV2 do
   end
 
   def handle_info(msg, state) do
-    log(state, "info: #{inspect(msg)}")
-
     case PortCollection.maybe_handle_info(msg, state.ports) do
       ports = %PortCollection{} ->
         {:noreply, %{state | ports: ports}}

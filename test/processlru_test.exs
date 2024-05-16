@@ -2,7 +2,7 @@
 # Copyright 2021-2024 Diode
 # Licensed under the Diode License, Version 1.1
 defmodule ProcessLruTest do
-  use ExUnit.Case
+  use ExUnit.Case, async: true
 
   test "base" do
     lru = ProcessLru.new(10)

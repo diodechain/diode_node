@@ -45,14 +45,14 @@ contract FleetContract is IFleetContract {
     allowlist[_client] = _value;
   }
 
-  function DeviceAllowlist(address _client) public view virtual returns (bool) {
+  function DeviceAllowlist(address _client) public view virtual override returns (bool) {
     return allowlist[_client];
   }
 
 
-  /*******************************
-   **   DEPRECATED FUNCTIONS    **
-   *******************************/
+  /**************************************
+   **   DEPRECATED FUNCTION ALIASES    **
+   *************************************/
   function SetDeviceWhitelist(address _client, bool _value) external {
     SetDeviceAllowlist(_client, _value);
   }
@@ -60,5 +60,4 @@ contract FleetContract is IFleetContract {
   function deviceWhitelist(address _client) override external view returns (bool) {
     return DeviceAllowlist(_client);
   }
-
 }

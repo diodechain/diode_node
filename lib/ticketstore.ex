@@ -51,7 +51,7 @@ defmodule TicketStore do
       |> Enum.filter(fn tck ->
         Ticket.raw(tck)
         |> Contract.Registry.submit_ticket_raw_tx()
-        |> Shell.call_tx("latest")
+        |> Shell.call_tx!("latest")
         |> case do
           {"", _gas_cost} ->
             true
@@ -74,7 +74,7 @@ defmodule TicketStore do
         end)
         |> Contract.Registry.submit_ticket_raw_tx()
 
-      case Shell.call_tx(tx, "latest") do
+      case Shell.call_tx!(tx, "latest") do
         {"", _gas_cost} ->
           Shell.submit_tx(tx)
 

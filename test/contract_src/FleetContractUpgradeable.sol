@@ -110,8 +110,8 @@ contract FleetContractUpgradeable is IFleetContract {
 
     function DeviceAllowlist(address _client)
         public
+        override
         view
-        virtual
         returns (bool)
     {
         return allowlist[_client];

@@ -2,8 +2,8 @@
 # Copyright 2021-2024 Diode
 # Licensed under the Diode License, Version 1.1
 defmodule RegistryTest do
-  alias Object.TicketV1
-  import TicketV1
+  alias Object.Ticket
+  import Object.TicketV2
   alias Contract.{Fleet, Registry}
   use ExUnit.Case, async: false
   import TestHelper
@@ -11,9 +11,12 @@ defmodule RegistryTest do
   import While
 
   setup_all do
-    RemoteChain.reset_state()
+    restart_chain()
 
-    while peaknumber() < RemoteChain.epoch_length() do
+    epoch = epoch()
+
+    while epoch == epoch() do
+      RemoteChain.RPC.rpc!(chain(), "evm_increaseTime", [div(chain().epoch_length(), 3)])
       RemoteChain.RPC.rpc!(chain(), "evm_mine")
     end
 
@@ -22,39 +25,40 @@ defmodule RegistryTest do
 
   test "future ticket" do
     tck =
-      ticketv1(
+      ticketv2(
+        chain_id: chain().chain_id(),
         server_id: Wallet.address!(Diode.wallet()),
         total_connections: 1,
         total_bytes: 0,
         local_address: "spam",
-        block_number: peaknumber() + RemoteChain.epoch_length(),
+        epoch: epoch() + 1,
         fleet_contract: <<0::unsigned-size(160)>>,
         device_signature: Secp256k1.sign(clientkey(1), Hash.sha3_256("random"))
       )
 
     raw = Ticket.raw(tck)
     tx = Registry.submit_ticket_raw_tx(raw)
-    ret = Shell.call_tx(tx, "latest")
-    {{:evmc_revert, "Ticket from the future?"}, _} = ret
-    # if you get a  {{:evmc_revert, ""}, 85703} here it means for some reason the transaction
-    # passed the initial test but failed on fleet_contract == 0
+    {:error, %{"message" => message}} = Shell.call_tx(tx, "latest")
+    assert String.contains?(message, "Wrong epoch")
   end
 
   test "zero ticket" do
     tck =
-      ticketv1(
+      ticketv2(
+        chain_id: chain().chain_id(),
         server_id: Wallet.address!(Diode.wallet()),
         total_connections: 1,
         total_bytes: 0,
         local_address: "spam",
-        block_number: peaknumber() - RemoteChain.epoch_length(),
+        epoch: epoch() - 1,
         fleet_contract: <<0::unsigned-size(160)>>
       )
       |> Ticket.device_sign(clientkey(1))
 
     raw = Ticket.raw(tck)
     tx = Registry.submit_ticket_raw_tx(raw)
-    {{:evmc_revert, ""}, _} = Shell.call_tx(tx, "latest")
+    {:error, %{"message" => message}} = Shell.call_tx(tx, "latest")
+    assert String.contains?(message, "execution reverted")
   end
 
   test "unregistered device" do
@@ -63,25 +67,22 @@ defmodule RegistryTest do
 
     # Creating new tx
     op = ac = Wallet.address!(Diode.wallet())
-    fleet_tx = Fleet.deploy_new(op, ac)
-    RemoteChain.Pool.add_transaction(fleet_tx)
-    RemoteChain.RPC.rpc!(chain(), "evm_mine")
-
-    fleet = RemoteChain.Transaction.new_contract_address(fleet_tx)
+    fleet = Chains.Anvil.ensure_contract("FleetContract", [Base16.encode(op), Base16.encode(ac)])
     IO.puts("fleet: #{Base16.encode(fleet)}")
 
     client = clientid(1)
-    assert Fleet.operator(fleet) == op
-    assert Fleet.accountant(fleet) == ac
-    assert Fleet.device_allowlisted?(fleet, client) == false
+    assert Fleet.operator(chain(), fleet) == op
+    assert Fleet.accountant(chain(), fleet) == ac
+    assert Fleet.device_allowlisted?(chain(), fleet, client) == false
 
     tck =
-      ticketv1(
+      ticketv2(
+        chain_id: chain().chain_id(),
         server_id: Wallet.address!(Diode.wallet()),
         total_connections: 1,
         total_bytes: 0,
         local_address: "spam",
-        block_number: peaknumber() - RemoteChain.epoch_length(),
+        epoch: epoch() - 1,
         fleet_contract: fleet
       )
       |> Ticket.device_sign(clientkey(1))
@@ -89,48 +90,60 @@ defmodule RegistryTest do
     raw = Ticket.raw(tck)
     tx = Registry.submit_ticket_raw_tx(raw)
 
-    error = "Unregistered device (#{Base16.encode(Wallet.address!(client))})"
-    {{:evmc_revert, ^error}, _} = Shell.call_tx(tx, "latest")
+    {:error, %{"message" => message}} = Shell.call_tx(tx, "latest")
+    assert String.contains?(message, "Unregistered device")
 
     # Now registering device
-    tx = Fleet.set_device_allowlist(fleet, client, true)
-    RemoteChain.Pool.add_transaction(tx)
+    Fleet.set_device_allowlist(chain().chain_id(), fleet, client, true)
+    |> Shell.await_tx()
+
+    assert Fleet.device_allowlisted?(chain(), fleet, client) == true
     RemoteChain.RPC.rpc!(chain(), "evm_mine")
 
-    assert Fleet.device_allowlisted?(fleet, client) == true
-
     tck =
-      ticketv1(
+      ticketv2(
+        chain_id: chain().chain_id(),
         server_id: Wallet.address!(Diode.wallet()),
         total_connections: 1,
         total_bytes: 0,
         local_address: "spam",
-        block_number: peaknumber() - RemoteChain.epoch_length(),
+        epoch: epoch() - 1,
         fleet_contract: fleet
       )
       |> Ticket.device_sign(clientkey(1))
 
     raw = Ticket.raw(tck)
     tx = Registry.submit_ticket_raw_tx(raw)
-    {"", _gas_cost} = Shell.call_tx(tx, "latest")
+
+    case Shell.call_tx(tx, "latest") do
+      {:ok, "0x"} ->
+        :ok
+
+      {:error, %{"message" => message}} ->
+        [msg, address] = String.split(message, "\0")
+        # assert Base16.encode(address) == Base16.encode(Wallet.address!(clientid(1)))
+        throw({msg, Base16.encode(address), Base16.encode(Wallet.address!(clientid(1)))})
+    end
   end
 
   test "registered device (dev_contract)" do
-    assert Fleet.device_allowlisted?(clientid(1)) == true
+    devfleet = chain().developer_fleet_address()
+    assert Fleet.device_allowlisted?(chain(), devfleet, clientid(1)) == true
 
     tck =
-      ticketv1(
+      ticketv2(
+        chain_id: chain().chain_id(),
         server_id: Wallet.address!(Diode.wallet()),
         total_connections: 1,
         total_bytes: 0,
         local_address: "spam",
-        block_number: peaknumber() - RemoteChain.epoch_length(),
-        fleet_contract: Diode.fleet_address()
+        epoch: epoch() - 1,
+        fleet_contract: devfleet
       )
       |> Ticket.device_sign(clientkey(1))
 
     raw = Ticket.raw(tck)
     tx = Registry.submit_ticket_raw_tx(raw)
-    {"", _gas_cost} = Shell.call_tx(tx, "latest")
+    "0x" = Shell.call_tx!(tx, "latest")
   end
 end
