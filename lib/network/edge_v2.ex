@@ -616,7 +616,7 @@ defmodule Network.EdgeV2 do
           server = Kademlia.find_value(device_id) |> Object.decode!()
 
           Network.Server.ensure_node_connection(
-            Network.PeerHandler,
+            Network.PeerHandlerV2,
             node_id,
             Object.Server.host(server),
             Object.Server.peer_port(server)

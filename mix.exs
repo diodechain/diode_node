@@ -11,7 +11,7 @@ defmodule Diode.Mixfile do
   use Mix.Project
 
   @vsn "1.1.0"
-  @full_vsn "v1.1.0-37-gb148d83-dirty"
+  @full_vsn "v1.1.0-38-g7c80106-dirty"
   @url "https://github.com/diodechain/diode_server"
 
   def project do
@@ -58,11 +58,9 @@ defmodule Diode.Mixfile do
       source_url: @url,
       formatters: ["html"],
       main: "readme",
-      extra_section: "GUIDES",
       extras: [
         LICENSE: [title: "License"],
-        "README.md": [title: "Readme"],
-        "guides/running_your_miner.md": [title: "Running your miner"]
+        "README.md": [title: "Readme"]
       ]
     ]
   end
@@ -78,18 +76,20 @@ defmodule Diode.Mixfile do
 
   defp deps do
     [
-      {:websockex, github: "Azolo/websockex"},
+      {:certmagex, "~> 1.0"},
       {:debouncer, "~> 0.1"},
-      {:ex_doc, "~> 0.28", only: :dev, runtime: false},
-      {:keccakf1600, github: "diodechain/erlang-keccakf1600"},
+      {:dets_plus, "~> 2.0"},
       {:eblake2, "~> 1.0"},
+      {:ex_doc, "~> 0.28", only: :dev, runtime: false},
+      {:exqlite, "~> 0.17"},
+      {:httpoison, "~> 2.0"},
+      {:keccakf1600, github: "diodechain/erlang-keccakf1600"},
       {:libsecp256k1, github: "diodechain/libsecp256k1"},
+      {:oncrash, "~> 0.0"},
       {:plug_cowboy, "~> 2.5"},
       {:poison, "~> 3.0"},
       {:profiler, github: "dominicletz/profiler"},
-      {:exqlite, "~> 0.17"},
-      {:httpoison, "~> 2.0"},
-      {:oncrash, "~> 0.0"},
+      {:websockex, github: "Azolo/websockex"},
 
       # linting
       {:dialyxir, "~> 1.1", only: [:dev], runtime: false},

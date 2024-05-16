@@ -119,7 +119,7 @@ defmodule Network.Rpc do
   def execute_std(method, _params) do
     case method do
       "net_peerCount" ->
-        peers = Network.Server.get_connections(Network.PeerHandler)
+        peers = Network.Server.get_connections(Network.PeerHandlerV2)
         result(map_size(peers))
 
       "net_edgeCount" ->
@@ -153,7 +153,7 @@ defmodule Network.Rpc do
         end
 
       "dio_network" ->
-        conns = Network.Server.get_connections(Network.PeerHandler)
+        conns = Network.Server.get_connections(Network.PeerHandlerV2)
 
         Kademlia.network()
         |> KBuckets.to_list()

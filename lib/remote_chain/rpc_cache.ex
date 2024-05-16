@@ -7,10 +7,11 @@ defmodule RemoteChain.RPCCache do
   # alias RemoteChain.RPC
   alias RemoteChain.NodeProxy
   alias RemoteChain.RPCCache
+  alias RemoteChain.Cache
 
   defstruct [
     :chain,
-    :lru,
+    :cache,
     :block_number,
     :request_rpc,
     :request_from,
@@ -18,18 +19,18 @@ defmodule RemoteChain.RPCCache do
     :block_number_requests
   ]
 
-  def start_link(chain) do
-    GenServer.start_link(__MODULE__, chain, name: name(chain), hibernate_after: 5_000)
+  def start_link([chain, cache]) do
+    GenServer.start_link(__MODULE__, {chain, cache}, name: name(chain), hibernate_after: 5_000)
   end
 
   @impl true
-  def init(chain) do
+  def init({chain, cache}) do
     # NodeProxy.subscribe_block(chain)
 
     {:ok,
      %__MODULE__{
        chain: chain,
-       lru: Lru.new(100_000),
+       cache: cache,
        block_number: nil,
        request_rpc: %{},
        request_from: %{},
@@ -174,12 +175,12 @@ defmodule RemoteChain.RPCCache do
         from,
         state = %RPCCache{
           chain: chain,
-          lru: lru,
+          cache: cache,
           request_rpc: request_rpc,
           request_collection: col
         }
       ) do
-    case Lru.get(lru, {method, params}) do
+    case Cache.get(cache, {chain, method, params}) do
       nil ->
         case Map.get(request_rpc, {method, params}) do
           nil ->
@@ -219,7 +220,7 @@ defmodule RemoteChain.RPCCache do
   def handle_info(
         msg,
         state = %RPCCache{
-          lru: lru,
+          cache: cache,
           chain: chain,
           request_collection: col,
           request_rpc: request_rpc
@@ -240,7 +241,7 @@ defmodule RemoteChain.RPCCache do
             {:reply, ret} ->
               state =
                 if should_cache_method(method, params) and should_cache_result(ret) do
-                  %RPCCache{state | lru: Lru.insert(lru, {method, params}, ret)}
+                  %RPCCache{state | cache: Cache.put(cache, {chain, method, params}, ret)}
                 else
                   state
                 end

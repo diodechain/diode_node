@@ -51,6 +51,7 @@ defmodule Diode do
     end
 
     puts("")
+    {:ok, cache} = DetsPlus.open_file(:remoterpc_cache, file: data_dir("remoterpc.cache"))
 
     children =
       [
@@ -60,12 +61,12 @@ defmodule Diode do
         worker(PubSub, [args]),
         worker(TicketStore, [])
         | Enum.map(RemoteChain.chains(), fn chain ->
-            supervisor(RemoteChain.Sup, [chain], {RemoteChain.Sup, chain})
+            supervisor(RemoteChain.Sup, [chain, [cache: cache]], {RemoteChain.Sup, chain})
           end)
       ] ++
         [
           # External Interfaces
-          Network.Server.child(peer2_port(), Network.PeerHandler),
+          Network.Server.child(peer2_port(), Network.PeerHandlerV2),
           worker(Kademlia, [args])
         ]
 

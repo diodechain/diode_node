@@ -9,7 +9,7 @@ defmodule Kademlia do
     Node distance is symmetric on the ring.
   """
   use GenServer
-  alias Network.PeerHandler, as: Client
+  alias Network.PeerHandlerV2, as: Client
   alias Object.Server, as: Server
   alias Model.KademliaSql
   @k 3
@@ -203,10 +203,10 @@ defmodule Kademlia do
           str -> Wallet.from_address(Base16.decode(str))
         end
 
-      Network.Server.ensure_node_connection(Network.PeerHandler, id, address, port)
+      Network.Server.ensure_node_connection(Network.PeerHandlerV2, id, address, port)
     end
 
-    online = Network.Server.get_connections(Network.PeerHandler)
+    online = Network.Server.get_connections(Network.PeerHandlerV2)
     now = System.os_time(:second)
 
     network =
@@ -231,7 +231,7 @@ defmodule Kademlia do
     {:noreply, state}
   end
 
-  # Private call used by PeerHandler when connections are established
+  # Private call used by PeerHandlerV2 when connections are established
   @impl true
   def handle_cast({:register_node, node_id, server}, state) do
     case KBuckets.item(state.network, node_id) do
@@ -240,7 +240,7 @@ defmodule Kademlia do
     end
   end
 
-  # Private call used by PeerHandler when is stable for 10 msgs and 30 seconds
+  # Private call used by PeerHandlerV2 when is stable for 10 msgs and 30 seconds
   def handle_cast({:stable_node, node_id, server}, state) do
     case KBuckets.item(state.network, node_id) do
       nil ->
@@ -253,7 +253,7 @@ defmodule Kademlia do
     end
   end
 
-  # Private call used by PeerHandler when connections fail
+  # Private call used by PeerHandlerV2 when connections fail
   def handle_cast({:failed_node, node}, state) do
     case KBuckets.item(state.network, node) do
       nil -> {:noreply, state}
@@ -357,7 +357,7 @@ defmodule Kademlia do
   """
   @max_key 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF
   def redistribute(network, node) do
-    online = Network.Server.get_connections(Network.PeerHandler)
+    online = Network.Server.get_connections(Network.PeerHandlerV2)
     node = %KBuckets.Item{} = KBuckets.item(network, node)
 
     # IO.puts("redistribute(#{inspect(node)})")
@@ -428,7 +428,7 @@ defmodule Kademlia do
   defp ensure_node_connection(item = %KBuckets.Item{node_id: node_id}) do
     if KBuckets.is_self(item) do
       Network.Server.ensure_node_connection(
-        Network.PeerHandler,
+        Network.PeerHandlerV2,
         node_id,
         "localhost",
         Diode.peer2_port()
@@ -437,7 +437,7 @@ defmodule Kademlia do
       server = KBuckets.object(item)
       host = Server.host(server)
       port = Server.peer_port(server)
-      Network.Server.ensure_node_connection(Network.PeerHandler, node_id, host, port)
+      Network.Server.ensure_node_connection(Network.PeerHandlerV2, node_id, host, port)
     end
   end
 
@@ -468,7 +468,7 @@ defmodule Kademlia do
     |> Enum.take(KBuckets.k())
   end
 
-  defp filter_online(list, online \\ Network.Server.get_connections(Network.PeerHandler)) do
+  defp filter_online(list, online \\ Network.Server.get_connections(Network.PeerHandlerV2)) do
     Enum.filter(list, fn %KBuckets.Item{node_id: wallet} = item ->
       KBuckets.is_self(item) or Map.has_key?(online, Wallet.address!(wallet))
     end)

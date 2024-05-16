@@ -1,7 +1,7 @@
 # Diode Server
 # Copyright 2021-2024 Diode
 # Licensed under the Diode License, Version 1.1
-defmodule Network.PeerHandler do
+defmodule Network.PeerHandlerV2 do
   use Network.Handler
   alias Object.Server, as: Server
   alias Model.KademliaSql
