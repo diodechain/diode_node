@@ -1,7 +1,0 @@
-#!/bin/sh
-# Diode Server
-# Copyright 2021-2024 Diode
-# Licensed under the Diode License, Version 1.1
-rm data_prod/kademlia.etf
-export SEED=
-exec ./run

@@ -4,7 +4,7 @@
 # Licensed under the Diode License, Version 1.1
 export RPC_PORT=11000
 export EDGE2_PORT=12000
-export PEER_PORT=13000
-export SEED=diode://localhost:51053
+export PEER2_PORT=13000
+export SEED2=diode://localhost:51055
 export DATA_DIR=./clones/man/
 exec iex -S mix run 

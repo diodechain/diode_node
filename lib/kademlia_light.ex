@@ -424,10 +424,9 @@ defmodule KademliaLight do
   end
 
   def do_find_nodes(key, k, cmd) do
-    # :io.format("KademliaSearch.find_nodes(key=#{Base16.encode(key)}, nearest=~p, k=#{k}, cmd=#{cmd})~n", [Enum.map(nearest, &port/1)])
     get_cached(
       fn {cmd, key} ->
-        KademliaSearch.find_nodes(key, find_node_lookup(key), k, cmd)
+        KademliaSearch.find_nodes(__MODULE__, key, find_node_lookup(key), k, cmd)
       end,
       {cmd, key}
     )

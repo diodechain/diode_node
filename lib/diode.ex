@@ -258,7 +258,7 @@ defmodule Diode do
   def default_peer2_port(), do: 51055
 
   def seeds() do
-    case get_env("SEED") do
+    case get_env("SEED2") do
       nil ->
         [
           # "diode://0xceca2f8cf1983b4cf0c1ba51fd382c2bc37aba58@us1.prenet.diode.io:51054",

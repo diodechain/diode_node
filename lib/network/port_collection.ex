@@ -325,7 +325,7 @@ defmodule Network.PortCollection do
   def deny_portopen(pc, ref, reason) do
     port = %Port{state: :pre_open} = PortCollection.get(pc, ref)
     send(port.from, {port.from, {:error, reason}})
-    portclose(pc, port)
+    {:ok, do_portclose(pc, port)}
   end
 
   def portclose(pc, ref) when is_binary(ref) do
@@ -334,11 +334,11 @@ defmodule Network.PortCollection do
         {:error, "port does not exit"}
 
       port = %Port{state: :open} ->
-        {:ok, portclose(pc, port)}
+        {:ok, do_portclose(pc, port)}
     end
   end
 
-  def portclose(pc, port = %Port{}) do
+  defp do_portclose(pc, port = %Port{}) do
     for client <- port.clients do
       cast(client.pid, {:portclose, client.ref})
       Process.demonitor(client.mon, [:flush])

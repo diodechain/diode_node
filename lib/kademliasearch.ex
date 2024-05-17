@@ -32,8 +32,8 @@ defmodule KademliaSearch do
     {:ok, %KademliaSearch{module: module}}
   end
 
-  def find_nodes(key, nearest, k, cmd) do
-    {:ok, pid} = GenServer.start_link(__MODULE__, :ok)
+  def find_nodes(module, key, nearest, k, cmd) do
+    {:ok, pid} = GenServer.start_link(__MODULE__, module)
     GenServer.call(pid, {:find_nodes, key, nearest, k, cmd})
   end
 
