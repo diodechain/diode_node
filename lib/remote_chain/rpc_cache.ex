@@ -282,12 +282,8 @@ defmodule RemoteChain.RPCCache do
 
   defp should_cache_method("dio_edgev2", [hex]) do
     case hd(Rlp.decode!(Base16.decode(hex))) do
-      "ticket" ->
-        false
-
-      _other ->
-        # IO.inspect(other, label: "should_cache_method dio_edgev2")
-        true
+      "ticket" -> false
+      _other -> true
     end
   end
 

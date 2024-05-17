@@ -100,18 +100,15 @@ defmodule Network.Server do
   end
 
   def handle_client_exit(state = %{clients: clients}, pid, reason) do
+    if reason not in [:normal, {:error, :closed}] do
+      Logger.warning("#{inspect(state.protocol)} Connection failed (#{inspect({pid, reason})})")
+    end
+
     case Map.get(clients, pid) do
       nil ->
-        Logger.warning("#{inspect(state.protocol)} Connection failed (#{inspect({pid, reason})})")
         {:noreply, state}
 
       key ->
-        if reason not in [:normal, :closed] do
-          Logger.warning(
-            "#{inspect(state.protocol)} Connection failed (#{inspect({pid, reason})})"
-          )
-        end
-
         clients = Map.drop(clients, [pid, key])
 
         clients =

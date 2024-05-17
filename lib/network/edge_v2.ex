@@ -231,7 +231,6 @@ defmodule Network.EdgeV2 do
       case msg do
         [cmd | _rest]
         when cmd in [
-               "getblockpeak",
                "getblock",
                "getblockheader",
                "getblockheader2",
@@ -249,6 +248,9 @@ defmodule Network.EdgeV2 do
           RemoteChain.RPCCache.rpc!(RemoteChain.diode_l1_fallback(), "dio_edgev2", [msg])
           |> Base16.decode()
           |> Rlp.decode!()
+
+        ["getblockpeak"] ->
+          response(RemoteChain.RPCCache.block_number(RemoteChain.diode_l1_fallback()))
 
         ["ping"] ->
           response("pong")
