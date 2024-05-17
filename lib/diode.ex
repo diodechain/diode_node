@@ -25,8 +25,8 @@ defmodule Diode do
 
     puts("====== ENV #{env()} ======")
     puts("Build       : #{version()}")
-    puts("Edge    Port: #{Enum.join(edge2_ports(), ",")}")
-    puts("Peer    Port: #{peer2_port()}")
+    puts("Edge2   Port: #{Enum.join(edge2_ports(), ",")}")
+    puts("Peer2   Port: #{peer2_port()}")
     puts("RPC     Port: #{rpc_port()}")
 
     if ssl?() do
@@ -44,13 +44,6 @@ defmodule Diode do
 
     puts("")
 
-    puts("====== Accounts ======")
-
-    for w <- wallets() do
-      puts("#{Wallet.printable(w)}")
-    end
-
-    puts("")
     {:ok, cache} = DetsPlus.open_file(:remoterpc_cache, file: data_dir("remoterpc.cache"))
 
     children =
@@ -110,24 +103,17 @@ defmodule Diode do
   end
 
   def start_worker(module, args) do
-    puts("Starting #{module}...")
+    # puts("Starting #{module}...")
 
     case :timer.tc(module, :start_link, args) do
-      {t, {:ok, pid}} ->
-        puts("=======> #{module} loaded after #{Float.round(t / 1_000_000, 3)}s")
+      {_t, {:ok, pid}} ->
+        # puts("=======> #{module} loaded after #{Float.round(t / 1_000_000, 3)}s")
         {:ok, pid}
 
       {_t, other} ->
         puts("=======> #{module} failed with: #{inspect(other)}")
         other
     end
-  end
-
-  def start_subwork(label, fun) do
-    puts("  #{label}...")
-    {t, ret} = :timer.tc(fun)
-    puts("  done #{label} after #{Float.round(t / 1_000_000, 3)}s")
-    ret
   end
 
   def puts(string, format \\ []) do
@@ -175,7 +161,7 @@ defmodule Diode do
 
   @version Mix.Project.config()[:full_version]
   def version() do
-    "Diode Server #{@version}"
+    "Diode Traffic Relay #{@version}"
   end
 
   @spec dev_mode? :: boolean
@@ -222,20 +208,6 @@ defmodule Diode do
     Wallet.address!(wallet())
   end
 
-  @spec wallets() :: [Wallet.t()]
-  @doc """
-    Decode env parameter such as
-    export WALLETS="0x1234567890 0x987654321"
-  """
-  def wallets() do
-    get_env("WALLETS", "")
-    |> String.split(" ", trim: true)
-    |> Enum.map(fn int ->
-      decode_int(int)
-      |> Wallet.from_privkey()
-    end)
-  end
-
   @spec data_dir(binary()) :: binary()
   def data_dir(file \\ "") do
     get_env("DATA_DIR", File.cwd!() <> "/data_" <> Atom.to_string(env()) <> "/") <> file
@@ -280,8 +252,10 @@ defmodule Diode do
 
   @spec peer2_port() :: integer()
   def peer2_port() do
-    get_env_int("PEER2_PORT", 51055)
+    get_env_int("PEER2_PORT", default_peer2_port())
   end
+
+  def default_peer2_port(), do: 51055
 
   def seeds() do
     case get_env("SEED") do
