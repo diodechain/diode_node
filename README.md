@@ -23,7 +23,8 @@ TCP port bindings can be controlled through environment variables. The default b
 
 # Pre-Requisites
 
-* Elixir 1.14.5
+* Erlang OTP 25
+* Elixir 1.15
 * make & autoconf & libtool-bin & gcc & g++ & boost
 * daemontools
 
@@ -47,7 +48,7 @@ export LDFLAGS=-L`brew --prefix boost`/lib
 # Running tests
 
 ```bash
-make test
+mix test
 ```
 
 # Running
