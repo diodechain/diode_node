@@ -334,7 +334,7 @@ defmodule Edge2Client do
 
   def client(n) do
     cert = "./test/pems/device#{n}_certificate.pem"
-    {:ok, socket} = :ssl.connect('localhost', hd(Diode.edge2_ports()), options(cert), 5000)
+    {:ok, socket} = :ssl.connect(~c"localhost", hd(Diode.edge2_ports()), options(cert), 5000)
     wallet = clientid(n)
     key = Wallet.privkey!(wallet)
     fleet = RemoteChain.developer_fleet_address(@chain)
