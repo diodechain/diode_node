@@ -28,12 +28,7 @@ defmodule Diode do
     puts("Edge2   Port: #{Enum.join(edge2_ports(), ",")}")
     puts("Peer2   Port: #{peer2_port()}")
     puts("RPC     Port: #{rpc_port()}")
-
-    if ssl?() do
-      puts("RPC SSL Port: #{rpcs_port()}")
-    else
-      puts("RPC SSL Port: DISABLED")
-    end
+    puts("RPC SSL Port: #{rpcs_port()}")
 
     puts("Data Dir : #{data_dir()}")
 
@@ -71,10 +66,7 @@ defmodule Diode do
   # To be started from the stage gen_server
   def start_client_network() do
     rpc_api(:http, port: rpc_port())
-
-    if not dev_mode?() do
-      ssl_rpc_api()
-    end
+    rpc_api(:https, port: rpcs_port(), sni_fun: &CertMagex.sni_fun/1)
 
     Supervisor.start_child(Diode.Supervisor, Network.Server.child(edge2_ports(), Network.EdgeV2))
     |> case do
@@ -138,25 +130,6 @@ defmodule Diode do
         ]
       ] ++ opts
     ])
-  end
-
-  defp ssl?() do
-    case File.read("priv/privkey.pem") do
-      {:ok, _} -> true
-      _ -> false
-    end
-  end
-
-  defp ssl_rpc_api() do
-    if ssl?() do
-      rpc_api(:https,
-        keyfile: "priv/privkey.pem",
-        certfile: "priv/cert.pem",
-        cacertfile: "priv/fullchain.pem",
-        port: rpcs_port(),
-        otp_app: Diode
-      )
-    end
   end
 
   @version Mix.Project.config()[:full_version]
