@@ -12,8 +12,9 @@ defmodule KademliaSearch do
   @max_oid 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF + 1
   @alpha 3
 
-  @enforce_keys [:from, :key, :queryable, :k, :cmd]
-  defstruct tasks: [],
+  @enforce_keys [:module]
+  defstruct module: nil,
+            tasks: [],
             from: nil,
             key: nil,
             min_distance: @max_oid,
@@ -26,9 +27,9 @@ defmodule KademliaSearch do
             best: nil,
             finisher: nil
 
-  def init(:ok) do
+  def init(module) do
     :erlang.process_flag(:trap_exit, true)
-    {:ok, %{}}
+    {:ok, %KademliaSearch{module: module}}
   end
 
   def find_nodes(key, nearest, k, cmd) do
@@ -36,14 +37,8 @@ defmodule KademliaSearch do
     GenServer.call(pid, {:find_nodes, key, nearest, k, cmd})
   end
 
-  def handle_call({:find_nodes, key, nearest, k, cmd}, from, %{}) do
-    state = %KademliaSearch{
-      from: from,
-      key: key,
-      queryable: nearest,
-      k: k,
-      cmd: cmd
-    }
+  def handle_call({:find_nodes, key, nearest, k, cmd}, from, state) do
+    state = %KademliaSearch{state | from: from, key: key, queryable: nearest, k: k, cmd: cmd}
 
     tasks = for _ <- 1..@alpha, do: start_worker(state)
     {:noreply, %{state | tasks: tasks}}
@@ -157,22 +152,22 @@ defmodule KademliaSearch do
     end
   end
 
-  defp start_worker(%KademliaSearch{key: key, cmd: cmd}) do
-    spawn_link(__MODULE__, :worker_loop, [nil, key, self(), cmd])
+  defp start_worker(%KademliaSearch{module: module, key: key, cmd: cmd}) do
+    spawn_link(__MODULE__, :worker_loop, [module, nil, key, self(), cmd])
   end
 
-  def worker_loop(node, key, father, cmd) do
+  def worker_loop(module, node, key, father, cmd) do
     ret =
       if node == nil,
         do: [],
         else:
-          Kademlia.rpc(node, [cmd, key])
+          module.rpc(node, [cmd, key])
           |> import_network_items()
 
     send(father, {:kadret, ret, node, self()})
 
     receive do
-      {:next, node} -> worker_loop(node, key, father, cmd)
+      {:next, node} -> worker_loop(module, node, key, father, cmd)
       :done -> :ok
     end
   end

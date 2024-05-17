@@ -67,7 +67,7 @@ defmodule Diode do
         [
           # External Interfaces
           Network.Server.child(peer2_port(), Network.PeerHandlerV2),
-          worker(Kademlia, [args])
+          worker(KademliaLight, [args])
         ]
 
     {:ok, pid} = Supervisor.start_link(children, strategy: :rest_for_one, name: Diode.Supervisor)

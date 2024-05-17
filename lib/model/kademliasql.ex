@@ -31,7 +31,7 @@ defmodule Model.KademliaSql do
   end
 
   def maybe_update_object(key, object) when is_tuple(object) do
-    hkey = Kademlia.hash(Object.key(object))
+    hkey = KademliaLight.hash(Object.key(object))
     # Checking that we got a valid object
     if key == nil or key == hkey do
       case object(hkey) do
@@ -93,7 +93,7 @@ defmodule Model.KademliaSql do
       hash =
         Object.decode!(value)
         |> Object.key()
-        |> Kademlia.hash()
+        |> KademliaLight.hash()
 
       if key != hash do
         query!("DELETE FROM p2p_objects WHERE key = ?1", [key])

@@ -135,7 +135,7 @@ defmodule Network.PeerHandlerV2 do
       if state.stable == false and
            state.msg_count > 10 and
            state.start_time + 300 < System.os_time(:second) do
-        GenServer.cast(Kademlia, {:stable_node, state.node_id, state.server})
+        GenServer.cast(KademliaLight, {:stable_node, state.node_id, state.server})
         %{state | stable: true}
       else
         state
@@ -180,14 +180,14 @@ defmodule Network.PeerHandlerV2 do
 
       log(state, "hello from: #{Wallet.printable(state.node_id)}")
       state = Map.put(state, :peer_port, port)
-      GenServer.cast(Kademlia, {:register_node, state.node_id, server})
+      GenServer.cast(KademliaLight, {:register_node, state.node_id, server})
       {:noreply, %{state | server: server}}
     end
   end
 
   defp handle_msg([@find_node, id], state) do
     nodes =
-      Kademlia.find_node_lookup(id)
+      KademliaLight.find_node_lookup(id)
       |> Enum.filter(fn node -> not KBuckets.is_self(node) end)
       |> map_network_items()
 
@@ -199,7 +199,7 @@ defmodule Network.PeerHandlerV2 do
       case KademliaSql.object(id) do
         nil ->
           nodes =
-            Kademlia.find_node_lookup(id)
+            KademliaLight.find_node_lookup(id)
             |> Enum.filter(fn node -> not KBuckets.is_self(node) end)
             |> map_network_items()
 
@@ -310,7 +310,7 @@ defmodule Network.PeerHandlerV2 do
   def on_nodeid(node) do
     OnCrash.call(fn reason ->
       Logger.info("Node #{Wallet.printable(node)} down for: #{inspect(reason)}")
-      GenServer.cast(Kademlia, {:failed_node, node})
+      GenServer.cast(KademliaLight, {:failed_node, node})
     end)
   end
 

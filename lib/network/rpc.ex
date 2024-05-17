@@ -139,7 +139,7 @@ defmodule Network.Rpc do
       "dio_getObject" ->
         key = Base16.decode(hd(params))
 
-        case Kademlia.find_value(key) do
+        case KademliaLight.find_value(key) do
           nil -> result(nil, 404)
           binary -> result(Object.encode_list!(Object.decode!(binary)))
         end
@@ -147,7 +147,7 @@ defmodule Network.Rpc do
       "dio_getNode" ->
         node = Base16.decode(hd(params))
 
-        case Kademlia.find_node(node) do
+        case KademliaLight.find_node(node) do
           nil -> result(nil, 404)
           item -> result(Object.encode_list!(KBuckets.object(item)))
         end
@@ -155,7 +155,7 @@ defmodule Network.Rpc do
       "dio_network" ->
         conns = Network.Server.get_connections(Network.PeerHandlerV2)
 
-        Kademlia.network()
+        KademliaLight.network()
         |> KBuckets.to_list()
         |> Enum.filter(fn item -> not KBuckets.is_self(item) end)
         |> Enum.map(fn item ->

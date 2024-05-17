@@ -11,7 +11,7 @@ defmodule Diode.Mixfile do
   use Mix.Project
 
   @vsn "1.1.0"
-  @full_vsn "v1.1.0-41-g3f577fc-dirty"
+  @full_vsn "v1.1.0-42-g38a3ed4-dirty"
   @url "https://github.com/diodechain/diode_server"
 
   def project do
@@ -23,7 +23,7 @@ defmodule Diode.Mixfile do
       description: "Diode Network Traffic Relay Node implementation",
       dialyzer: [plt_add_apps: [:mix]],
       docs: docs(),
-      elixir: "~> 1.13",
+      elixir: "~> 1.15",
       elixirc_options: [warnings_as_errors: Mix.target() == :host],
       elixirc_paths: elixirc_paths(Mix.env()),
       full_version: :persistent_term.get(:full_vsn, @full_vsn),

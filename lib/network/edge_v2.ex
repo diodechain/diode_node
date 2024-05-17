@@ -286,9 +286,9 @@ defmodule Network.EdgeV2 do
             true ->
               key = Object.Channel.key(obj)
 
-              case Kademlia.find_value(key) do
+              case KademliaLight.find_value(key) do
                 nil ->
-                  Kademlia.store(obj)
+                  KademliaLight.store(obj)
                   Object.encode_list!(obj)
 
                 binary ->
@@ -302,14 +302,14 @@ defmodule Network.EdgeV2 do
           response(online)
 
         ["getobject", key] ->
-          case Kademlia.find_value(key) do
+          case KademliaLight.find_value(key) do
             nil -> nil
             binary -> Object.encode_list!(Object.decode!(binary))
           end
           |> response()
 
         ["getnode", node] ->
-          case Kademlia.find_node(node) do
+          case KademliaLight.find_node(node) do
             nil -> nil
             item -> Object.encode_list!(KBuckets.object(item))
           end
@@ -508,8 +508,8 @@ defmodule Network.EdgeV2 do
             Debouncer.immediate(
               key,
               fn ->
-                Model.KademliaSql.put_object(Kademlia.hash(key), Object.encode!(dl))
-                Kademlia.store(dl)
+                Model.KademliaSql.put_object(KademliaLight.hash(key), Object.encode!(dl))
+                KademliaLight.store(dl)
               end,
               15_000
             )
@@ -519,7 +519,7 @@ defmodule Network.EdgeV2 do
               :publish_me,
               fn ->
                 me = Diode.self()
-                Kademlia.store(me)
+                KademliaLight.store(me)
               end,
               10_000
             )
@@ -555,7 +555,7 @@ defmodule Network.EdgeV2 do
     trace = if String.contains?(flags, "t"), do: state.pid
     trace(trace, state, "received portopen for channel #{Base16.encode(ref)}")
 
-    case Kademlia.find_value(channel_id) do
+    case KademliaLight.find_value(channel_id) do
       nil ->
         error("not found")
 
@@ -604,7 +604,7 @@ defmodule Network.EdgeV2 do
   end
 
   defp remote_pid(device_id) do
-    case Kademlia.find_value(device_id) do
+    case KademliaLight.find_value(device_id) do
       nil ->
         error("not found")
 
@@ -615,7 +615,7 @@ defmodule Network.EdgeV2 do
           error("invalid ticket")
         else
           node_id = Ticket.server_id(tck)
-          server = Kademlia.find_value(device_id) |> Object.decode!()
+          server = KademliaLight.find_value(device_id) |> Object.decode!()
 
           Network.Server.ensure_node_connection(
             Network.PeerHandlerV2,
