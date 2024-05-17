@@ -1,6 +1,6 @@
 # Diode Server
 # Copyright 2021-2024 Diode
-# Licensed under the Diode License, Version 1.1defmodule Chains.Diode do
+# Licensed under the Diode License, Version 1.1
 defmodule Chains.Diode do
   def chain_id(), do: 15
   def expected_block_intervall(), do: 15

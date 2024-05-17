@@ -54,7 +54,7 @@ defmodule TicketStore do
         |> Contract.Registry.submit_ticket_raw_tx()
         |> Shell.call_tx("latest")
         |> case do
-          "0x" ->
+          {:ok, "0x"} ->
             true
 
           {:error, %{"message" => reason}} ->

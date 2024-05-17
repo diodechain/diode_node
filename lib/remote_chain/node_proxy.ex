@@ -9,6 +9,7 @@ defmodule RemoteChain.NodeProxy do
   alias RemoteChain.RPCCache
   alias RemoteChain.NodeProxy
   require Logger
+  @default_timeout 25_000
 
   defstruct [
     :chain,
@@ -29,7 +30,7 @@ defmodule RemoteChain.NodeProxy do
   end
 
   def rpc(chain, method, params) do
-    GenServer.call(name(chain), {:rpc, method, params}, 15_000)
+    GenServer.call(name(chain), {:rpc, method, params}, @default_timeout)
   end
 
   def subscribe_block(chain) do
