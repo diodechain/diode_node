@@ -220,13 +220,16 @@ defmodule RemoteChain.RPCCache do
       GenServer.reply(from, block_number)
     end
 
-    spawn(fn ->
-      if chain in [Chains.Diode, Chains.DiodeDev, Chains.DiodeStaging] do
-        rpc(chain, "dio_edgev2", [Base16.encode(Rlp.encode!(["getblockheader2", block_number]))])
-      else
-        get_block_by_number(chain, block_number)
-      end
-    end)
+    # for development nodes that start at block 0 (genesis)
+    if block_number > 0 do
+      spawn(fn ->
+        if chain in [Chains.Diode, Chains.DiodeDev, Chains.DiodeStaging] do
+          rpc(chain, "dio_edgev2", [Base16.encode(Rlp.encode!(["getblockheader2", block_number]))])
+        else
+          get_block_by_number(chain, block_number)
+        end
+      end)
+    end
 
     {:noreply, %RPCCache{state | block_number: block_number, block_number_requests: []}}
   end
