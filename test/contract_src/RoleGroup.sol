@@ -37,11 +37,13 @@ contract RoleGroup is Group {
     function _add(address _member, uint256 _role) virtual internal {
         members.Add(_member);
         roles[_member] = _role;
+        update_change_tracker();
     }
 
     function remove(address _member) virtual internal {
         members.Remove(_member);
         delete roles[_member];
+        update_change_tracker();
     }
 
     function role(address _member) internal view returns (uint256) {

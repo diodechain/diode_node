@@ -7,11 +7,12 @@ pragma experimental ABIEncoderV2;
 
 import "./deps/Set.sol";
 import "./IBNS.sol";
+import "./ChangeTracker.sol";
 
 /**
  * Drive Smart Contract
  */
-contract Packages {
+contract Packages is ChangeTracker {
     struct Package {
         uint256 last_update;
         bytes32 package_hash; 
@@ -34,15 +35,17 @@ contract Packages {
     }
 
     function Version() external pure returns (int256) {
-        return 100;
+        return 101;
     }
 
     function AddPackage(string calldata _domain, string calldata _package_name, bytes32 _package_hash) external onlyDomainOwner(_domain) {
         packages[convert(_domain, _package_name)] = Package(block.number, _package_hash);
+        update_change_tracker();
     }
 
     function DropPackage(string calldata _domain, string calldata _package_name) external onlyDomainOwner(_domain) {
         delete packages[convert(_domain, _package_name)];
+        update_change_tracker();
     }
 
     function Lookup(string calldata _domain, string calldata _package_name) external view returns (Package memory) {

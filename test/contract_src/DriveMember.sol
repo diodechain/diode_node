@@ -43,22 +43,26 @@ contract DriveMember is Group {
 
     constructor() {
         initialize(msg.sender);
+        update_change_tracker();
     }
 
     function Version() external virtual pure returns (int256) {
-        return 112;
+        return 113;
     }
 
     function Protect(bool _protect) external onlyMember {
         protected = _protect;
+        update_change_tracker();
     }
 
     function AddMember(address _member) external onlyMember {
         members.Add(_member);
+        update_change_tracker();
     }
 
     function RemoveMember(address _member) external onlyMember {
         members.Remove(_member);
+        update_change_tracker();
     }
 
     function Destroy() external onlyOwner {
@@ -71,6 +75,7 @@ contract DriveMember is Group {
 
     function SetDrive(address _drive) external onlyMember {
         drive = _drive;
+        update_change_tracker();
     }
 
     function AddDrive(address _drive) external onlyMember {
@@ -78,6 +83,7 @@ contract DriveMember is Group {
             if (additional_drives[i] == _drive) return;
         }
         additional_drives.push(_drive);
+        update_change_tracker();
     }
 
     function Drives() external view returns (address[] memory) {

@@ -55,6 +55,7 @@ contract DiodeRegistryLight is Initializable {
      * well as on the Fleet level.
      *
      */
+    address[] public relayArray;
     mapping(address => uint256) public relayRewards;
 
     uint256 public currentEpoch;
@@ -159,8 +160,9 @@ contract DiodeRegistryLight is Initializable {
     }
 
     function RelayWithdraw(address nodeAddress) public {
-        Token.safeTransfer(nodeAddress, relayRewards[nodeAddress]);
-        relayRewards[nodeAddress] = 0;
+        require (relayRewards[nodeAddress] > 1, "No rewards to withdraw");
+        Token.safeTransfer(nodeAddress, relayRewards[nodeAddress] - 1);
+        relayRewards[nodeAddress] = 1;
     }
 
     function SetFoundationTax(uint256 _taxRate) external onlyFoundation {
@@ -236,6 +238,9 @@ contract DiodeRegistryLight is Initializable {
             uint value = (reward * node.score) / fleet.score;
 
             if (value > 0) {
+                if (relayRewards[nodeAddress] == 0) {
+                    relayArray.push(nodeAddress);
+                }
                 relayRewards[nodeAddress] += value;
                 rest -= value;
             }
@@ -374,6 +379,14 @@ contract DiodeRegistryLight is Initializable {
 
     function FleetArrayLength() external view returns (uint) {
         return fleetArray.length;
+    }
+
+    function RelayArray() external view returns (address[] memory) {
+        return relayArray;
+    }
+
+    function RelayArrayLength() external view returns (uint) {
+        return relayArray.length;
     }
 
     function GetFleet(

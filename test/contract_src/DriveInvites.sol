@@ -8,6 +8,7 @@ pragma experimental ABIEncoderV2;
 import "./deps/Set.sol";
 import "./IDrive.sol";
 import "./Roles.sol";
+import "./ChangeTracker.sol";
 
 /**
  * Drive Smart Contract
@@ -18,7 +19,7 @@ interface IDriveFactory {
     function Create2Address(bytes32 _salt) external view returns (IDrive);
 }
 
-contract DriveInvites {
+contract DriveInvites is ChangeTracker {
     using Set for Set.Data;
 
     mapping(address => Set.Data) invites;
@@ -26,6 +27,11 @@ contract DriveInvites {
 
     constructor(address _factory) {
         FACTORY = _factory;
+        update_change_tracker();
+    }
+
+    function Version() external virtual pure returns (int256) {
+        return 3;
     }
 
     // To be called by drive contract (msg.sender)
@@ -36,6 +42,7 @@ contract DriveInvites {
         // require(drive != IDrive(0), "drive can't be zero");
         // require(drive.Role(msg.sender) >= RoleType.Admin, "Only Admins can invite");
         invites[whom].Add(driveId);
+        update_change_tracker();
     }
 
     // To be called by drive contract (msg.sender)
@@ -46,6 +53,7 @@ contract DriveInvites {
             "Only Admins can manage invites"
         );
         invites[whom].Remove(driveId);
+        update_change_tracker();
     }
 
     // Called by the invitess to check (user)
@@ -55,6 +63,7 @@ contract DriveInvites {
 
     // Called by the invitess to remove an invite after use (user)
     function PopInvite(address driveId) public {
+        update_change_tracker();
         return invites[msg.sender].Remove(driveId);
     }
 

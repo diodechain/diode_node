@@ -42,10 +42,11 @@ contract Drive is IDrive, RoleGroup, IProxyResolver {
     constructor(address _bns) {
         BNS = _bns;
         initialize(msg.sender);
+        update_change_tracker();
     }
 
     function Version() external virtual override pure returns (int256) {
-        return 137;
+        return 138;
     }
 
     function AddReader(address _member) external override onlyAdmin {
@@ -80,6 +81,7 @@ contract Drive is IDrive, RoleGroup, IProxyResolver {
     function SetPasswordPublic(address _password) external override onlyOwner {
         password_address = _password;
         password_nonce = 0;
+        update_change_tracker();
     }
 
     function Nonce() external override view returns (uint256) {
@@ -93,6 +95,7 @@ contract Drive is IDrive, RoleGroup, IProxyResolver {
         require(join_code_set.IsMember(_secret) == false, "Join code already exists");
         join_code_set.Add(_secret);
         join_code_data[_secret] = JoinCode(_secret, 0, _expiry_time, _expiry_count, _target_role);
+        update_change_tracker();
     }
 
     function UpdateJoinCode(address _secret, uint256 _expiry_time, uint256 _expiry_count, uint256 _target_role) external {
@@ -105,6 +108,7 @@ contract Drive is IDrive, RoleGroup, IProxyResolver {
         jc.expiry_time = _expiry_time;
         jc.expiry_count = _expiry_count;
         jc.target_role = _target_role;
+        update_change_tracker();
     }
 
     function Join(
@@ -143,6 +147,7 @@ contract Drive is IDrive, RoleGroup, IProxyResolver {
 
     function Migrate() public override {
         _add(owner(), RoleType.Owner);
+        update_change_tracker();
     }
 
     function AddChat(address owner, address initial_key) external onlyMember {
@@ -151,6 +156,7 @@ contract Drive is IDrive, RoleGroup, IProxyResolver {
         chat.initialize(payable(owner), address(this), initial_key);
         chats.Add(address(chat));
         chat_contracts[initial_key] = address(chat);
+        update_change_tracker();
     }
 
     function RemoveChat(address chat) external onlyMember {
@@ -158,6 +164,7 @@ contract Drive is IDrive, RoleGroup, IProxyResolver {
         require(role(msg.sender) >= RoleType.Admin || ChatGroup(chat).Role(msg.sender) >= RoleType.Owner, "Only admins can remove chats");
         chats.Remove(chat);
         chat_contracts[ChatGroup(chat).Key(0)] = address(0);
+        update_change_tracker();
     }
 
     function Chat(address initial_key) external view returns (address) {

@@ -9,11 +9,12 @@ import "./Storage.sol";
 import "./Roles.sol";
 import "./deps/OwnableInitializable.sol";
 import "./deps/Set.sol";
+import "./ChangeTracker.sol";
 
 /**
  * Generic Group
  */
-contract Group is Storage, OwnableInitializable {
+contract Group is Storage, OwnableInitializable, ChangeTracker {
     using Set for Set.Data;
     Set.Data members;
     uint256 constant DATA_SLOT = uint256(keccak256("DATA_SLOT"));
@@ -26,6 +27,7 @@ contract Group is Storage, OwnableInitializable {
 
     constructor() {
         initialize(msg.sender);
+        update_change_tracker();
     }
 
     function IsMember(address _member) external view returns (bool) {
@@ -56,6 +58,7 @@ contract Group is Storage, OwnableInitializable {
 
     function setDataValue(uint256 class, uint256 key, uint256 value) internal {
         hash_set_at(DATA_SLOT, uint256(keccak256(abi.encodePacked(class, key))), value);
+        update_change_tracker();
     }
 
     function dataValue(uint256 class, uint256 key) internal view returns (uint256) {

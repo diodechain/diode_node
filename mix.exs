@@ -28,6 +28,13 @@ defmodule Diode.Mixfile do
       elixirc_paths: elixirc_paths(Mix.env()),
       full_version: :persistent_term.get(:full_vsn, @full_vsn),
       package: package(),
+      releases: [
+        diode_node: [
+          applications: [runtime_tools: :permanent, ssl: :permanent],
+          steps: [:assemble, :tar],
+          version: "1.1.0"
+        ]
+      ],
       source_url: @url,
       start_permanent: Mix.env() == :prod,
       version: :persistent_term.get(:vsn, @vsn)

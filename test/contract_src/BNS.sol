@@ -6,11 +6,12 @@ pragma solidity ^0.7.6;
 pragma experimental ABIEncoderV2;
 
 import "./IBNS.sol";
+import "./ChangeTracker.sol";
 
 /**
  * BNS Blockchain Name System
  */
-contract BNS is IBNS {
+contract BNS is IBNS, ChangeTracker {
   address public _reserved;
   mapping(bytes32 => BNSEntry) public names;
 
@@ -23,7 +24,7 @@ contract BNS is IBNS {
   bytes32[] public namesIndex;
 
   function Version() external override pure returns (int) {
-    return 315;
+    return 316;
   }
 
   /**
@@ -72,6 +73,7 @@ contract BNS is IBNS {
     BNSEntry storage current = names[convert(_name)];
     requireOnlyOwner(current);
     current.owner = _newowner;
+    update_change_tracker();
   }
 
   /**
@@ -87,6 +89,7 @@ contract BNS is IBNS {
     require(!isLocked(newentry), "The new name is not available you");
     newentry = current;
     delete names[key];
+    update_change_tracker();
   }
 
   /**
@@ -99,26 +102,6 @@ contract BNS is IBNS {
   }
 
   /**
-   * RegisterHash `_hash` is a hashed name that is beeing assigned it to a single `_destination` address.
-   * @param _hash the hash of the name to be registered.
-   * @param _destination the single destination to be assigned.
-   * @dev disabled because we can't currently protect against allocation of random names.
-   */
-  // function RegisterHash(bytes32 _hash, address _destination) external {
-  //     register(_hash, _destination);
-  // }
-
-  /**
-   * RegisterHashMultiple `_hash` is a hashed name that is beeing assigned it to multiple `_destinations` address.
-   * @param _hash the hash of the name to be registered.
-   * @param _destination the single destination to be assigned.
-   * @dev disabled because we can't currently protect against allocation of random names.
-   */
-  // function RegisterHashMultiple(bytes32 _hash, address[] calldata _destinations) external {
-  //     registerMultiple(_hash, _destinations);
-  // }
-
-  /**
    * Unregister `_name` is a hashed name that is beeing deleted.
    * @param _name the name to be deleted.
    */
@@ -127,17 +110,8 @@ contract BNS is IBNS {
       BNSEntry memory current = names[key];
       require(current.owner == msg.sender || !isLocked(current), "This name is not yours to unregister");
       delete names[key];
+      update_change_tracker();
   }
-
-  // /**
-  //  * Unregister `_hash` is a hashed name that is beeing deleted.
-  //  * @param _hash the hash of the name to be deleted.
-  //  */
-  // function UnregisterHash(bytes32 _hash) external {
-  //     BNSEntry memory current = names[_hash];
-  //     require(current.owner == msg.sender || block.number > current.lockEnd, "This entry is not yours to unregister");
-  //     delete names[_hash];
-  // }
 
   /**
    * AddProperty adds a new property to the domain.
@@ -148,6 +122,7 @@ contract BNS is IBNS {
     BNSEntry storage current = names[convert(_name)];
     requireOnlyOwner(current);
     current.properties.push(_property);
+    update_change_tracker();
   }
 
   /**
@@ -164,6 +139,7 @@ contract BNS is IBNS {
       current.properties[_idx] = current.properties[last];
     }
     current.properties.pop();
+    update_change_tracker();
   }
 
   /**
@@ -206,6 +182,7 @@ contract BNS is IBNS {
       require(msg.sender == _address || msg.sender == reverse[_address].setter, "Only the address owner can override an owned entry.");
 
     reverse[_address] = ReverseEntry(_name, msg.sender);
+    update_change_tracker();
   }
 
   /**
@@ -218,6 +195,7 @@ contract BNS is IBNS {
       require(msg.sender == _address || msg.sender == reverse[_address].setter, "Only the address owner can unregister an owned entry.");
 
     delete reverse[_address];
+    update_change_tracker();
   }
 
   /**
@@ -281,6 +259,7 @@ contract BNS is IBNS {
     current.leaseEnd = block.number + 518400;
     current.lockEnd = block.number + 518400 * 2;
     names[_hash] = current;
+    update_change_tracker();
   }
 
   function forwardLookup(address _address, BNSEntry memory entry) internal pure {
