@@ -1,6 +1,6 @@
 defmodule Object.Ticket do
-  import Object.TicketV1
-  import Object.TicketV2
+  import Object.TicketV1, only: [ticketv1: 0]
+  import Object.TicketV2, only: [ticketv2: 0]
 
   def mod(ticketv1()), do: Object.TicketV1
   def mod(ticketv2()), do: Object.TicketV2
@@ -28,4 +28,5 @@ defmodule Object.Ticket do
   def total_connections(tck), do: mod(tck).total_connections(tck)
   def total_bytes(tck), do: mod(tck).total_bytes(tck)
   def local_address(tck), do: mod(tck).local_address(tck)
+  def score(tck), do: total_connections(tck) * 1024 * total_bytes(tck)
 end

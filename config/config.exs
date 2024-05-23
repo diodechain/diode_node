@@ -27,3 +27,5 @@ end
 if Mix.env() != :test and File.exists?("config/diode.exs") do
   import_config "diode.exs"
 end
+
+config :exqlite, force_build: true

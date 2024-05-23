@@ -17,7 +17,8 @@ env.diode="/opt/diode_node"
 def install():
   run("mkdir -p {}".format(env.diode))
   with cd(env.diode):
-    if not exists("diode_node-1.1.0.tar.gz"):
-      put("../_build/dev/diode_node-1.1.0.tar.gz", env.diode)
-    run("tar xzf diode_node-1.1.0.tar.gz")
+    h = local("sha1sum ../_build/prod/diode_node.tar.gz", capture=True).split()[0]
+    if not exists("diode_node.tar.gz") or h != run("sha1sum diode_node.tar.gz").split()[0]:
+      put("../_build/prod/diode_node.tar.gz", env.diode)
+    run("tar xzf diode_node.tar.gz")
 

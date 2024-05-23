@@ -28,6 +28,13 @@ defmodule TicketStore do
     div(System.os_time(:second), Chains.Moonbeam.epoch_length())
   end
 
+  def tickets(chain_id, epoch) do
+    Ets.all(__MODULE__)
+    |> Enum.filter(fn tck -> Ticket.epoch(tck) == epoch end)
+    |> Enum.concat(TicketSql.tickets(epoch))
+    |> Enum.filter(fn tck -> Ticket.chain_id(tck) == chain_id end)
+  end
+
   def tickets(epoch) do
     Ets.all(__MODULE__)
     |> Enum.filter(fn tck -> Ticket.epoch(tck) == epoch end)
@@ -39,13 +46,13 @@ defmodule TicketStore do
     if not Diode.dev_mode?() and
          RemoteChain.epoch_progress(chain_id, blocknum) > 0.5 do
       epoch = RemoteChain.epoch(chain_id, blocknum)
-      submit_tickets(epoch - 1)
+      submit_tickets(chain_id, epoch - 1)
     end
   end
 
-  def submit_tickets(epoch) do
+  def submit_tickets(chain_id, epoch) do
     tickets =
-      tickets(epoch)
+      tickets(chain_id, epoch)
       |> Enum.filter(fn tck ->
         estimate_ticket_value(tck) > 1_000_000
       end)

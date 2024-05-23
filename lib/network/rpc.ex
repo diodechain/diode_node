@@ -2,6 +2,7 @@
 # Copyright 2021-2024 Diode
 # Licensed under the Diode License, Version 1.1
 defmodule Network.Rpc do
+  alias Object.Ticket
   require Logger
 
   def handle_jsonrpc(rpcs, opts \\ [])
@@ -151,6 +152,28 @@ defmodule Network.Rpc do
           nil -> result(nil, 404)
           item -> result(Object.encode_list!(KBuckets.object(item)))
         end
+
+      "dio_traffic" ->
+        {chain_id, epoch} =
+          case params do
+            [chain_id, epoch] ->
+              {Base16.decode_int(chain_id), Base16.decode_int(epoch)}
+
+            [chain_id] ->
+              {Base16.decode_int(chain_id), RemoteChain.epoch(Base16.decode_int(chain_id))}
+          end
+
+        TicketStore.tickets(chain_id, epoch)
+        |> Enum.group_by(&Ticket.fleet_contract(&1))
+        |> Enum.map(fn {fleet, tickets} ->
+          %{
+            fleet: fleet,
+            total_tickets: Enum.count(tickets),
+            total_bytes: Enum.map(tickets, &Ticket.total_bytes/1) |> Enum.sum(),
+            total_connections: Enum.map(tickets, &Ticket.total_connections/1) |> Enum.sum()
+          }
+        end)
+        |> result()
 
       "dio_network" ->
         conns = Network.Server.get_connections(Network.PeerHandlerV2)
