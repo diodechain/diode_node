@@ -11,7 +11,7 @@ defmodule Diode.Mixfile do
   use Mix.Project
 
   @vsn "1.1.0"
-  @full_vsn "v1.1.0-43-g5fb9c40-dirty"
+  @full_vsn "v1.1.0-50-g02272a0-dirty"
   @url "https://github.com/diodechain/diode_server"
 
   def project do
@@ -83,7 +83,8 @@ defmodule Diode.Mixfile do
 
   defp deps do
     [
-      {:certmagex, "~> 1.0"},
+      {:certmagex, github: "dominicletz/certmagex"},
+      {:zerossl, github: "dominicletz/zerossl", override: true, runtime: false},
       {:debouncer, "~> 0.1"},
       {:dets_plus, "~> 2.0"},
       {:eblake2, "~> 1.0"},

@@ -43,6 +43,7 @@ defmodule Diode do
 
     children =
       [
+        worker(Cron, []),
         worker(Stats, []),
         supervisor(Model.Sql),
         supervisor(Channels),
@@ -273,6 +274,23 @@ defmodule Diode do
       ["time", System.os_time()]
     ])
     |> Object.Server.sign(Wallet.privkey!(Diode.wallet()))
+  end
+
+  def maybe_import_key() do
+    paths =
+      ["priv", System.get_env("CERT_PATH", ""), System.get_env("PARENT_CWD", "")]
+      |> Enum.uniq()
+      |> Enum.map(&Path.absname/1)
+
+    Logger.info("maybe_import_key: Checking #{inspect(paths)}'")
+
+    for path <- paths do
+      with {:ok, privkey} <- File.read(Path.join(path, "privkey.pem")),
+           {:ok, pubcert} <- File.read(Path.join(path, "fullchain.pem")) do
+        Logger.info("maybe_import_key: Importing cert from '#{path}'")
+        CertMagex.insert(privkey, pubcert)
+      end
+    end
   end
 
   def get_env(name, default \\ nil) do
