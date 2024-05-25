@@ -199,7 +199,7 @@ defmodule Network.EdgeV2 do
 
       # "portopen" error
       ["error", ref, reason] ->
-        ports = PortCollection.deny_portopen(state.ports, ref, reason)
+        {:ok, ports} = PortCollection.deny_portopen(state.ports, ref, reason)
         {nil, %{state | ports: ports}}
 
       ["portclose", ref] ->

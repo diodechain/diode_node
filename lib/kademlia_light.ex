@@ -177,7 +177,7 @@ defmodule KademliaLight do
 
   def handle_info(:contact_seeds, state = %KademliaLight{network: network}) do
     for seed <- Diode.seeds() do
-      %URI{userinfo: node_id, host: address, port: _port} = URI.parse(seed)
+      %URI{userinfo: node_id, host: address, port: port} = URI.parse(seed)
 
       id =
         case node_id do
@@ -185,12 +185,7 @@ defmodule KademliaLight do
           str -> Wallet.from_address(Base16.decode(str))
         end
 
-      Network.Server.ensure_node_connection(
-        PeerHandlerV2,
-        id,
-        address,
-        Diode.default_peer2_port()
-      )
+      Network.Server.ensure_node_connection(PeerHandlerV2, id, address, port)
     end
 
     online = Network.Server.get_connections(PeerHandlerV2)

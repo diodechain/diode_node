@@ -123,6 +123,7 @@ defmodule Network.Rpc do
 
   def execute_std(method, params)
       when method in [
+             "dio_edgev2",
              "dio_codeGroups",
              "dio_supply",
              "eth_call",
@@ -158,6 +159,9 @@ defmodule Network.Rpc do
 
   def execute_std(method, params) do
     case method do
+      "web3_clientVersion" ->
+        result(Diode.version())
+
       "net_listening" ->
         result(true)
 
