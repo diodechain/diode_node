@@ -48,17 +48,23 @@ defmodule RemoteChain.RPCCache do
     rpc!(chain, "eth_getBlockByNumber", [block, with_transactions])
   end
 
+  # Retrieves all storage slots for an address, only available on Diode
+  def get_storage(chain, address, block \\ "latest")
+      when chain in [Chains.Diode, Chains.DiodeDev, Chains.DiodeStaging] do
+    block = resolve_block(chain, block)
+
+    # for storage requests we use the last change block as the base
+    # any contract not using change tracking will suffer 240 blocks (one hour) of caching
+    block = get_last_change(chain, address, block)
+    rpc!(chain, "eth_getStorage", [address, block])
+  end
+
   def get_storage_at(chain, address, slot, block \\ "latest") do
     block = resolve_block(chain, block)
 
     # for storage requests we use the last change block as the base
     # any contract not using change tracking will suffer 240 blocks (one hour) of caching
-    block =
-      case get_last_change(chain, address, block) do
-        0 -> block - rem(block, 240)
-        num -> min(num, block)
-      end
-
+    block = get_last_change(chain, address, block)
     rpc!(chain, "eth_getStorageAt", [address, slot, block])
   end
 
@@ -67,12 +73,7 @@ defmodule RemoteChain.RPCCache do
 
     # for storage requests we use the last change block as the base
     # any contract not using change tracking will suffer 240 blocks (one hour) of caching
-    block =
-      case get_last_change(chain, address, block) do
-        0 -> block - rem(block, 240)
-        num -> min(num, block)
-      end
-
+    block = get_last_change(chain, address, block)
     calls = Enum.map(slots, fn slot -> {:rpc, "eth_getStorageAt", [address, slot, block]} end)
 
     RemoteChain.Util.batch_call(name(chain), calls, @default_timeout)
@@ -114,16 +115,64 @@ defmodule RemoteChain.RPCCache do
   def get_last_change(chain, address, block \\ "latest") do
     block = resolve_block(chain, block)
 
-    # `ChangeTracker.sol` slot for signaling: 0x1e4717b2dc5dfd7f487f2043bfe9999372d693bf4d9c51b5b84f1377939cd487
-    rpc!(chain, "eth_getStorageAt", [
-      address,
-      "0x1e4717b2dc5dfd7f487f2043bfe9999372d693bf4d9c51b5b84f1377939cd487",
-      block
-    ])
-    |> Base16.decode_int()
+    if chain in [Chains.Diode, Chains.DiodeDev, Chains.DiodeStaging] do
+      case GenServer.call(name(chain), {:cache, {:last_change_block, block}}) do
+        nil ->
+          root =
+            get_account_root(chain, address, block)
+            |> IO.inspect(label: "root")
+
+          case GenServer.call(name(chain), {:cache, {:last_change_root, root}}) do
+            nil ->
+              GenServer.cast(name(chain), {:set_cache, {:last_change_root, root}, block})
+              GenServer.cast(name(chain), {:set_cache, {:last_change_block, block}, block})
+              block
+
+            block ->
+              GenServer.cast(name(chain), {:set_cache, {:last_change_block, block}, block})
+
+              block
+              |> IO.inspect(label: "partial cache hit")
+          end
+
+        block ->
+          block
+          |> IO.inspect(label: "full cache hit")
+      end
+      |> IO.inspect(label: "ret")
+    else
+      # `ChangeTracker.sol` slot for signaling: 0x1e4717b2dc5dfd7f487f2043bfe9999372d693bf4d9c51b5b84f1377939cd487
+      rpc!(chain, "eth_getStorageAt", [
+        address,
+        "0x1e4717b2dc5dfd7f487f2043bfe9999372d693bf4d9c51b5b84f1377939cd487",
+        block
+      ])
+      |> Base16.decode_int()
+      |> case do
+        0 -> block - rem(block, 240)
+        num -> min(num, block)
+      end
+    end
   end
 
   def get_account_root(chain, address, block \\ "latest")
+
+  def get_account_root(chain, address, block)
+      when chain in [Chains.Diode, Chains.DiodeDev, Chains.DiodeStaging] do
+    block = resolve_block(chain, block)
+    msg = Rlp.encode!(["getaccount", block, Base16.decode(address)]) |> Base16.encode()
+
+    ["response", ret, _proofs] =
+      rpc!(chain, "dio_edgev2", [msg])
+      |> Base16.decode()
+      |> Rlp.decode!()
+
+    ret
+    |> Rlpx.list2map()
+    |> Map.get("storage_root") || throw("No storage_root in account")
+  end
+
+  def get_account_root(chain, address, block)
       when chain in [Chains.MoonbaseAlpha, Chains.Moonbeam, Chains.Moonriver] do
     block = resolve_block(chain, block)
     # this code is specific to Moonbeam (EVM on Substrate) simulating the account_root
@@ -182,6 +231,16 @@ defmodule RemoteChain.RPCCache do
           {:reply, result, state}
         end
     end
+  end
+
+  def handle_call({:cache, key}, _from, state = %RPCCache{chain: chain, cache: cache}) do
+    {:reply, Cache.get(cache, {chain, key}), state}
+  end
+
+  @impl true
+  def handle_cast({:set_cache, key, value}, state = %RPCCache{chain: chain, cache: cache}) do
+    cache = Cache.put(cache, {chain, key}, value)
+    {:noreply, %RPCCache{state | cache: cache}}
   end
 
   defp send_request(

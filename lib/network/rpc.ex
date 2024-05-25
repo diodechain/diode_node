@@ -64,7 +64,11 @@ defmodule Network.Rpc do
       end
 
     if Diode.dev_mode?() do
-      Logger.info("#{method} = #{inspect(result)}")
+      if method == "eth_getStorage" do
+        Logger.info("#{method} = ...")
+      else
+        Logger.info("#{method} = #{inspect(result)}")
+      end
     end
 
     {ret, code} =
@@ -131,8 +135,6 @@ defmodule Network.Rpc do
              "eth_getCode",
              "eth_getCodeHash",
              "eth_getLogs",
-             "eth_getStorage",
-             "eth_getStorageAt",
              "eth_getTransactionByHash",
              "eth_getTransactionCount",
              "eth_getTransactionReceipt",
@@ -150,16 +152,31 @@ defmodule Network.Rpc do
         other -> other
       end)
 
-    case RemoteChain.RPCCache.rpc(chain, method, params) do
-      %{"result" => result} -> result(result)
-      %{"error" => error, "code" => code} -> result(nil, code, error)
-    end
+    RemoteChain.RPCCache.rpc(chain, method, params)
+    |> remote_rpc_result()
   end
 
-  def execute_std(method, _params) do
+  def execute_std(method, params) do
     case method do
       "net_listening" ->
         result(true)
+
+      "eth_getStorage" ->
+        [address, ref] = params
+
+        RemoteChain.RPCCache.get_storage(RemoteChain.diode_l1_fallback(), address, ref)
+        |> result()
+
+      "eth_getStorageAt" ->
+        [address, location, ref] = params
+
+        RemoteChain.RPCCache.get_storage_at(
+          RemoteChain.diode_l1_fallback(),
+          address,
+          location,
+          ref
+        )
+        |> result()
 
       "eth_blockNumber" ->
         RemoteChain.peaknumber(RemoteChain.diode_l1_fallback())
@@ -332,5 +349,12 @@ defmodule Network.Rpc do
 
   defp result(result, code \\ 200, error \\ nil) do
     {result, code, error}
+  end
+
+  defp remote_rpc_result(result) do
+    case result do
+      %{"result" => result} -> result(result)
+      %{"error" => error, "code" => code} -> result(nil, code, error)
+    end
   end
 end
