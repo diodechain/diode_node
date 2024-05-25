@@ -227,9 +227,9 @@ defmodule RemoteChain.RPCCache do
       spawn(fn ->
         if chain in [Chains.Diode, Chains.DiodeDev, Chains.DiodeStaging] do
           rpc(chain, "dio_edgev2", [Base16.encode(Rlp.encode!(["getblockheader2", block_number]))])
-        else
-          get_block_by_number(chain, block_number)
         end
+
+        get_block_by_number(chain, block_number)
       end)
     end
 
