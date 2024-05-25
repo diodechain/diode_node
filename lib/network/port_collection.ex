@@ -384,11 +384,11 @@ defmodule Network.PortCollection do
         reply
 
       {:DOWN, ^ref, :process, _pid, reason} ->
-        raise {:error, reason}
+        throw({:error, reason})
     after
       timeout ->
         Process.demonitor(ref, [:flush])
-        raise {:error, :timeout}
+        throw({:error, :timeout})
     end
   end
 

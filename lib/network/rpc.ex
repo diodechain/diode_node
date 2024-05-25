@@ -119,26 +119,28 @@ defmodule Network.Rpc do
 
   def execute_std(method, params)
       when method in [
-             "eth_sendRawTransaction",
-             "parity_pendingTransactions",
+             "dio_codeGroups",
+             "dio_supply",
+             "eth_call",
              "eth_chainId",
-             "eth_getTransactionByHash",
+             "eth_estimateGas",
+             "eth_gasPrice",
+             "eth_getBalance",
              "eth_getBlockByHash",
              "eth_getBlockByNumber",
-             "eth_getTransactionCount",
-             "eth_getBalance",
              "eth_getCode",
              "eth_getCodeHash",
-             "eth_getStorageAt",
-             "eth_getStorage",
-             "eth_estimateGas",
-             "eth_call",
-             "eth_getTransactionReceipt",
              "eth_getLogs",
-             "eth_gasPrice",
+             "eth_getStorage",
+             "eth_getStorageAt",
+             "eth_getTransactionByHash",
+             "eth_getTransactionCount",
+             "eth_getTransactionReceipt",
+             "eth_sendRawTransaction",
              "net_version",
-             "trace_replayBlockTransactions",
-             "trace_block"
+             "parity_pendingTransactions",
+             "trace_block",
+             "trace_replayBlockTransactions"
            ] do
     chain = RemoteChain.diode_l1_fallback()
 
