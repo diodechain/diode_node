@@ -323,7 +323,6 @@ defmodule Edge2Client do
       versions: [:"tlsv1.2"],
       verify: :verify_peer,
       verify_fun: {&__MODULE__.check/3, nil},
-      fail_if_no_peer_cert: true,
       eccs: [:secp256k1],
       active: false,
       reuseaddr: true,

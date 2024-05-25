@@ -56,7 +56,7 @@ defmodule ChainAgent do
       TestHelper.set_wallets(wallets)
       Model.CredSql.set_wallet(hd(wallets))
       restart_service(Network.EdgeV2)
-      restart_service(Network.PeerHandler)
+      restart_service(Network.PeerHandlerV2)
       restart_service(KademliaLight)
 
       wallets = Enum.map(wallets, fn w -> Base16.encode(Wallet.privkey!(w)) end) |> Enum.join(" ")

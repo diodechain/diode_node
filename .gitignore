@@ -40,5 +40,8 @@ data_dev/
 data_prod/
 data_test/
 data_prod_old/
+nodedata_dev/
+nodedata_prod/
+nodedata_test/
 supervise/
 .env

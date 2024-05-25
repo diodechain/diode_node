@@ -56,7 +56,7 @@ defmodule RemoteChain.RPCCache do
     # for storage requests we use the last change block as the base
     # any contract not using change tracking will suffer 240 blocks (one hour) of caching
     block = get_last_change(chain, address, block)
-    rpc!(chain, "eth_getStorage", [address, block])
+    rpc!(chain, "eth_getStorage", [address, Base16.encode(block, false)])
   end
 
   def get_storage_at(chain, address, slot, block \\ "latest") do
@@ -65,7 +65,7 @@ defmodule RemoteChain.RPCCache do
     # for storage requests we use the last change block as the base
     # any contract not using change tracking will suffer 240 blocks (one hour) of caching
     block = get_last_change(chain, address, block)
-    rpc!(chain, "eth_getStorageAt", [address, slot, block])
+    rpc!(chain, "eth_getStorageAt", [address, slot, Base16.encode(block, false)])
   end
 
   def get_storage_many(chain, address, slots, block \\ "latest") do
@@ -74,7 +74,7 @@ defmodule RemoteChain.RPCCache do
     # for storage requests we use the last change block as the base
     # any contract not using change tracking will suffer 240 blocks (one hour) of caching
     block = get_last_change(chain, address, block)
-    calls = Enum.map(slots, fn slot -> {:rpc, "eth_getStorageAt", [address, slot, block]} end)
+    calls = Enum.map(slots, fn slot -> {:rpc, "eth_getStorageAt", [address, slot, Base16.encode(block, false)]} end)
 
     RemoteChain.Util.batch_call(name(chain), calls, @default_timeout)
     |> Enum.map(fn
@@ -94,22 +94,22 @@ defmodule RemoteChain.RPCCache do
 
   def call(chain, to, from, data, block \\ "latest") do
     block = resolve_block(chain, block)
-    rpc!(chain, "eth_call", [%{to: to, data: data, from: from}, block])
+    rpc!(chain, "eth_call", [%{to: to, data: data, from: from}, Base16.encode(block, false)])
   end
 
   def get_code(chain, address, block \\ "latest") do
     block = resolve_block(chain, block)
-    rpc!(chain, "eth_getCode", [address, block])
+    rpc!(chain, "eth_getCode", [address, Base16.encode(block, false)])
   end
 
   def get_transaction_count(chain, address, block \\ "latest") do
     block = resolve_block(chain, block)
-    rpc!(chain, "eth_getTransactionCount", [address, block])
+    rpc!(chain, "eth_getTransactionCount", [address, Base16.encode(block, false)])
   end
 
   def get_balance(chain, address, block \\ "latest") do
     block = resolve_block(chain, block)
-    rpc!(chain, "eth_getBalance", [address, block])
+    rpc!(chain, "eth_getBalance", [address, Base16.encode(block, false)])
   end
 
   def get_last_change(chain, address, block \\ "latest") do
@@ -141,7 +141,7 @@ defmodule RemoteChain.RPCCache do
       rpc!(chain, "eth_getStorageAt", [
         address,
         "0x1e4717b2dc5dfd7f487f2043bfe9999372d693bf4d9c51b5b84f1377939cd487",
-        block
+        Base16.encode(block, false)
       ])
       |> Base16.decode_int()
       |> case do

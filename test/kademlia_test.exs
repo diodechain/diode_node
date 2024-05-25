@@ -4,7 +4,7 @@
 defmodule KademliaTest do
   use ExUnit.Case, async: false
   alias Network.Server, as: Server
-  alias Network.PeerHandler, as: PeerHandler
+  alias Network.PeerHandlerV2, as: PeerHandler
   import TestHelper
   import While
 
