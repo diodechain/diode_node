@@ -120,7 +120,6 @@ defmodule RemoteChain.RPCCache do
         nil ->
           root =
             get_account_root(chain, address, block)
-            |> IO.inspect(label: "root")
 
           case GenServer.call(name(chain), {:cache, {:last_change_root, root}}) do
             nil ->
@@ -132,14 +131,11 @@ defmodule RemoteChain.RPCCache do
               GenServer.cast(name(chain), {:set_cache, {:last_change_block, block}, block})
 
               block
-              |> IO.inspect(label: "partial cache hit")
           end
 
         block ->
           block
-          |> IO.inspect(label: "full cache hit")
       end
-      |> IO.inspect(label: "ret")
     else
       # `ChangeTracker.sol` slot for signaling: 0x1e4717b2dc5dfd7f487f2043bfe9999372d693bf4d9c51b5b84f1377939cd487
       rpc!(chain, "eth_getStorageAt", [

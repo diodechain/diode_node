@@ -170,7 +170,7 @@ defmodule KademliaLight do
 
   @impl true
   def handle_info(:save, state) do
-    spawn(fn -> Model.File.store(Diode.data_dir(@storage_file), state) end)
+    spawn(fn -> Model.File.store(Diode.data_dir(@storage_file), state, true) end)
     Process.send_after(self(), :save, 60_000)
     {:noreply, state}
   end

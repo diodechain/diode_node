@@ -184,7 +184,7 @@ defmodule Diode do
 
   @spec data_dir(binary()) :: binary()
   def data_dir(file \\ "") do
-    get_env("DATA_DIR", File.cwd!() <> "/data_" <> Atom.to_string(env()) <> "/") <> file
+    Path.join(get_env("DATA_DIR", File.cwd!() <> "/nodedata_" <> Atom.to_string(env())), file)
   end
 
   def host() do

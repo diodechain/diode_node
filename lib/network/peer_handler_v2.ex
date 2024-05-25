@@ -238,10 +238,8 @@ defmodule Network.PeerHandlerV2 do
   end
 
   defp handle_msg([@response, :portopen, ref, "error", reason], state) do
-    case PortCollection.deny_portopen(state.ports, ref, reason) do
-      {:ok, pc} -> {:noreply, %{state | ports: pc}}
-      {:error, _reason} -> {:noreply, state}
-    end
+    {:ok, pc} = PortCollection.deny_portopen(state.ports, ref, reason)
+    {:noreply, %{state | ports: pc}}
   end
 
   defp handle_msg([@response, _cmd | rest], state) do
