@@ -117,8 +117,67 @@ defmodule Network.Rpc do
     execute(apis, [method, params])
   end
 
+  def execute_std(method, params)
+      when method in [
+             "eth_sendRawTransaction",
+             "parity_pendingTransactions",
+             "eth_chainId",
+             "eth_getTransactionByHash",
+             "eth_getBlockByHash",
+             "eth_getBlockByNumber",
+             "eth_getTransactionCount",
+             "eth_getBalance",
+             "eth_getCode",
+             "eth_getCodeHash",
+             "eth_getStorageAt",
+             "eth_getStorage",
+             "eth_estimateGas",
+             "eth_call",
+             "eth_getTransactionReceipt",
+             "eth_getLogs",
+             "eth_gasPrice",
+             "net_version",
+             "trace_replayBlockTransactions",
+             "trace_block"
+           ] do
+    chain = RemoteChain.diode_l1_fallback()
+
+    params =
+      Enum.map(params, fn
+        "latest" -> RemoteChain.peaknumber(chain)
+        other -> other
+      end)
+
+    case RemoteChain.RPCCache.rpc(chain, method, params) do
+      %{"result" => result} -> result(result)
+      %{"error" => error, "code" => code} -> result(nil, code, error)
+    end
+  end
+
   def execute_std(method, _params) do
     case method do
+      "net_listening" ->
+        result(true)
+
+      "eth_blockNumber" ->
+        RemoteChain.peaknumber(RemoteChain.diode_l1_fallback())
+        |> result()
+
+      "eth_syncing" ->
+        result(false)
+
+      "eth_mining" ->
+        result(false)
+
+      "eth_hashrate" ->
+        result(0)
+
+      "eth_acounts" ->
+        result([])
+
+      "eth_coinbase" ->
+        result(Diode.address())
+
       "net_peerCount" ->
         peers = Network.Server.get_connections(Network.PeerHandlerV2)
         result(map_size(peers))

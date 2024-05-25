@@ -92,10 +92,12 @@ defmodule RemoteChain.RPCCache do
   end
 
   def call(chain, to, from, data, block \\ "latest") do
+    block = resolve_block(chain, block)
     rpc!(chain, "eth_call", [%{to: to, data: data, from: from}, block])
   end
 
   def get_code(chain, address, block \\ "latest") do
+    block = resolve_block(chain, block)
     rpc!(chain, "eth_getCode", [address, block])
   end
 
