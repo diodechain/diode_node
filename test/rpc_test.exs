@@ -11,6 +11,11 @@ defmodule RpcTest do
     TestHelper.reset()
   end
 
+  test "local eth_chainId" do
+    {"0xd", 200, nil} = lrpc("eth_chainId", [])
+    {:ok, "0x7a69"} = rpc("eth_chainId", [])
+  end
+
   test "eth_getBlockByNumber" do
     {:ok, %{}} = rpc("eth_getBlockByNumber", [0, false])
     {:ok, nil} = rpc("eth_getBlockByNumber", [1, false])
@@ -65,7 +70,7 @@ defmodule RpcTest do
   end
 
   defp prepare_transaction() do
-    [from, to] = Diode.wallets() |> Enum.reverse() |> Enum.take(2)
+    [from, to] = wallets() |> Enum.reverse() |> Enum.take(2)
 
     price =
       RemoteChain.RPC.gas_price(chain())
@@ -93,5 +98,9 @@ defmodule RpcTest do
 
   def rpc(method, params) do
     RemoteChain.RPC.rpc(chain(), method, params)
+  end
+
+  def lrpc(method, params) do
+    Network.Rpc.execute_rpc(method, params, [])
   end
 end

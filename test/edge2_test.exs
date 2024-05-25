@@ -617,7 +617,7 @@ defmodule Edge2Test do
   end
 
   test "transaction" do
-    [from, to] = Diode.wallets() |> Enum.reverse() |> Enum.take(2)
+    [from, to] = wallets() |> Enum.reverse() |> Enum.take(2)
 
     to = Wallet.address!(to)
 

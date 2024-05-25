@@ -7,7 +7,7 @@ defmodule TransactionTest do
   import TestHelper
 
   test "recoding" do
-    [from, to] = Diode.wallets() |> Enum.reverse() |> Enum.take(2)
+    [from, to] = wallets() |> Enum.reverse() |> Enum.take(2)
 
     nonce = :rand.uniform(1000)
     to = Wallet.address!(to)

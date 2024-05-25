@@ -14,7 +14,7 @@ defmodule KademliaTest do
   @testkey Wallet.new()
   setup_all do
     reset()
-    :io.format("Kademlia starting clones~n")
+    :io.format("KademliaLight starting clones~n")
     start_clones(@network_size)
 
     on_exit(fn ->
@@ -27,7 +27,7 @@ defmodule KademliaTest do
   end
 
   defp find_value(name) do
-    Kademlia.find_value(Object.Data.key(Wallet.address!(@testkey), name))
+    KademliaLight.find_value(Object.Data.key(Wallet.address!(@testkey), name))
     |> case do
       nil -> nil
       other -> Object.decode!(other)
@@ -69,7 +69,7 @@ defmodule KademliaTest do
 
     # For network size > k() not all nodes might be stored
     if @network_size < KBuckets.k(),
-      do: assert(KBuckets.size(Kademlia.network()) == @network_size + 1)
+      do: assert(KBuckets.size(KademliaLight.network()) == @network_size + 1)
   end
 
   test "send/receive" do
@@ -78,11 +78,11 @@ defmodule KademliaTest do
     values = Enum.map(1..100, fn idx -> new_value("#{idx}", "value_#{idx}") end)
     before = Process.list()
 
-    :io.format("Kademlia store")
+    :io.format("KademliaLight store")
 
     for value <- values do
       :io.format(" #{Object.Data.name(value)}")
-      Kademlia.store(value)
+      KademliaLight.store(value)
     end
 
     :io.format("~nKademlia find_value ")
@@ -107,18 +107,18 @@ defmodule KademliaTest do
     connect_clones(1..@network_size)
 
     values = Enum.map(1..100, fn idx -> new_value("re_#{idx}", "value_#{idx}") end)
-    :io.format("Kademlia store")
+    :io.format("KademliaLight store")
 
     for value <- values do
       :io.format(" #{Object.Data.name(value)}")
-      Kademlia.store(value)
+      KademliaLight.store(value)
     end
 
     :io.format("~n")
 
-    before = KBuckets.size(Kademlia.network())
+    before = KBuckets.size(KademliaLight.network())
 
-    while KBuckets.size(Kademlia.network()) < before + 1 do
+    while KBuckets.size(KademliaLight.network()) < before + 1 do
       :io.format("Adding clone~n")
       new_clone = count_clones() + 1
       add_clone(new_clone)
@@ -126,10 +126,10 @@ defmodule KademliaTest do
       connect_clones(1..new_clone)
     end
 
-    assert KBuckets.size(Kademlia.network()) == before + 1
+    assert KBuckets.size(KademliaLight.network()) == before + 1
 
     for value <- values do
-      :io.format("Kademlia find_value #{Object.Data.name(value)}~n")
+      :io.format("KademliaLight find_value #{Object.Data.name(value)}~n")
       assert find_value(Object.Data.name(value)) == value
     end
   end
@@ -137,18 +137,18 @@ defmodule KademliaTest do
   test "failed server" do
     values = Enum.map(1..50, fn idx -> new_value("#{idx}", "value_#{idx}") end)
 
-    :io.format("Kademlia store")
+    :io.format("KademliaLight store")
 
     for value <- values do
       :io.format(" #{Object.Data.name(value)}")
-      Kademlia.store(value)
+      KademliaLight.store(value)
     end
 
     :io.format("~n")
 
     freeze_clone(1)
 
-    :io.format("Kademlia find_value")
+    :io.format("KademliaLight find_value")
 
     for value <- values do
       :io.format(" #{Object.Data.name(value)}")

@@ -43,10 +43,10 @@ defmodule ObjectTest do
       assert decoded == object
       assert Object.key(decoded) == key
 
-      Model.KademliaSql.put_object(Kademlia.hash(key), encoded)
+      Model.KademliaSql.put_object(KademliaLight.hash(key), encoded)
 
       loaded =
-        Model.KademliaSql.object(Kademlia.hash(key))
+        Model.KademliaSql.object(KademliaLight.hash(key))
         |> Object.decode!()
 
       assert Object.key(loaded) == key
@@ -59,7 +59,7 @@ defmodule ObjectTest do
       |> Map.new()
 
     for object <- objs do
-      key = Kademlia.hash(Object.key(object))
+      key = KademliaLight.hash(Object.key(object))
       assert Object.decode!(Map.get(map, key)) == object
     end
   end

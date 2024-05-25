@@ -53,10 +53,11 @@ defmodule ChainAgent do
         end
 
       # SSL Servers already started here
+      TestHelper.set_wallets(wallets)
       Model.CredSql.set_wallet(hd(wallets))
       restart_service(Network.EdgeV2)
       restart_service(Network.PeerHandler)
-      restart_service(Kademlia)
+      restart_service(KademliaLight)
 
       wallets = Enum.map(wallets, fn w -> Base16.encode(Wallet.privkey!(w)) end) |> Enum.join(" ")
       System.put_env("WALLETS", wallets)
@@ -114,6 +115,7 @@ defmodule TestHelper do
   @cookie "EXTMP_K66"
   @max_ports 10
   @chain Chains.Anvil
+  require Logger
 
   def chain(), do: @chain
   def peaknumber(), do: RemoteChain.peaknumber(@chain)
@@ -123,8 +125,27 @@ defmodule TestHelper do
   def reset() do
     kill_clones()
     TicketStore.clear()
-    Kademlia.reset()
+    KademliaLight.reset()
     restart_chain()
+  end
+
+  def set_wallets(wallets) do
+    :persistent_term.put(:wallets, wallets)
+    wallets
+  end
+
+  def wallets() do
+    case :persistent_term.get(:wallets, nil) do
+      nil ->
+        set_wallets(
+          for _ <- 0..9 do
+            Wallet.new()
+          end
+        )
+
+      wallets ->
+        wallets
+    end
   end
 
   def restart_chain() do
@@ -141,7 +162,7 @@ defmodule TestHelper do
         :ok
 
       false ->
-        :io.format("Waiting for block ~p/~p~n", [n, peaknumber()])
+        Logger.info("Waiting for block #{n}/#{peaknumber()}")
         Process.sleep(1000)
         wait(n)
     end
@@ -214,7 +235,6 @@ defmodule TestHelper do
           :stderr_to_stdout
         ])
 
-      # :io.format("port clone_#{num}: ~p~n", [port])
       true = Process.register(port, String.to_atom("clone_#{num}"))
       clone_loop(port, file)
     end)
@@ -238,7 +258,6 @@ defmodule TestHelper do
 
   def freeze_clone(num) do
     port = Process.whereis(String.to_atom("clone_#{num}"))
-    # :io.format("port info: ~p ~p~n", [port, Port.info(port)])
     {:os_pid, pid} = Port.info(port, :os_pid)
     System.cmd("kill", ["-SIGSTOP", "#{pid}"])
   end
