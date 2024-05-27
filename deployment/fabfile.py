@@ -21,5 +21,8 @@ def install():
     if not exists("diode_node.tar.gz") or h != run("sha1sum diode_node.tar.gz").split()[0]:
       put("../_build/prod/diode_node.tar.gz", env.diode)
     run("tar xzf diode_node.tar.gz")
-    #run("bin/diode_node stop")
+
+def update():
+  with cd(env.diode):
+    run("bin/diode_node stop")
 

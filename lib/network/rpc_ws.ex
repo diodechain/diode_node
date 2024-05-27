@@ -71,6 +71,7 @@ defmodule Network.RpcWs do
   end
 
   defp subscribe(what) do
+    RemoteChain.NodeProxy.subscribe_block(RemoteChain.diode_l1_fallback())
     id = Base16.encode(Random.uint63h(), false)
     Process.put({:subs, id}, what)
 
@@ -84,7 +85,7 @@ defmodule Network.RpcWs do
 
   def websocket_info(any, state) do
     case any do
-      {:rpc, :block, block_hash} ->
+      {{RemoteChain.NodeProxy, _chain}, :block_number, block_number} ->
         reply =
           Enum.filter(Process.get(), fn
             {{:subs, _id}, {:block, _includeTransactions}} -> true
@@ -92,7 +93,11 @@ defmodule Network.RpcWs do
           end)
           |> Enum.map(fn {{:subs, id}, {:block, includeTransactions}} ->
             {block, _, _} =
-              Network.Rpc.execute_rpc("eth_getBlockByHash", [block_hash, includeTransactions], [])
+              Network.Rpc.execute_rpc(
+                "eth_getBlockByNumber",
+                [block_number, includeTransactions],
+                []
+              )
 
             {:text,
              Poison.encode!(%{

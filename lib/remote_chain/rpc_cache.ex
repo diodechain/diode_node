@@ -74,7 +74,11 @@ defmodule RemoteChain.RPCCache do
     # for storage requests we use the last change block as the base
     # any contract not using change tracking will suffer 240 blocks (one hour) of caching
     block = get_last_change(chain, address, block)
-    calls = Enum.map(slots, fn slot -> {:rpc, "eth_getStorageAt", [address, slot, Base16.encode(block, false)]} end)
+
+    calls =
+      Enum.map(slots, fn slot ->
+        {:rpc, "eth_getStorageAt", [address, slot, Base16.encode(block, false)]}
+      end)
 
     RemoteChain.Util.batch_call(name(chain), calls, @default_timeout)
     |> Enum.map(fn
