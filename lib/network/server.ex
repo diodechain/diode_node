@@ -95,7 +95,8 @@ defmodule Network.Server do
     GenServer.call(name, :get_connections)
   end
 
-  def ensure_node_connection(name, node_id, address, port) do
+  def ensure_node_connection(name, node_id, address, port)
+      when node_id == nil or is_tuple(node_id) do
     GenServer.call(name, {:ensure_node_connection, node_id, address, port})
   end
 
@@ -171,7 +172,8 @@ defmodule Network.Server do
     {:reply, result, state}
   end
 
-  def handle_call({:ensure_node_connection, node_id, address, port}, _from, state) do
+  def handle_call({:ensure_node_connection, node_id, address, port}, _from, state)
+      when node_id == nil or is_tuple(node_id) do
     if Wallet.equal?(Diode.wallet(), node_id) do
       client = Enum.find(state.self_conns, fn pid -> Process.alive?(pid) end)
 

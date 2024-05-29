@@ -577,6 +577,8 @@ defmodule Network.EdgeV2 do
 
   defp portopen(state, device_id, portname, flags) do
     trace = if String.contains?(flags, "t"), do: state.pid
+    remote = String.contains?(flags, "p")
+
     ref = random_ref()
     address = device_address(state)
     trace(trace, state, "received portopen for #{Base16.encode(ref)}")
@@ -584,7 +586,7 @@ defmodule Network.EdgeV2 do
     with {:self, false} <- {:self, device_id == address},
          {:valid_flags, true} <- {:valid_flags, validate_flags(flags)},
          {:device_id, <<_::binary-size(20)>>} <- {:device_id, device_id} do
-      case local_pid(device_id) || remote_pid(device_id) do
+      case local_pid(device_id) || remote_pid(remote, device_id) do
         pid when is_pid(pid) ->
           local_portopen(address, state.pid, portname, flags, pid, ref)
 
@@ -604,7 +606,9 @@ defmodule Network.EdgeV2 do
     |> List.first()
   end
 
-  defp remote_pid(device_id) do
+  defp remote_pid(false, _device_id), do: error("not found")
+
+  defp remote_pid(true, device_id) do
     case KademliaLight.find_value(device_id) do
       nil ->
         error("not found")
@@ -615,7 +619,7 @@ defmodule Network.EdgeV2 do
         if Ticket.device_address(tck) != device_id do
           error("invalid ticket")
         else
-          node_id = Ticket.server_id(tck)
+          node_id = Wallet.from_address(Ticket.server_id(tck))
           server = KademliaLight.find_value(device_id) |> Object.decode!()
 
           Network.Server.ensure_node_connection(
@@ -757,13 +761,14 @@ defmodule Network.EdgeV2 do
   defp validate_flags(bytes) do
     flags = String.to_charlist(bytes)
 
-    # flags must be a subset of "rwst"
+    # flags must be a subset of "rwstp"
     # and must contain at least one of "r" or "w"
     Enum.all?(flags, fn
       ?r -> true
       ?w -> true
       ?s -> true
       ?t -> true
+      ?p -> true
       _ -> false
     end) and (?r in flags or ?w in flags)
   end
