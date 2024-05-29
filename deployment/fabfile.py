@@ -11,11 +11,12 @@ from fabric.contrib.files import exists
 
 
 env.diode="/opt/diode_node"
-env.hosts=[
-  "root@eu1.prenet.diode.io", "root@eu2.prenet.diode.io",
-  "root@us1.prenet.diode.io", "root@us2.prenet.diode.io",
-  "root@as1.prenet.diode.io", "root@as2.prenet.diode.io", "root@as3.prenet.diode.io",
-]
+if len(env.hosts) == 0:
+  env.hosts=[
+    "root@eu1.prenet.diode.io", "root@eu2.prenet.diode.io",
+    "root@us1.prenet.diode.io", "root@us2.prenet.diode.io",
+    "root@as1.prenet.diode.io", "root@as2.prenet.diode.io", "root@as3.prenet.diode.io",
+  ]
 
 # Install on Ubuntu 18.04
 # fab install --host=root@eu2.prenet.diode.io
@@ -35,7 +36,6 @@ def uninstall():
   with cd(env.diode):
     if exists("bin/diode_node"):
       run("rm bin/diode_node")
-      run("killall beam.smp")
-    else:
-      run("epmd -names")
+      #run("killall beam.smp")
+    run("epmd -names")
 
