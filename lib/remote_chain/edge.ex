@@ -54,6 +54,15 @@ defmodule RemoteChain.Edge do
       ["getstateroots", _index] ->
         error("not implemented")
 
+      ["getaccountroot", block, address] ->
+        RemoteChain.RPCCache.get_account_root(
+          chain,
+          hex_address(address),
+          hex_blockref(block)
+        )
+        |> Base16.decode()
+        |> response()
+
       ["getaccount", block, address] ->
         # requires https://eips.ethereum.org/EIPS/eip-1186
         # response(Moonbeam.proof(address, [0], blockref(block)))
@@ -186,7 +195,7 @@ defmodule RemoteChain.Edge do
         spawn(fn ->
           RemoteChain.RPC.send_raw_transaction(chain, payload)
 
-          for endpoint <- chain.rpc_endpoints() do
+          for endpoint <- Enum.shuffle(chain.rpc_endpoints()) do
             RemoteChain.HTTP.send_raw_transaction(endpoint, payload)
           end
         end)

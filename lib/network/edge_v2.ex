@@ -238,6 +238,7 @@ defmodule Network.EdgeV2 do
                "getblockquick2",
                "getstateroots",
                "getaccount",
+               "getaccountroot",
                "getaccountroots",
                "getaccountvalue",
                "getaccountvalues",
