@@ -248,8 +248,8 @@ defmodule RemoteChain.RPCCache do
       {time, _set} when now - time > @default_timeout ->
         new_request(method, params, from, state)
 
-      {_time, set} ->
-        request_rpc = Map.put(request_rpc, {method, params}, MapSet.put(set, from))
+      {time, set} ->
+        request_rpc = Map.put(request_rpc, {method, params}, {time, MapSet.put(set, from)})
         %RPCCache{state | request_rpc: request_rpc}
     end
   end
