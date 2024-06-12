@@ -238,19 +238,14 @@ defmodule RemoteChain.RPCCache do
     {:noreply, %RPCCache{state | cache: cache}}
   end
 
-  defp send_request(
-         method,
-         params,
-         from,
-         state = %RPCCache{chain: chain, request_rpc: request_rpc, request_collection: col}
-       ) do
-    now = System.os_time(:seconds)
+  defp send_request(method, params, from, state = %RPCCache{request_rpc: request_rpc}) do
+    now = System.os_time(:second)
 
     case Map.get(request_rpc, {method, params}) do
       nil ->
         new_request(method, params, from, state)
 
-      {time, set} when now - time > @default_timeout ->
+      {time, _set} when now - time > @default_timeout ->
         new_request(method, params, from, state)
 
       {_time, set} ->
@@ -273,7 +268,7 @@ defmodule RemoteChain.RPCCache do
         col
       )
 
-    now = System.os_time(:seconds)
+    now = System.os_time(:second)
     request_rpc = Map.put(request_rpc, {method, params}, {now, MapSet.new([from])})
     %RPCCache{state | request_rpc: request_rpc, request_collection: col}
   end
