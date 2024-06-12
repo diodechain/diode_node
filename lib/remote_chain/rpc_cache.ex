@@ -244,27 +244,38 @@ defmodule RemoteChain.RPCCache do
          from,
          state = %RPCCache{chain: chain, request_rpc: request_rpc, request_collection: col}
        ) do
+    now = System.os_time(:seconds)
+
     case Map.get(request_rpc, {method, params}) do
       nil ->
-        col =
-          :gen_server.send_request(
-            NodeProxy.name(chain),
-            {:rpc, method, params},
-            {method, params},
-            col
-          )
+        new_request(method, params, from, state)
 
-        # if method == "dio_edgev2" do
-        #   IO.inspect({method, Base16.decode(hd(params)) |> Rlp.decode!()}, label: "dio_edgev2")
-        # end
+      {time, set} when now - time > @default_timeout ->
+        new_request(method, params, from, state)
 
-        request_rpc = Map.put(request_rpc, {method, params}, MapSet.new([from]))
-        %RPCCache{state | request_rpc: request_rpc, request_collection: col}
-
-      set ->
+      {_time, set} ->
         request_rpc = Map.put(request_rpc, {method, params}, MapSet.put(set, from))
         %RPCCache{state | request_rpc: request_rpc}
     end
+  end
+
+  defp new_request(
+         method,
+         params,
+         from,
+         state = %RPCCache{chain: chain, request_rpc: request_rpc, request_collection: col}
+       ) do
+    col =
+      :gen_server.send_request(
+        NodeProxy.name(chain),
+        {:rpc, method, params},
+        {method, params},
+        col
+      )
+
+    now = System.os_time(:seconds)
+    request_rpc = Map.put(request_rpc, {method, params}, {now, MapSet.new([from])})
+    %RPCCache{state | request_rpc: request_rpc, request_collection: col}
   end
 
   @impl true
@@ -325,7 +336,7 @@ defmodule RemoteChain.RPCCache do
               {state, ret}
           end
 
-        {froms, request_rpc} = Map.pop!(request_rpc, {method, params})
+        {{_time, froms}, request_rpc} = Map.pop!(request_rpc, {method, params})
 
         for from <- froms do
           if from != nil, do: GenServer.reply(from, ret)
