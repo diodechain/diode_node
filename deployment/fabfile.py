@@ -39,3 +39,7 @@ def uninstall():
       #run("killall beam.smp")
     run("epmd -names")
 
+def epmd():
+    run("epmd -names")
+    run("ps waux | grep diode_node")
+
