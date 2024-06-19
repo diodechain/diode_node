@@ -282,8 +282,11 @@ defmodule RemoteChain.RPCCache do
       GenServer.reply(from, block_number)
     end
 
-    # for development nodes that start at block 0 (genesis)
-    if block_number > 0 do
+    # for development nodes we need to ensure block_number > 0 (genesis)
+    # to prevent block-reorgs from causing issues we're doing 5 blocks delay
+    if block_number > 5 do
+      block_number = block_number - 5
+
       spawn(fn ->
         if chain in [Chains.Diode, Chains.DiodeDev, Chains.DiodeStaging] do
           rpc(chain, "dio_edgev2", [Base16.encode(Rlp.encode!(["getblockheader2", block_number]))])
