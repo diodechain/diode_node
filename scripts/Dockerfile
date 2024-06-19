@@ -42,6 +42,7 @@ RUN git clone https://github.com/asdf-vm/asdf.git ${ASDF_DIR} && \
 COPY mix.* /app/
 COPY config/config.exs /app/config/
 WORKDIR /app/
+ENV HEX_HTTP_TIMEOUT=120
 RUN . ${ASDF_DIR}/asdf.sh && \
     echo "elixir ${ELIXIR_VERSION}${ELIXIR_VARIANT}" > .tool-versions && \
     echo "erlang ref:${OTP_VERSION}" >> .tool-versions && \
