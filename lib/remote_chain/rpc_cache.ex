@@ -37,6 +37,14 @@ defmodule RemoteChain.RPCCache do
      }}
   end
 
+  def optimistic_caching?() do
+    :persistent_term.get({__MODULE__, :optimistic_caching}, true)
+  end
+
+  def set_optimistic_caching(bool) do
+    :persistent_term.put({__MODULE__, :optimistic_caching}, bool)
+  end
+
   def block_number(chain) do
     case GenServer.call(name(chain), :block_number) do
       number when number != nil -> number
@@ -284,7 +292,7 @@ defmodule RemoteChain.RPCCache do
 
     # for development nodes we need to ensure block_number > 0 (genesis)
     # to prevent block-reorgs from causing issues we're doing 5 blocks delay
-    if block_number > 5 do
+    if optimistic_caching?() and block_number > 5 do
       block_number = block_number - 5
 
       spawn(fn ->
