@@ -292,6 +292,7 @@ defmodule Network.PortCollection do
     with {_client, port} <- get_clientref(pc, client_ref) do
       GenServer.cast(self(), {:pccb_portsend, port, data})
     end
+
     pc
   end
 
