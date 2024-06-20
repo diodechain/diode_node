@@ -160,7 +160,7 @@ defmodule RemoteChain.NodeProxy do
       {%{from: from, start_ms: start_ms, method: method, params: params}, requests} ->
         time_ms = System.os_time(:millisecond) - start_ms
 
-        if time_ms > 200 do
+        if time_ms > 400 do
           params =
             if method == "dio_edgev2" do
               Base16.decode(hd(params)) |> Rlp.decode!()
