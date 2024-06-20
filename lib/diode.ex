@@ -24,7 +24,7 @@ defmodule Diode do
     :erlang.system_flag(:backtrace_depth, 30)
 
     puts("====== ENV #{env()} ======")
-    puts("Build       : #{version()}")
+    puts("Build       : #{Diode.Version.description()}")
     puts("Edge2   Port: #{Enum.join(edge2_ports(), ",")}")
     puts("Peer2   Port: #{peer2_port()}")
     puts("RPC     Port: #{rpc_port()}")
