@@ -247,7 +247,7 @@ defmodule RemoteChain.RPCCache do
   end
 
   defp send_request(method, params, from, state = %RPCCache{request_rpc: request_rpc}) do
-    now = System.os_time(:second)
+    now = System.os_time(:millisecond)
 
     case Map.get(request_rpc, {method, params}) do
       nil ->
@@ -276,7 +276,7 @@ defmodule RemoteChain.RPCCache do
         col
       )
 
-    now = System.os_time(:second)
+    now = System.os_time(:millisecond)
     request_rpc = Map.put(request_rpc, {method, params}, {now, MapSet.new([from])})
     %RPCCache{state | request_rpc: request_rpc, request_collection: col}
   end
