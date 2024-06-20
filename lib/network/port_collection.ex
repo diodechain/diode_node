@@ -289,8 +289,9 @@ defmodule Network.PortCollection do
   end
 
   defp handle_cast({:portsend, client_ref, data}, pc) do
-    {_client, port} = get_clientref(pc, client_ref)
-    GenServer.cast(self(), {:pccb_portsend, port, data})
+    with {_client, port} <- get_clientref(pc, client_ref) do
+      GenServer.cast(self(), {:pccb_portsend, port, data})
+    end
     pc
   end
 
