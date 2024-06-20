@@ -27,10 +27,10 @@ def install():
     if not exists("diode_node.tar.gz") or h != run("sha1sum diode_node.tar.gz").split()[0]:
       put("../_build/prod/diode_node.tar.gz", env.diode)
 
-    if exists("releases/COOKIE"):
-      run("tar xzf diode_node.tar.gz --exclude=releases/COOKIE")
-    else:
-      run("tar xzf diode_node.tar.gz")
+      if exists("releases/COOKIE"):
+        run("tar xzf diode_node.tar.gz --exclude=releases/COOKIE")
+      else:
+        run("tar xzf diode_node.tar.gz")
 
 @parallel
 def check():
@@ -38,7 +38,7 @@ def check():
     local("echo | nc -q0  {} 41046 && echo {}=ok".format(env.host, env.host))
   run("/opt/diode_node/bin/diode_node pid")
 
-def update():
+def stop():
   with cd(env.diode):
     run("bin/diode_node stop")
 
