@@ -125,7 +125,7 @@ defmodule TicketStore do
           else
             if address != Ticket.device_address(last) do
               Logger.warning("Ticked Signed on Fork RemoteChain")
-              Logger.warning("Last: #{inspect(last)}\nTck: #{inspect(tck)}", [last, tck])
+              Logger.warning("Last: #{inspect(last)}\nTck: #{inspect(tck)}")
               put_ticket(tck, address, fleet, tepoch)
               {:ok, Ticket.total_bytes(tck)}
             else
