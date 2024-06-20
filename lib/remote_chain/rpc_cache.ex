@@ -342,7 +342,7 @@ defmodule RemoteChain.RPCCache do
               {state, ret}
           end
 
-        {{_time, froms}, request_rpc} = Map.pop!(request_rpc, {method, params})
+        {{_time, froms}, request_rpc} = Map.pop(request_rpc, {method, params}, {nil, []})
 
         for from <- froms do
           if from != nil, do: GenServer.reply(from, ret)
