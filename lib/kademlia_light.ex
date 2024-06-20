@@ -14,6 +14,7 @@ defmodule KademliaLight do
   alias Network.PeerHandlerV2
   alias Object.Server
   alias Model.KademliaSql
+  require Logger
   @k 3
   @storage_file "kademlia_light.etf"
 
@@ -74,7 +75,6 @@ defmodule KademliaLight do
             else
               with true <- local_block > value_block,
                    nearest when nearest != nil <- Enum.at(result, 0) do
-                # IO.puts("updating a #{Wallet.printable(nearest.node_id)}")
                 rpcast(nearest, [PeerHandlerV2.store(), key, local_ret])
               end
 
@@ -86,7 +86,6 @@ defmodule KademliaLight do
 
         # KademliaLight logic: Writing found result to second nearest node
         with second_nearest when second_nearest != nil <- Enum.at(result, 1) do
-          # IO.puts("updating b #{Wallet.printable(second_nearest.node_id)}")
           rpcast(second_nearest, [PeerHandlerV2.store(), key, value])
         end
 
@@ -100,7 +99,6 @@ defmodule KademliaLight do
 
         if local_ret != nil do
           for node <- Enum.take(visited, 2) do
-            # IO.puts("updating c #{Wallet.printable(node.node_id)}")
             rpcast(node, [PeerHandlerV2.store(), key, local_ret])
           end
         end
@@ -294,17 +292,20 @@ defmodule KademliaLight do
       GenServer.call(pid, {:rpc, call}, 2000)
     rescue
       error ->
-        IO.puts("Failed to get a result from #{Wallet.printable(node_id)} #{inspect(error)}")
+        Logger.warning(
+          "Failed to get a result from #{Wallet.printable(node_id)} #{inspect(error)}"
+        )
+
         []
     catch
       :exit, {:timeout, _} ->
-        IO.puts("Timeout while getting a result from #{Wallet.printable(node_id)}")
+        Logger.info("Timeout while getting a result from #{Wallet.printable(node_id)}")
         # TODO: This *always* happens when a node is still syncing. How to handle this better?
         # Process.exit(pid, :timeout)
         []
 
       any, what ->
-        IO.puts(
+        Logger.warning(
           "Failed(2) to get a result from #{Wallet.printable(node_id)} #{inspect({any, what})}"
         )
 
@@ -325,7 +326,6 @@ defmodule KademliaLight do
     online = Network.Server.get_connections(PeerHandlerV2)
     node = %KBuckets.Item{} = KBuckets.item(network, node)
 
-    # IO.puts("redistribute(#{inspect(node)})")
     previ =
       case filter_online(KBuckets.prev(network, node), online) do
         [prev | _] -> KBuckets.integer(prev)
@@ -344,7 +344,6 @@ defmodule KademliaLight do
     range_end = rem(div(nexti + nodei, 2), @max_key)
 
     objs = KademliaSql.objects(range_start, range_end)
-    # IO.puts("redistribute() -> #{length(objs)}")
     Enum.each(objs, fn {key, value} -> rpcast(node, [PeerHandlerV2.store(), key, value]) end)
   end
 
