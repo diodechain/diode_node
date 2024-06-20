@@ -228,10 +228,10 @@ defmodule RemoteChain.RPCCache do
         {:noreply, send_request(method, params, from, state)}
 
       result ->
-        if :rand.uniform() < 0.1 do
-          {:reply, result, send_request(method, params, nil, state)}
-        else
-          {:reply, result, state}
+        cond do
+          not should_cache_result(result) -> {:noreply, send_request(method, params, from, state)}
+          :rand.uniform() < 0.1 -> {:reply, result, send_request(method, params, nil, state)}
+          true -> {:reply, result, state}
         end
     end
   end
@@ -374,6 +374,10 @@ defmodule RemoteChain.RPCCache do
   defp should_cache_method(_method, _args) do
     # IO.inspect({method, params}, label: "should_cache_method")
     true
+  end
+
+  defp should_cache_result({:error, _}) do
+    false
   end
 
   defp should_cache_result(_ret) do
