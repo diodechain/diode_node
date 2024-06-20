@@ -6,7 +6,7 @@ defmodule Network.RpcWs do
   require Logger
 
   def init(req, state) do
-    {:cowboy_websocket, req, state}
+    {:cowboy_websocket, req, state, %{compress: true}}
   end
 
   def websocket_init(state) do
