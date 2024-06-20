@@ -33,7 +33,7 @@ defmodule Network.RpcWs do
           {_status, response} =
             Network.Rpc.handle_jsonrpc(message, extra: {__MODULE__, :execute_rpc})
 
-      {:reply, {:text, Poison.encode!(response)}, state}
+          {:reply, {:text, Poison.encode!(response)}, state}
 
         _other ->
           pid = self()
