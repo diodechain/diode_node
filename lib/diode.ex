@@ -39,7 +39,9 @@ defmodule Diode do
 
     puts("")
 
-    {:ok, cache} = DetsPlus.open_file(:remoterpc_cache, file: data_dir("remoterpc.cache"))
+    {:ok, cache} =
+      DetsPlus.open_file(:remoterpc_cache, file: data_dir("remoterpc.cache"), compressed: true)
+
     cache = DetsPlus.LRU.new(cache, 1_000_000, fn obj -> obj != nil end)
 
     children =
