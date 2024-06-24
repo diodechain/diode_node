@@ -6,10 +6,10 @@ import os
 import time
 from collections import defaultdict
 from datetime import datetime
-from fabric.api import env, run, cd, put, get, abort, hide, local, lcd, prefix, hosts, sudo, parallel
+from fabric.api import env, run, cd, put, get, abort, hide, local, lcd, prefix, hosts, parallel
 from fabric.contrib.files import exists
 
-
+env.gateway="root@eu1.prenet.diode.io"
 env.diode="/opt/diode_node"
 if len(env.hosts) == 0:
   env.hosts=[
@@ -37,6 +37,10 @@ def check():
   with hide('status', 'running'):
     local("echo | nc -q0  {} 41046 && echo {}=ok".format(env.host, env.host))
   run("/opt/diode_node/bin/diode_node pid")
+
+@parallel
+def version():
+  run("/opt/diode_node/bin/diode_node rpc 'IO.inspect(String.trim(Diode.Version.description()))'")
 
 def stop():
   with cd(env.diode):
