@@ -6,6 +6,7 @@ defmodule Chains.Diode do
   def expected_block_intervall(), do: 15
   def epoch(n), do: div(n, 40320)
   def epoch_progress(n), do: rem(n, 40320) / 40320
+  def epoch_block(epoch), do: epoch * 40320
   def chain_prefix(), do: "diode"
   def rpc_endpoints(), do: ["https://prenet.diode.io:8443"]
   def ws_endpoints(), do: ["wss://prenet.diode.io:8443/ws"]
@@ -19,6 +20,7 @@ defmodule Chains.DiodeStaging do
   def expected_block_intervall(), do: 15
   def epoch(n), do: div(n, 40320)
   def epoch_progress(n), do: rem(n, 40320) / 40320
+  def epoch_block(epoch), do: epoch * 40320
   def chain_prefix(), do: "diodestg"
   def rpc_endpoints(), do: ["https://staging.diode.io:8443"]
   def ws_endpoints(), do: ["wss://staging.diode.io:8443/ws"]
@@ -32,6 +34,7 @@ defmodule Chains.DiodeDev do
   def expected_block_intervall(), do: 15
   def epoch(n), do: div(n, 40320)
   def epoch_progress(n), do: rem(n, 40320) / 40320
+  def epoch_block(epoch), do: epoch * 40320
   def chain_prefix(), do: "ddev"
   def rpc_endpoints(), do: ["http://localhost:8443"]
   def ws_endpoints(), do: ["ws://localhost:8443/ws"]
@@ -47,6 +50,16 @@ defmodule Chains.Moonbeam do
 
   def epoch_progress(n),
     do: rem(RemoteChain.blocktime(__MODULE__, n), epoch_length()) / epoch_length()
+
+  def epoch_block(epoch), do: epoch_block(epoch, __MODULE__)
+
+  def epoch_block(epoch, chain) do
+    n = RemoteChain.peaknumber(chain)
+    n_time = RemoteChain.blocktime(chain, n)
+    n_epoch = div(n_time, epoch_length())
+    block_number = n - (epoch - n_epoch) * epoch_length() / expected_block_intervall()
+    floor(block_number)
+  end
 
   def epoch_length(), do: 2_592_000
   def chain_prefix(), do: "glmr"
@@ -81,11 +94,9 @@ end
 defmodule Chains.MoonbaseAlpha do
   def chain_id(), do: 1287
   def expected_block_intervall(), do: 15
-  def epoch(n), do: div(RemoteChain.blocktime(__MODULE__, n), epoch_length())
-
-  def epoch_progress(n),
-    do: rem(RemoteChain.blocktime(__MODULE__, n), epoch_length()) / epoch_length()
-
+  defdelegate epoch(n), to: Chains.Moonbeam
+  defdelegate epoch_progress(n), to: Chains.Moonbeam
+  def epoch_block(block), do: Chains.Moonbeam.epoch_block(block, Chains.MoonbaseAlpha)
   def epoch_length(), do: 2_592_000
   def chain_prefix(), do: "m1"
 
@@ -113,11 +124,9 @@ end
 defmodule Chains.Moonriver do
   def chain_id(), do: 1285
   def expected_block_intervall(), do: 15
-  def epoch(n), do: div(RemoteChain.blocktime(__MODULE__, n), epoch_length())
-
-  def epoch_progress(n),
-    do: rem(RemoteChain.blocktime(__MODULE__, n), epoch_length()) / epoch_length()
-
+  defdelegate epoch(n), to: Chains.Moonbeam
+  defdelegate epoch_progress(n), to: Chains.Moonbeam
+  def epoch_block(block), do: Chains.Moonbeam.epoch_block(block, Chains.MoonbaseAlpha)
   def epoch_length(), do: 2_592_000
   def chain_prefix(), do: "movr"
 

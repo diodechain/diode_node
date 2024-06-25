@@ -1,4 +1,30 @@
+# June 25th
+:code.add_patha('/opt/diode_node/')
+:code.load_file(Network.Rpc)
+:code.purge(Network.Rpc)
+:code.load_file(Network.Stats)
+
+Network.Rpc.execute_dio("dio_traffic", [15])
+Network.Rpc.execute_dio("dio_usageHistory", [System.os_time(:second)- 100, System.os_time(:second), 10]) |> elem(0)
+
+Network.Stats.get_history(System.os_time(:second)- 100, System.os_time(:second), 10) |> Map.keys()
+
+lru = :persistent_term.get(Network.Stats.LRU)
+s = System.os_time(:second) - rem(System.os_time(:second), 10)
+DetsPlus.LRU.get(lru, s)
+
+
+# June 24th
+
+:code.load_file(Network.Rpc)
+Network.Rpc.execute_dio("dio_traffic", [15])
+Network.Rpc.execute_dio("dio_usage", [])
+
 # June 20th
+
+:code.load_file(Network.Rpc)
+
+conns = Network.Server.get_connections(Network.EdgeV2)
 
 RemoteChain.RPCCache.get_storage(Chains.Diode, "0xaf60faa5cd840b724742f1af116168276112d6a6")
 RemoteChain.RPCCache.get_storage(Chains.Diode, "0xaf60faa5cd840b724742f1af116168276112d6a6")

@@ -47,6 +47,7 @@ defmodule Diode do
     children =
       [
         worker(Cron, []),
+        worker(Network.Stats, []),
         worker(Stats, []),
         supervisor(Model.Sql),
         supervisor(Channels),
@@ -112,8 +113,8 @@ defmodule Diode do
     end
   end
 
-  def puts(string, format \\ []) do
-    if not test_mode?(), do: :io.format("#{string}~n", format)
+  def puts(string) do
+    if not test_mode?(), do: IO.puts(string)
   end
 
   defp rpc_api(scheme, opts) do

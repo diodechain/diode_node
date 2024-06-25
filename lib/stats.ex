@@ -2,6 +2,9 @@
 # Copyright 2021-2024 Diode
 # Licensed under the Diode License, Version 1.1
 defmodule Stats do
+  @moduledoc """
+  Statistics to measure performance. These relate to execution times and counts.
+  """
   use GenServer
   @key {__MODULE__, :show}
   def init(_args) do

@@ -33,4 +33,17 @@ echo "Total Balances:"
 curl -k -H "Content-Type: application/json"  -X POST --data '{"jsonrpc":"2.0","method":"dio_supply","params":["0x16"],"id":73}' $host
 echo ""
 
+# Counts traffic
+echo "Traffic:"
+curl -k -H "Content-Type: application/json"  -X POST --data '{"jsonrpc":"2.0","method":"dio_traffic","params":[15],"id":74}' $host
+echo ""
+
+echo "Usage:"
+curl -k -H "Content-Type: application/json"  -X POST --data '{"jsonrpc":"2.0","method":"dio_usage","params":[],"id":74}' $host
+echo ""
+
+echo "Usage History:"
+curl -k -H "Content-Type: application/json"  -X POST --data '{"jsonrpc":"2.0","method":"dio_usageHistory","params":[1719312049, 1719312149, 10],"id":74}' $host
+echo ""
+
 

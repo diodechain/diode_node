@@ -245,16 +245,63 @@ defmodule Network.Rpc do
               {Base16.decode_int(chain_id), RemoteChain.epoch(Base16.decode_int(chain_id))}
           end
 
-        TicketStore.tickets(chain_id, epoch)
-        |> Enum.group_by(&Ticket.fleet_contract(&1))
-        |> Enum.map(fn {fleet, tickets} ->
-          %{
-            fleet: fleet,
-            total_tickets: Enum.count(tickets),
-            total_bytes: Enum.map(tickets, &Ticket.total_bytes/1) |> Enum.sum(),
-            total_connections: Enum.map(tickets, &Ticket.total_connections/1) |> Enum.sum()
-          }
+        fleets =
+          TicketStore.tickets(chain_id, epoch)
+          |> Enum.group_by(&Ticket.fleet_contract(&1))
+          |> Enum.map(fn {fleet, tickets} ->
+            %{
+              fleet: fleet,
+              total_tickets: Enum.count(tickets),
+              total_bytes: Enum.map(tickets, &Ticket.total_bytes/1) |> Enum.sum(),
+              total_connections: Enum.map(tickets, &Ticket.total_connections/1) |> Enum.sum()
+            }
+          end)
+
+        result(%{
+          chain_id: chain_id,
+          epoch: epoch,
+          epoch_time:
+            RemoteChain.blocktime(chain_id, RemoteChain.chainimpl(chain_id).epoch_block(epoch)),
+          fleets: fleets
+        })
+
+      "dio_usage" ->
+        incoming = Network.Stats.get(:edge_traffic_in)
+        outgoing = Network.Stats.get(:edge_traffic_out)
+
+        result(%{
+          devices: map_size(Network.Server.get_connections(Network.EdgeV2)),
+          incoming: incoming,
+          outgoing: outgoing,
+          total: incoming + outgoing
+        })
+
+      "dio_usageHistory" ->
+        [from, to, stepping] = params
+
+        Network.Stats.get_history(from, to, stepping)
+        |> Enum.map(fn {time, data} ->
+          data =
+            Enum.map(data, fn {key, value} ->
+              key =
+                case key do
+                  key when is_atom(key) ->
+                    Atom.to_string(key)
+
+                  {key, nil} when is_atom(key) ->
+                    "#{key}:nil"
+
+                  {key, address} when is_atom(key) ->
+                    "#{key}:#{Base16.encode(address)}"
+                end
+
+              {key, value}
+            end)
+            |> Map.new()
+
+          {time, data}
         end)
+        |> Map.new()
         |> result()
 
       "dio_network" ->

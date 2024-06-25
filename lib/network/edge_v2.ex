@@ -13,20 +13,21 @@ defmodule Network.EdgeV2 do
   import Channel, only: :macros
 
   @type state :: %{
-          socket: any(),
-          inbuffer: nil | {integer(), binary()},
           blocked: :queue.queue(tuple()),
           compression: nil | :zlib,
           extra_flags: [],
-          node_id: Wallet.t(),
-          node_address: :inet.ip_address(),
-          ports: PortCollection.t(),
-          unpaid_bytes: integer(),
-          unpaid_rx_bytes: integer(),
-          last_ticket: Time.t(),
+          fleet: nil | binary(),
+          inbuffer: nil | {integer(), binary()},
           last_message: Time.t(),
+          last_ticket: Time.t(),
+          node_address: :inet.ip_address(),
+          node_id: Wallet.t(),
           pid: pid(),
-          sender: pid()
+          ports: PortCollection.t(),
+          sender: pid(),
+          socket: any(),
+          unpaid_bytes: integer(),
+          unpaid_rx_bytes: integer()
         }
 
   def do_init(state) do
@@ -37,6 +38,7 @@ defmodule Network.EdgeV2 do
         blocked: :queue.new(),
         compression: nil,
         extra_flags: [],
+        fleet: nil,
         inbuffer: nil,
         last_message: Time.utc_now(),
         last_ticket: nil,
@@ -526,7 +528,12 @@ defmodule Network.EdgeV2 do
             )
 
             {response("thanks!", bytes),
-             %{state | unpaid_bytes: state.unpaid_bytes - bytes, last_ticket: Time.utc_now()}}
+             %{
+               state
+               | unpaid_bytes: state.unpaid_bytes - bytes,
+                 last_ticket: Time.utc_now(),
+                 fleet: Ticket.fleet_contract(dl)
+             }}
 
           {:too_old, min} ->
             response("too_old", min)
@@ -724,10 +731,26 @@ defmodule Network.EdgeV2 do
   def device_address(%{node_id: id}), do: Wallet.address!(id)
 
   defp account_incoming(state = %{unpaid_rx_bytes: unpaid_rx}, msg) do
+    [
+      {:fleet_traffic_in, state.fleet},
+      {:device_traffic_in, device_address(state)},
+      :edge_traffic_in
+    ]
+    |> Enum.map(&{&1, byte_size(msg)})
+    |> Network.Stats.batch_incr()
+
     %{state | unpaid_rx_bytes: unpaid_rx + byte_size(msg)}
   end
 
   defp account_outgoing(state = %{unpaid_bytes: unpaid, unpaid_rx_bytes: unpaid_rx}, msg \\ "") do
+    [
+      {:fleet_traffic_out, state.fleet},
+      {:device_traffic_out, device_address(state)},
+      :edge_traffic_out
+    ]
+    |> Enum.map(&{&1, byte_size(msg)})
+    |> Network.Stats.batch_incr()
+
     %{state | unpaid_bytes: unpaid + unpaid_rx + byte_size(msg), unpaid_rx_bytes: 0}
   end
 
