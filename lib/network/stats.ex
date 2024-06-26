@@ -35,7 +35,7 @@ defmodule Network.Stats do
   def get_history(from, to, stepping) do
     from = from - rem(from, @ticks_per_second)
     to = max(to - rem(to, @ticks_per_second), from)
-    stepping = min(stepping - rem(stepping, @ticks_per_second), 1)
+    stepping = max(stepping - rem(stepping, @ticks_per_second), 1)
 
     Range.new(from, to, stepping)
     |> Enum.map(&{&1, DetsPlus.LRU.get(:persistent_term.get(__MODULE__.LRU), &1)})
