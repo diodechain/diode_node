@@ -20,7 +20,7 @@ defmodule ABI do
     Enum.zip(types, ret)
     |> Enum.map(fn {type, value} ->
       # if is_dynamic(type) do
-      if type in ["string", "bytes"] do
+      if type in ["string", "bytes", "address[]"] do
         # for dynamic types the decoded value in the header is the offset of the data
         base = binary_part(data, value, byte_size(data) - value)
         {len, rest} = decode("uint256", base)
@@ -197,6 +197,7 @@ defmodule ABI do
   def decode("address", <<_::binary-size(12), address::binary-size(20), rest::binary>>),
     do: {address, rest}
 
+  def decode("address[]", value), do: decode("uint256", value)
   def decode("string", value), do: decode("uint256", value)
   def decode("bytes", value), do: decode("uint256", value)
 end
