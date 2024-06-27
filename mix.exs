@@ -11,7 +11,7 @@ defmodule Diode.Mixfile do
   use Mix.Project
 
   @vsn "1.1.1"
-  @full_vsn "v1.1.0-50-g02272a0-dirty"
+  @full_vsn "v1.1.1-9-g0eaa1d9-dirty"
   @url "https://github.com/diodechain/diode_server"
 
   def project do
@@ -95,7 +95,7 @@ defmodule Diode.Mixfile do
       {:libsecp256k1, github: "diodechain/libsecp256k1"},
       {:oncrash, "~> 0.0"},
       {:plug_cowboy, "~> 2.5"},
-      {:poison, "~> 3.0"},
+      {:poison, "~> 6.0"},
       {:profiler, github: "dominicletz/profiler"},
       {:websockex, github: "Azolo/websockex"},
 

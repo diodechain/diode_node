@@ -1,11 +1,34 @@
+# June 26th
+
+:code.load_file(Contract.Registry)
+:code.purge(Contract.Registry)
+chain_id = Chains.Diode.chain_id()
+fleet = Chains.DiodeDev.developer_fleet_address()
+f = Contract.Registry.call(chain_id, "EpochFleet", ["address"], [fleet], "latest")
+f = Contract.Registry.call(chain_id, "EpochFleet", ["address"], [fleet], 7474380)
+f = Contract.Registry.call(chain_id, "EpochFleet", ["address"], [fleet], "0x720ccc")
+f = Contract.Registry.call(chain_id, "EpochFleet", ["address"], [fleet], "7474380")
+[_fleet, totalConnections, totalBytes, nodeArray] = ABI.decode_types(["address", "uint256", "uint256", "address[]"], f)
+
+:code.load_file(ABI)
+:code.purge(ABI)
+
 # June 25th
 :code.add_patha('/opt/diode_node/')
 :code.load_file(Network.Rpc)
 :code.purge(Network.Rpc)
+
+:code.add_patha('/opt/diode_node/')
 :code.load_file(Network.Stats)
+:code.purge(Network.Stats)
 
 Network.Rpc.execute_dio("dio_traffic", [15])
 Network.Rpc.execute_dio("dio_usageHistory", [System.os_time(:second)- 100, System.os_time(:second), 10]) |> elem(0)
+Network.Rpc.execute_dio("dio_usageHistory", [1719311919,1719398319,100])
+
+Network.Stats.get_history(1719311919,1719398319,100) |> map_size()
+
+{"jsonrpc":"2.0","id":9,"method":"dio_usageHistory","params":[1719311919,1719398319,10]}
 
 Network.Stats.get_history(System.os_time(:second)- 100, System.os_time(:second), 10) |> Map.keys()
 
