@@ -18,8 +18,8 @@ defmodule Contract.Registry do
     if RemoteChain.chainimpl(chain_id) in [Chains.Diode, Chains.DiodeStaging, Chains.DiodeDev] do
       fleet = call(chain_id, "EpochFleet", ["address"], [fleet], block_ref)
 
-      [_fleet, totalConnections, totalBytes, nodeArray] =
-        ABI.decode_types(["address", "uint256", "uint256", "address[]"], fleet)
+      [[_fleet, totalConnections, totalBytes, nodeArray]] =
+        ABI.decode_types(["(address, uint256, uint256, address[])"], fleet)
 
       %{
         totalConnections: totalConnections,
@@ -29,8 +29,8 @@ defmodule Contract.Registry do
     else
       fleet = call(chain_id, "GetFleet", ["address"], [fleet], block_ref)
 
-      [exists, currentBalance, withdrawRequestSize, withdrawableBalance, currentEpoch, score] =
-        ABI.decode_types(["bool", "uint256", "uint256", "uint256", "uint256", "uint256"], fleet)
+      [[exists, currentBalance, withdrawRequestSize, withdrawableBalance, currentEpoch, score]] =
+        ABI.decode_types(["(bool, uint256, uint256, uint256, uint256, uint256)"], fleet)
 
       %{
         exists: exists,

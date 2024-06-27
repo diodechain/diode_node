@@ -13,23 +13,60 @@ defmodule ABI do
   def decode_types(types, data) do
     {ret, _rest} =
       Enum.reduce(types, {[], data}, fn type, {ret, rest} ->
-        {value, rest} = decode(type, rest)
+        {value, rest} =
+          if is_dynamic(type) do
+            decode("uint256", rest)
+          else
+            decode(type, rest)
+          end
+
         {ret ++ [value], rest}
       end)
 
     Enum.zip(types, ret)
     |> Enum.map(fn {type, value} ->
-      # if is_dynamic(type) do
-      if type in ["string", "bytes", "address[]"] do
+      if is_dynamic(type) do
         # for dynamic types the decoded value in the header is the offset of the data
         base = binary_part(data, value, byte_size(data) - value)
-        {len, rest} = decode("uint256", base)
-        slots = div(len, 32) + 1
-        binary_part(rest, slots * 32 - len, len)
+
+        cond do
+          type in ["string", "bytes"] ->
+            {len, rest} = decode("uint256", base)
+            slots = div(len, 32) + 1
+            binary_part(rest, slots * 32 - len, len)
+
+          String.starts_with?(type, "(") ->
+            "(" <> tuple_def = type
+            decode_types(tuple_types(tuple_def), base)
+
+          String.ends_with?(type, "[]") ->
+            {slots, rest} = decode("uint256", base)
+            type = String.replace_trailing(type, "[]", "")
+
+            {acc, _rest} =
+              List.duplicate(type, slots)
+              |> Enum.reduce({[], rest}, fn type, {acc, rest} ->
+                {value, rest} = decode(type, rest)
+                {acc ++ [value], rest}
+              end)
+
+            acc
+        end
       else
         value
       end
     end)
+  end
+
+  defp is_dynamic("string"), do: true
+  defp is_dynamic("bytes"), do: true
+
+  defp is_dynamic("(" <> tuple_def) do
+    Enum.any?(tuple_types(tuple_def), &is_dynamic/1)
+  end
+
+  defp is_dynamic(other) do
+    String.ends_with?(other, "[]")
   end
 
   def decode_revert(<<"">>) do
@@ -64,12 +101,10 @@ defmodule ABI do
   end
 
   def do_encode_data(type, value) do
-    subtype = subtype(type)
-
-    if subtype != nil do
+    if is_dynamic(type) do
       {types, values, len} = dynamic(type, value)
       ret = encode_data(types, values)
-      {"", [encode("uint", len), ret]}
+      {"", [len, ret]}
     else
       {encode(type, value), ""}
     end
@@ -94,28 +129,22 @@ defmodule ABI do
     [head, body]
   end
 
-  @doc """
-  subtype returns the individual element type of an dynamic/array
-  """
-  @spec subtype(binary) :: false | binary
-  def subtype(type) do
-    cond do
-      String.ends_with?(type, "[]") -> binary_part(type, 0, byte_size(type) - 2)
-      type == "bytes" -> "uint8"
-      type == "string" -> "uint8"
-      true -> nil
-    end
-  end
-
-  def dynamic(type, values) when is_list(values) do
-    {List.duplicate(subtype(type), length(values)), values, length(values)}
-  end
-
-  def dynamic(type, {:call, name, types, args}) do
+  defp dynamic(type, {:call, name, types, args}) do
     dynamic(type, encode_call(name, types, args))
   end
 
-  def dynamic(_type, value) when is_binary(value) do
+  defp dynamic(type, values) when is_list(values) do
+    cond do
+      String.ends_with?(type, "[]") ->
+        n = length(values)
+        {List.duplicate(String.replace_trailing(type, "[]", ""), n), values, encode("uint", n)}
+
+      String.starts_with?(type, "(") ->
+        {tuple_types(String.trim_leading(type, "(")), values, ""}
+    end
+  end
+
+  defp dynamic(type, value) when is_binary(value) and type in ["string", "bytes"] do
     values = value <> <<0::unsigned-size(248)>>
 
     values =
@@ -124,7 +153,7 @@ defmodule ABI do
       |> Enum.chunk_every(32)
       |> Enum.map(&:erlang.iolist_to_binary/1)
 
-    {List.duplicate("bytes32", length(values)), values, byte_size(value)}
+    {List.duplicate("bytes32", length(values)), values, encode("uint", byte_size(value))}
   end
 
   def encode(format, nil), do: encode(format, 0)
@@ -169,14 +198,16 @@ defmodule ABI do
   def encode("function", value), do: encode("bytes24", value)
 
   def encode("(" <> tuple_def, values) do
+    types = tuple_types(tuple_def)
+    encode_args(types, values)
+  end
+
+  defp tuple_types(tuple_def) do
     len = byte_size(tuple_def) - 1
     <<tuple_def::binary-size(len), ")">> = tuple_def
 
-    types =
-      String.split(tuple_def, ",")
-      |> Enum.map(&String.trim/1)
-
-    encode_args(types, values)
+    String.split(tuple_def, ",")
+    |> Enum.map(&String.trim/1)
   end
 
   for bit <- 1..32 do
@@ -200,4 +231,9 @@ defmodule ABI do
   def decode("address[]", value), do: decode("uint256", value)
   def decode("string", value), do: decode("uint256", value)
   def decode("bytes", value), do: decode("uint256", value)
+
+  def decode("(" <> tuple_def, value) do
+    types = tuple_types(tuple_def)
+    {decode_types(types, value), ""}
+  end
 end

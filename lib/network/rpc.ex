@@ -256,8 +256,10 @@ defmodule Network.Rpc do
               total_tickets: Enum.count(tickets),
               total_bytes: Enum.map(tickets, &Ticket.total_bytes/1) |> Enum.sum(),
               total_connections: Enum.map(tickets, &Ticket.total_connections/1) |> Enum.sum(),
-              current_epoch: Contract.Registry.fleet(chain_id, fleet, Base16.encode(block, false)),
-              previous_epoch: Contract.Registry.fleet(chain_id, fleet, Base16.encode(block - 100, false))
+              current_epoch:
+                Contract.Registry.fleet(chain_id, fleet, Base16.encode(block, false)),
+              previous_epoch:
+                Contract.Registry.fleet(chain_id, fleet, Base16.encode(block - 100, false))
             }
           end)
 

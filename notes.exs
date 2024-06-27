@@ -1,4 +1,37 @@
+# June 27th
+
+:binary.bin_to_list(f) |> Enum.chunk_every(32)
+
 # June 26th
+
+## Good
+{chain, to, from, data, block} = {15, "0x5000000000000000000000000000000000000000",
+ "0xae699211c62156b8f29ce17be47d2f069a27f2a6",
+ "0x8e0383a40000000000000000000000006000000000000000000000000000000000000000",
+ "latest"}
+
+## Bad
+{chain, to, from, data, block} = {15, "0x5000000000000000000000000000000000000000",
+ "0xae699211c62156b8f29ce17be47d2f069a27f2a6",
+ "0x8e0383a40000000000000000000000006000000000000000000000000000000000000000",
+ 7474380}
+
+method = "eth_call"
+params = [%{to: to, data: data, from: from}, block]
+request = %{"jsonrpc" => "2.0", "id" => 1_000_000, "method" => method, "params" => params} |> Poison.encode!()
+
+Network.Rpc.execute_rpc(method, Poison.encode!(params) |> Poison.decode!(), [])
+
+export host=localhost:3834
+curl -vk -H "Content-Type: application/json" --data "{\"params\":[{\"to\":\"0x5000000000000000000000000000000000000000\",\"from\":\"0xae699211c62156b8f29ce17be47d2f069a27f2a6\",\"data\":\"0x8e0383a40000000000000000000000006000000000000000000000000000000000000000\"},7474380],\"method\":\"eth_call\",\"jsonrpc\":\"2.0\",\"id\":1000000}'" $host
+
+:code.add_patha('/opt/diode_node/')
+
+for mod <- [Shell, RemoteChain.RPC] do
+  :code.load_file(mod)
+  Process.sleep(1000)
+  :code.purge(mod)
+end
 
 :code.load_file(Contract.Registry)
 :code.purge(Contract.Registry)
@@ -8,7 +41,13 @@ f = Contract.Registry.call(chain_id, "EpochFleet", ["address"], [fleet], "latest
 f = Contract.Registry.call(chain_id, "EpochFleet", ["address"], [fleet], 7474380)
 f = Contract.Registry.call(chain_id, "EpochFleet", ["address"], [fleet], "0x720ccc")
 f = Contract.Registry.call(chain_id, "EpochFleet", ["address"], [fleet], "7474380")
-[_fleet, totalConnections, totalBytes, nodeArray] = ABI.decode_types(["address", "uint256", "uint256", "address[]"], f)
+[fleet, totalConnections, totalBytes, nodeArray] = ABI.decode_types(["address", "uint256", "uint256", "address[]"], f)
+[fleet, totalConnections, totalBytes, nodeArray] = ABI.decode_types(["bytes32", "bytes32", "bytes32", "address[]"], f)
+
+for n <- 1..20 do
+  spawn(fn -> Contract.Registry.call(chain_id, "EpochFleet", ["address"], [fleet], 7474380) end)
+  Process.sleep(1000)
+end
 
 :code.load_file(ABI)
 :code.purge(ABI)

@@ -111,6 +111,28 @@ defmodule ABITest do
              "0x4355c47d63924e8a72e509b65029052eb6c299d53a04e167c5775fd466751c9d07299936d304c153f6443dfa05f40ff007d72911b6f72307f996231605b915621c"
   end
 
+  test "decode tuple" do
+    f =
+      unhex(
+        "0x000000000000000000000000000000000000000000000000000000000000002000000000000000000000000060000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000800000000000000000000000000000000000000000000000000000000000000000"
+      )
+
+    [[fleet, totalConnections, totalBytes, nodeArray]] =
+      ABI.decode_types(["(address, uint256, uint256, address[])"], f)
+
+    assert hex(fleet) == "0x6000000000000000000000000000000000000000"
+    assert totalConnections == 0
+    assert totalBytes == 0
+    assert nodeArray == []
+
+    assert chunk(
+             ABI.encode_args(["(address, uint256, uint256, address[])"], [
+               [fleet, totalConnections, totalBytes, nodeArray]
+             ])
+           ) == chunk(f)
+  end
+
   defp hex(x), do: Base16.encode(x)
   defp unhex(x), do: Base16.decode(x)
+  def chunk(x), do: :binary.bin_to_list(x) |> Enum.chunk_every(32)
 end
