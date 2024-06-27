@@ -12,20 +12,35 @@ defmodule Contract.Registry do
     |> :binary.decode_unsigned()
   end
 
-  def fleet(chain_id, fleet, block_ref \\ "latest") do
-    fleet = call(chain_id, "GetFleet", ["address"], [fleet], block_ref)
+  def fleet(chain_id, fleet, block_ref \\ "latest")
 
-    [exists, currentBalance, withdrawRequestSize, withdrawableBalance, currentEpoch, score] =
-      ABI.decode_types(["bool", "uint256", "uint256", "uint256", "uint256", "uint256"], fleet)
+  def fleet(chain_id, fleet, block_ref) do
+    if RemoteChain.chainimpl(chain_id) in [Chains.Diode, Chains.DiodeStaging, Chains.DiodeDev] do
+      fleet = call(chain_id, "EpochFleet", ["address"], [fleet], block_ref)
 
-    %{
-      exists: exists,
-      currentBalance: currentBalance,
-      withdrawRequestSize: withdrawRequestSize,
-      withdrawableBalance: withdrawableBalance,
-      currentEpoch: currentEpoch,
-      score: score
-    }
+      [_fleet, totalConnections, totalBytes, nodeArray] =
+        ABI.decode_types(["address", "uint256", "uint256", "address[]"], fleet)
+
+      %{
+        totalConnections: totalConnections,
+        totalBytes: totalBytes,
+        nodeArray: nodeArray
+      }
+    else
+      fleet = call(chain_id, "GetFleet", ["address"], [fleet], block_ref)
+
+      [exists, currentBalance, withdrawRequestSize, withdrawableBalance, currentEpoch, score] =
+        ABI.decode_types(["bool", "uint256", "uint256", "uint256", "uint256", "uint256"], fleet)
+
+      %{
+        exists: exists,
+        currentBalance: currentBalance,
+        withdrawRequestSize: withdrawRequestSize,
+        withdrawableBalance: withdrawableBalance,
+        currentEpoch: currentEpoch,
+        score: score
+      }
+    end
   end
 
   def relay_rewards(chain_id, address) do

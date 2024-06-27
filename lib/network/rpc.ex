@@ -245,6 +245,8 @@ defmodule Network.Rpc do
               {Base16.decode_int(chain_id), RemoteChain.epoch(Base16.decode_int(chain_id))}
           end
 
+        block = RemoteChain.chainimpl(chain_id).epoch_block(epoch)
+
         fleets =
           TicketStore.tickets(chain_id, epoch)
           |> Enum.group_by(&Ticket.fleet_contract(&1))
@@ -253,15 +255,16 @@ defmodule Network.Rpc do
               fleet: fleet,
               total_tickets: Enum.count(tickets),
               total_bytes: Enum.map(tickets, &Ticket.total_bytes/1) |> Enum.sum(),
-              total_connections: Enum.map(tickets, &Ticket.total_connections/1) |> Enum.sum()
+              total_connections: Enum.map(tickets, &Ticket.total_connections/1) |> Enum.sum(),
+              current_epoch: Contract.Registry.fleet(chain_id, fleet, Base16.encode(block, false)),
+              previous_epoch: Contract.Registry.fleet(chain_id, fleet, Base16.encode(block - 100, false))
             }
           end)
 
         result(%{
           chain_id: chain_id,
           epoch: epoch,
-          epoch_time:
-            RemoteChain.blocktime(chain_id, RemoteChain.chainimpl(chain_id).epoch_block(epoch)),
+          epoch_time: RemoteChain.blocktime(chain_id, block),
           fleets: fleets
         })
 
