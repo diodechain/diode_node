@@ -84,7 +84,7 @@ defmodule Diode.Mixfile do
   defp deps do
     [
       {:certmagex, github: "dominicletz/certmagex"},
-      # {:zerossl, github: "dominicletz/zerossl", override: true, runtime: false},
+      {:zerossl, github: "dominicletz/zerossl", override: true, runtime: false},
       {:debouncer, "~> 0.1"},
       {:dets_plus, "~> 2.0"},
       {:eblake2, "~> 1.0"},
