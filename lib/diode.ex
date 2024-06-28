@@ -52,38 +52,41 @@ defmodule Diode do
         supervisor(Model.Sql),
         supervisor(Channels),
         worker(PubSub, [args]),
-        worker(TicketStore, [])
-        | Enum.map(RemoteChain.chains(), fn chain ->
-            supervisor(RemoteChain.Sup, [chain, [cache: cache]], {RemoteChain.Sup, chain})
-          end)
-      ] ++
-        [
-          # External Interfaces
-          Network.Server.child(peer2_port(), Network.PeerHandlerV2),
-          worker(KademliaLight, [args])
-        ]
+        worker(TicketStore, []),
+        Enum.map(RemoteChain.chains(), fn chain ->
+          supervisor(RemoteChain.Sup, [chain, [cache: cache]], {RemoteChain.Sup, chain})
+        end),
+        Network.Server.child(peer2_port(), Network.PeerHandlerV2),
+        supervisor(
+          Supervisor,
+          [network_children(), [strategy: :one_for_one, name: Network]],
+          Network
+        ),
+        worker(KademliaLight, [args])
+      ]
+      |> List.flatten()
 
-    {:ok, pid} = Supervisor.start_link(children, strategy: :rest_for_one, name: Diode.Supervisor)
-    start_client_network()
-    {:ok, pid}
+    Supervisor.start_link(children, strategy: :rest_for_one, name: Diode.Supervisor)
   end
 
-  # To be started from the stage gen_server
-  def start_client_network() do
-    rpc_api(:http, port: rpc_port())
-    rpc_api(:https, port: rpcs_port(), sni_fun: &CertMagex.sni_fun/1)
+  def network_children() do
+    [
+      Network.Server.child(edge2_ports(), Network.EdgeV2),
+      rpc_api(:http, port: rpc_port()),
+      rpc_api(:https, port: rpcs_port(), sni_fun: &CertMagex.sni_fun/1)
+    ]
+  end
 
-    Supervisor.start_child(Diode.Supervisor, Network.Server.child(edge2_ports(), Network.EdgeV2))
-    |> case do
-      {:error, :already} -> Supervisor.restart_child(Diode.Supervisor, Network.EdgeV2)
-      other -> other
+  def start_client_network() do
+    for child <- network_children() do
+      Supervisor.start_child(Network, child)
     end
   end
 
   def stop_client_network() do
-    Plug.Cowboy.shutdown(Network.RpcHttp.HTTP)
-    Plug.Cowboy.shutdown(Network.RpcHttp.HTTPS)
-    Supervisor.terminate_child(Diode.Supervisor, Network.EdgeV2)
+    for child <- Supervisor.which_children(Network) do
+      Supervisor.terminate_child(Network, elem(child, 0))
+    end
   end
 
   defp worker(module, args) do
@@ -118,23 +121,14 @@ defmodule Diode do
   end
 
   defp rpc_api(scheme, opts) do
-    puts("Starting rpc_#{scheme}...")
+    dispatch =
+      {:_, [{"/ws", Network.RpcWs, []}, {:_, Plug.Cowboy.Handler, {Network.RpcHttp, []}}]}
 
-    apply(Plug.Cowboy, scheme, [
-      Network.RpcHttp,
-      [],
-      [
-        ip: {0, 0, 0, 0},
-        compress: not Diode.dev_mode?(),
-        dispatch: [
-          {:_,
-           [
-             {"/ws", Network.RpcWs, []},
-             {:_, Plug.Cowboy.Handler, {Network.RpcHttp, []}}
-           ]}
-        ]
-      ] ++ opts
-    ])
+    opts =
+      [ip: {0, 0, 0, 0}, compress: not Diode.dev_mode?(), dispatch: [dispatch]]
+      |> Keyword.merge(opts)
+
+    {Plug.Cowboy, scheme: scheme, plug: Network.RpcHttp, options: opts}
   end
 
   @version Mix.Project.config()[:full_version]
