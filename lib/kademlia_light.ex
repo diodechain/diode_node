@@ -228,7 +228,7 @@ defmodule KademliaLight do
 
       %KBuckets.Item{} = node ->
         network = KBuckets.update_item(state.network, %KBuckets.Item{node | retries: 0})
-        if node.retries > 0, do: redistribute(network, node)
+        if node.retries > 0, do: spawn(fn -> redistribute(network, node) end)
         {:noreply, %{state | network: network}}
     end
   end
