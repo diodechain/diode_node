@@ -17,18 +17,6 @@ defmodule Object.TicketV2 do
     server_signature: nil
   )
 
-  @type ticket ::
-          record(:ticketv2,
-            server_id: binary(),
-            chain_id: binary(),
-            epoch: integer(),
-            fleet_contract: binary(),
-            total_connections: integer(),
-            total_bytes: integer(),
-            local_address: binary(),
-            device_signature: Secp256k1.signature(),
-            server_signature: Secp256k1.signature() | nil
-          )
   @type t ::
           record(:ticketv2,
             server_id: binary(),
@@ -52,13 +40,17 @@ defmodule Object.TicketV2 do
     true
   end
 
-  def device_address(tck = ticketv2()) do
+  def device_wallet(tck = ticketv2()) do
     Secp256k1.recover!(
       device_signature(tck),
       device_blob(tck),
       :kec
     )
     |> Wallet.from_pubkey()
+  end
+
+  def device_address(tck = ticketv2()) do
+    device_wallet(tck)
     |> Wallet.address!()
   end
 
@@ -86,8 +78,7 @@ defmodule Object.TicketV2 do
     [rec, r, s] = Secp256k1.bitcoin_to_rlp(device_signature(tck))
 
     [
-      chain_id(tck),
-      epoch(tck),
+      block_number(tck),
       fleet_contract(tck),
       server_id(tck),
       total_connections(tck),
@@ -111,14 +102,6 @@ defmodule Object.TicketV2 do
   end
 
   def device_blob(tck = ticketv2()) do
-    # From DiodeRegistry.sol:
-    #   bytes32[] memory message = new bytes32[](6);
-    #   message[0] = blockhash(blockHeight);
-    #   message[1] = bytes32(fleetContract);
-    #   message[2] = bytes32(nodeAddress);
-    #   message[3] = bytes32(totalConnections);
-    #   message[4] = bytes32(totalBytes);
-    #   message[5] = localAddress;
     [
       chain_id(tck),
       epoch(tck),
@@ -152,4 +135,12 @@ defmodule Object.TicketV2 do
   def total_connections(ticketv2(total_connections: tc)), do: tc
   def total_bytes(ticketv2(total_bytes: tb)), do: tb
   def local_address(ticketv2(local_address: la)), do: la
+
+  def preferred_server_ids(ticketv2(server_id: id, local_address: la)) do
+    case la do
+      <<0, addr::binary-size(20)>> -> [addr, id]
+      <<1, addr::binary-size(20)>> -> [id, addr]
+      _ -> [id]
+    end
+  end
 end

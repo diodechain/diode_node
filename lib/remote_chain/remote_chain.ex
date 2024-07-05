@@ -42,11 +42,26 @@ defmodule RemoteChain do
   to override the default endpoints by setting the environment variables like `CHAINS_MOONBEAM_WS`.
   """
   def ws_endpoints(chain) do
-    name = String.upcase("#{inspect(chain)}_WS") |> String.replace(".", "_")
+    String.upcase("#{inspect(chain)}_WS")
+    |> String.replace(".", "_")
+    |> maybe_override(chainimpl(chain).ws_endpoints())
+  end
 
+  @doc """
+  This function reads endpoints from environment variables when available. So it's possible
+  to override the default endpoints by setting the environment variables like `CHAINS_MOONBEAM_RPC`.
+  """
+  def rpc_endpoints(chain) do
+    String.upcase("#{inspect(chain)}_RPC")
+    |> String.replace(".", "_")
+    |> maybe_override(chainimpl(chain).rpc_endpoints())
+  end
+
+  defp maybe_override(name, endpoints) do
     case System.get_env(name) do
-      nil -> chainimpl(chain).ws_endpoints()
-      endpoint -> [endpoint | chainimpl(chain).ws_endpoints()]
+      nil -> endpoints
+      "!" <> value -> [value]
+      value -> [value]
     end
   end
 

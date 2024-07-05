@@ -142,36 +142,25 @@ defmodule Network.EdgeV2 do
           {response("ok"), state}
         end
 
-      ["ticket" | [block, fleet, total_connections, total_bytes, local_address, device_signature]] ->
+      ["ticket", block, fleet, tc, tb, local_address, device_signature] ->
         ticketv1(
           server_id: Wallet.address!(Diode.wallet()),
           fleet_contract: fleet,
-          total_connections: to_num(total_connections),
-          total_bytes: to_num(total_bytes),
+          total_connections: to_num(tc),
+          total_bytes: to_num(tb),
           local_address: local_address,
           block_number: to_num(block),
           device_signature: device_signature
         )
         |> handle_ticket(state)
 
-      [
-        "ticketv2"
-        | [
-            chain_id,
-            epoch,
-            fleet,
-            total_connections,
-            total_bytes,
-            local_address,
-            device_signature
-          ]
-      ] ->
+      ["ticketv2", chain_id, epoch, fleet, tc, tb, local_address, device_signature] ->
         ticketv2(
           chain_id: to_num(chain_id),
           server_id: Wallet.address!(Diode.wallet()),
           fleet_contract: fleet,
-          total_connections: to_num(total_connections),
-          total_bytes: to_num(total_bytes),
+          total_connections: to_num(tc),
+          total_bytes: to_num(tb),
           local_address: local_address,
           epoch: to_num(epoch),
           device_signature: device_signature

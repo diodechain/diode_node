@@ -13,6 +13,12 @@ defmodule Shell do
 
   def call_from(chain_id, wallet, address, name, types \\ [], values \\ [], opts \\ [])
       when is_list(types) and is_list(values) do
+    {tx, blockRef} = tx_from(chain_id, wallet, address, name, types, values, opts)
+    call_tx!(tx, blockRef)
+  end
+
+  def tx_from(chain_id, wallet, address, name, types \\ [], values \\ [], opts \\ [])
+      when is_list(types) and is_list(values) do
     {blockRef, opts} =
       opts
       |> Keyword.put_new(:gas, 10_000_000)
@@ -21,8 +27,7 @@ defmodule Shell do
       |> Keyword.put_new(:chainId, chain_id)
       |> Keyword.pop(:blockRef, "latest")
 
-    tx = transaction(wallet, address, name, types, values, opts, false)
-    call_tx!(tx, blockRef)
+    {transaction(wallet, address, name, types, values, opts, false), blockRef}
   end
 
   def submit_tx(tx) do

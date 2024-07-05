@@ -1,3 +1,54 @@
+# Jul 2nd
+[0 ]                            1=3d565ec28595c1a0710abcbd8c0f979d31e38704 Wallet                     80-DUP1
+[1 ] 30743 "CALL"               2=d78653669fd3df4df8f3141ffa53462121d117a4 Proxy (DiodeRegistryLight) HIT
+[2 ]   31497 "DELEGATECALL"     3=0b7d294ef304d41e10b965447857d0654e6e52a5 DiodeRegistryLight         B4-INVALID
+[3 ]     34597 "STATICCALL"     4=8afe08d333f785c818199a5bdc7a52ac6ffc492a Proxy (DevFleetContract)   57-JUMPI
+[4 ]       35348 "DELEGATECALL" 5=75637505b914ec9c6e9b8ede383605cd117b0c99 DevFleetContract           03-SUB
+[n4]       36858 "RETURN"
+[n3]     37162 "RETURN"
+[n2]   48214 "REVERT"
+[xx] 49656 "STOP"
+
+
+"pc": 7653,
+"pc": 175,
+
+
+e = fn hex ->
+  "0x" <> hex = String.trim(hex)
+  {:ok, bin} = Base.decode16(hex, case: :mixed)
+  {:binary.at(bin, 194) == 0xFD, Base.encode16(<<:binary.at(bin, 194)>>)}
+end
+
+REVERT = FD
+
+# Jul 1st
+
+anvil --fork-url https://moonbeam.unitedbloc.com:3000 -p1454
+
+
+# June 28th
+
+
+export CHAINS_MOONBEAM_RPC='!https://moonbeam.api.onfinality.io/?apikey=49e8baf7-14c3-4d0f-916a-94abf1c4c14a'
+export CHAINS_MOONBEAM_WS='!wss://moonbeam.api.onfinality.io/ws?apikey=49e8baf7-14c3-4d0f-916a-94abf1c4c14a'
+
+from = Wallet.from_address(Base16.decode("0x7102533B13b950c964efd346Ee15041E3e55413f"))
+multisig = Base16.decode("0x3d565Ec28595c1a0710ABCBd8C0F979d31E38704")
+Shell.call_from(Chains.Moonbeam, from, multisig, "executeTransaction", ["uint256"],  [9])
+{tx, blockRef} = Shell.tx_from(Chains.Moonbeam, from, multisig, "executeTransaction", ["uint256"],  [9])
+
+alias RemoteChain.Transaction
+
+RemoteChain.RPC.rpc(
+  Chains.Moonbeam,
+  "debug_traceTransaction",
+  ["0x63d7cc1b08b18862ae8b277891089ba414ad7959edf5b554f23061afd9a384a5"]
+)
+
+
+"debug_traceCall"
+
 # June 27th
 
 :binary.bin_to_list(f) |> Enum.chunk_every(32)

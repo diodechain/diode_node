@@ -12,6 +12,7 @@ defmodule Network.Handler do
     quote do
       use GenServer
       import Network.Handler
+      require Logger
 
       def init({state, :init}) do
         setup_process(state)
@@ -166,10 +167,9 @@ defmodule Network.Handler do
         :ssl.setopts(socket, [{:raw, level, opt, <<value::unsigned-little-size(32)>>}])
       end
 
-      def log(state, format) do
+      def log(state, string) do
         mod = List.last(Module.split(__MODULE__))
-        date = NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second) |> to_string()
-        :io.format("~s ~s: ~s ~s~n", [date, mod, name(state), format])
+        Logger.info("#{mod} #{name(state)}: #{string}")
       end
     end
   end

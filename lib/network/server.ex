@@ -314,24 +314,25 @@ defmodule Network.Server do
     cert = Secp256k1.selfsigned(private, public)
 
     [
-      mode: :binary,
-      packet: 2,
-      cert: cert,
-      cacerts: [cert],
-      versions: [:"tlsv1.2"],
-      verify: :verify_peer,
-      verify_fun: {&check/3, nil},
-      # Requires client to advertise the same
-      # openssl s_client -curves secp256k1 -connect localhost:41045 -showcerts -msg -servername local -tls1_2 -tlsextdebug
-      eccs: [:secp256k1],
       active: false,
-      reuseaddr: true,
-      key: {:ECPrivateKey, Secp256k1.der_encode_private(private, public)},
-      show_econnreset: true,
-      nodelay: false,
+      cacerts: [cert],
+      cert: cert,
       delay_send: true,
+      eccs: [:secp256k1],
+      key: {:ECPrivateKey, Secp256k1.der_encode_private(private, public)},
+      log_alert: false,
       log_level: :warning,
-      log_alert: false
+      mode: :binary,
+      nodelay: false,
+      packet: 2,
+      reuse_sessions: true,
+      reuseaddr: true,
+      send_timeout_close: true,
+      send_timeout: 30_000,
+      show_econnreset: true,
+      verify_fun: {&check/3, nil},
+      verify: :verify_peer,
+      versions: [:"tlsv1.2"]
     ] ++
       if role == :server do
         [fail_if_no_peer_cert: true]
