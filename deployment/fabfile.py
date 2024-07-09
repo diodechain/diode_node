@@ -33,6 +33,11 @@ def install():
         run("tar xzf diode_node.tar.gz")
 
 @parallel
+def cache():
+  run("/opt/diode_node/bin/diode_node rpc 'IO.inspect(DetsPlus.info(:remoterpc_cache))'")
+
+
+@parallel
 def check():
   with hide('status', 'running'):
     local("echo | nc -q0  {} 41046 && echo {}=ok".format(env.host, env.host))
@@ -40,7 +45,7 @@ def check():
 
 @parallel
 def version():
-  run("/opt/diode_node/bin/diode_node rpc 'IO.inspect(String.trim(Diode.Version.description()))'")
+  run("/opt/diode_node/bin/diode_node rpc 'IO.inspect({:c.uptime(), String.trim(Diode.Version.description())})'")
 
 def stop():
   with cd(env.diode):

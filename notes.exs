@@ -1,3 +1,42 @@
+# Jul 9th
+
+chain_id = Chains.Moonbeam.chain_id()
+epoch = RemoteChain.epoch(chain_id)
+block = RemoteChain.chainimpl(chain_id).epoch_block(epoch)
+
+alias Object.Ticket
+
+# DevFleet: https://moonscan.io/address/0x8afe08d333f785c818199a5bdc7a52ac6ffc492a#readProxyContract
+fleet_addr = "0x8afe08d333f785c818199a5bdc7a52ac6ffc492a" |> Base16.decode()
+Contract.Registry.fleet(chain_id, fleet_addr, Base16.encode(block, false))
+Contract.Registry.fleet(chain_id, fleet_addr, Base16.encode(block - 100, false))
+
+Network.Rpc.execute_dio("dio_traffic", [Chains.Moonbeam.chain_id()])
+
+
+fleet_obj = Contract.Registry.call(chain_id, "GetFleet", ["address"], [fleet_addr], Base16.encode(block, false))
+
+# Jul 9th
+
+handle = GenServer.call(:remoterpc_cache, :get_handle)
+DetsPlus.delete_all_objects(:remoterpc_cache)
+Enum.take(handle, 50_000) |> Enum.map(fn e -> elem(e, 0) end) |> Enum.filter(&is_integer/1) |> Enum.min_max()
+handle |> Enum.map(fn e -> elem(e, 0) end) |> Enum.filter(&is_integer/1) |> Enum.min_max()
+
+
+Enum.take(handle, 50_000) |> Enum.reject(fn e -> is_number(elem(e, 0)) end) |> Enum.map(fn {{:key, _key}, _value, n} -> n end) |> Enum.min_max()
+
+Enum.take(handle, 150_000) |> Enum.reduce({0, 0, 0}, fn element, {keys, values, others} ->
+  case element do
+    {key, _value} when is_integer(key) -> {keys + 1, values, others}
+    {{:key, _key}, _value, _n} -> {keys, values + 1, others}
+    _ -> {keys, values, others + 1}
+  end
+end)
+
+Enum.count(handle)
+
+
 # Jul 2nd
 [0 ]                            1=3d565ec28595c1a0710abcbd8c0f979d31e38704 Wallet                     80-DUP1
 [1 ] 30743 "CALL"               2=d78653669fd3df4df8f3141ffa53462121d117a4 Proxy (DiodeRegistryLight) HIT
