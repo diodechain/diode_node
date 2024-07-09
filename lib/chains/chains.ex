@@ -86,7 +86,7 @@ defmodule Chains.Moonbeam do
       "wss://moonbeam.api.onfinality.io/public-ws"
     ]
 
-  def registry_address(), do: Base16.decode("0x5000000000000000000000000000000000000000")
+  def registry_address(), do: Base16.decode("0xD78653669fd3df4dF8F3141Ffa53462121d117a4")
   def developer_fleet_address(), do: Base16.decode("0xa0A4dc6623eC96122066195DE34a813846dC0fC0")
   def transaction_hash(), do: &Hash.keccak_256/1
 end
