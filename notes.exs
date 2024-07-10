@@ -1,8 +1,50 @@
+# Jul 10th
+chain_id = Chains.Moonbeam.chain_id()
+epoch = RemoteChain.epoch(chain_id)
+fleet_addr = "0x8afe08d333f785c818199a5bdc7a52ac6ffc492a" |> Base16.decode()
+TicketStore.fleet_value(chain_id, fleet_addr, 662)
+
+TicketStore.estimate_ticket_value(tck)
+TicketStore.fleet_value(chain_id, Ticket.fleet_contract(tck), Ticket.epoch(tck))
+
+
 # Jul 9th
+:code.add_patha('/opt/diode_node/')
+for mod <- [TicketStore, Shell] do
+  :code.load_file(mod)
+  Process.sleep(1000)
+  :code.purge(mod)
+end
+
+"0xeaf4de5f51daf557643b85637778cfa0e40013eb063ea0d739f5b7e736fde9d8"
 
 chain_id = Chains.Moonbeam.chain_id()
 epoch = RemoteChain.epoch(chain_id)
 block = RemoteChain.chainimpl(chain_id).epoch_block(epoch)
+
+blocknum = RemoteChain.peaknumber(chain_id)
+RemoteChain.epoch_progress(chain_id, blocknum)
+
+TicketStore.newblock(chain_id, blocknum)
+TicketStore.submit_tickets(chain_id, epoch)
+
+
+[tck | rest] = TicketStore.tickets(chain_id, epoch - 1)
+tx = Ticket.raw(tck) |> Contract.Registry.submit_ticket_raw_tx(chain_id)
+
+
+Shell.submit_tx(tx)
+url = "https://moonbeam.api.onfinality.io/rpc?apikey=49e8baf7-14c3-4d0f-916a-94abf1c4c14a"
+Shell.call_tx(tx, "latest")
+Shell.debug_tx(tx, url, "latest")
+Shell.debug_tx(tx, "127.0.0.1:1545", "latest")
+
+tx_hash = "0xeaf4de5f51daf557643b85637778cfa0e40013eb063ea0d739f5b7e736fde9d8"
+{:ok, trace} = RemoteChain.HTTP.rpc(url, "debug_traceTransaction", [tx_hash])
+
+trace["structLogs"] |> Enum.map(fn %{"op" => op, "pc" => pc} -> IO.puts("#{pc} #{op}") end)
+
+rpc(chain, "debug_traceCall", [%{to: to, data: data, from: from}, block])
 
 alias Object.Ticket
 

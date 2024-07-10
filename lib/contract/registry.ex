@@ -51,7 +51,7 @@ defmodule Contract.Registry do
     call(chain_id, "currentEpoch") |> :binary.decode_unsigned()
   end
 
-  def submit_ticket_raw_tx([chain_id | ticket]) do
+  def submit_ticket_raw_tx(ticket, chain_id) do
     Shell.transaction(
       Diode.wallet(),
       RemoteChain.registry_address(chain_id),

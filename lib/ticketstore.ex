@@ -58,7 +58,7 @@ defmodule TicketStore do
       end)
       |> Enum.filter(fn tck ->
         Ticket.raw(tck)
-        |> Contract.Registry.submit_ticket_raw_tx()
+        |> Contract.Registry.submit_ticket_raw_tx(chain_id)
         |> Shell.call_tx("latest")
         |> case do
           {:ok, "0x"} ->
@@ -80,7 +80,7 @@ defmodule TicketStore do
           store_ticket_value(tck)
           Ticket.raw(tck)
         end)
-        |> Contract.Registry.submit_ticket_raw_tx()
+        |> Contract.Registry.submit_ticket_raw_tx(chain_id)
 
       case Shell.call_tx!(tx, "latest") do
         {"", _gas_cost} ->
@@ -161,37 +161,37 @@ defmodule TicketStore do
 
   def estimate_ticket_value(tck) do
     chain_id = Ticket.chain_id(tck)
-    n = Ticket.block_number(tck)
     epoch = Ticket.epoch(tck)
     device = Ticket.device_address(tck)
     fleet = Ticket.fleet_contract(tck)
-
-    fleet_value =
-      EtsLru.fetch(@ticket_value_cache, {:fleet, chain_id, fleet, epoch}, fn ->
-        Contract.Registry.fleet(chain_id, fleet, n).currentBalance
-      end)
-
-    ticket_value = value(tck) * fleet_value
+    ticket_score = ticket_score(tck) * fleet_value(chain_id, fleet, epoch + 1)
 
     case EtsLru.get(@ticket_value_cache, {:ticket, chain_id, fleet, device, epoch}) do
-      nil -> ticket_value
-      prev -> ticket_value - prev
+      nil -> ticket_score
+      prev -> ticket_score - prev
     end
+  end
+
+  def fleet_value(chain_id, fleet, epoch) do
+    EtsLru.fetch(@ticket_value_cache, {:fleet, chain_id, fleet, epoch}, fn ->
+      n =
+        min(
+          RemoteChain.chainimpl(chain_id).epoch_block(epoch),
+          RemoteChain.peaknumber(chain_id)
+        )
+        |> IO.inspect(label: "fleet_value")
+
+      Contract.Registry.fleet(chain_id, fleet, n).currentBalance
+    end)
+    |> div(100)
   end
 
   def store_ticket_value(tck) do
     chain_id = Ticket.chain_id(tck)
-    n = Ticket.block_number(tck)
     epoch = Ticket.epoch(tck)
     device = Ticket.device_address(tck)
     fleet = Ticket.fleet_contract(tck)
-
-    fleet_value =
-      EtsLru.fetch(@ticket_value_cache, {:fleet, chain_id, fleet, epoch}, fn ->
-        Contract.Registry.fleet(chain_id, fleet, n).currentBalance
-      end)
-
-    ticket_value = value(tck) * fleet_value
+    ticket_value = ticket_score(tck) * fleet_value(chain_id, fleet, epoch)
 
     case EtsLru.get(@ticket_value_cache, {:ticket, chain_id, fleet, device, epoch}) do
       prev when prev >= ticket_value ->
@@ -202,12 +202,11 @@ defmodule TicketStore do
     end
   end
 
-  @doc "Reports ticket value in 1024 blocks"
-  def value(tck) when is_tuple(tck) do
-    div(Ticket.total_bytes(tck) + Ticket.total_connections(tck) * 1024, 1024)
+  def ticket_score(tck) when is_tuple(tck) do
+    Ticket.score(tck)
   end
 
-  def value(epoch) when is_integer(epoch) do
-    Enum.reduce(tickets(epoch), 0, fn tck, acc -> value(tck) + acc end)
+  def epoch_score(epoch \\ epoch()) when is_integer(epoch) do
+    Enum.reduce(tickets(epoch), 0, fn tck, acc -> ticket_score(tck) + acc end)
   end
 end

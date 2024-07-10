@@ -88,6 +88,31 @@ defmodule Shell do
     )
   end
 
+  def debug_tx(tx, url, blockRef) do
+    RemoteChain.HTTP.rpc(url, "debug_traceCall", [
+      %{
+        to: Transaction.to(tx) |> Base16.encode(),
+        data: Transaction.payload(tx) |> Base16.encode(),
+        from: Transaction.from(tx) |> Base16.encode()
+      },
+      blockRef
+    ])
+  end
+
+  def reload(modules) do
+    loader_dir = ~c"/opt/diode_node/"
+
+    if List.first(:code.get_path()) != loader_dir do
+      :code.add_path(loader_dir)
+    end
+
+    for mod <- List.wrap(modules) do
+      loaded = :code.load_file(mod)
+      Process.sleep(1000)
+      {loaded, :code.purge(mod)}
+    end
+  end
+
   def transaction(wallet, to, name, types, values, opts \\ [], sign \\ true)
       when is_list(types) and is_list(values) do
     # https://solidity.readthedocs.io/en/v0.4.24/abi-spec.html

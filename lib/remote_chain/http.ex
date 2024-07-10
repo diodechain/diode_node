@@ -40,8 +40,8 @@ defmodule RemoteChain.HTTP do
     end
   end
 
-  def rpc!(method, params \\ []) do
-    case rpc(method, params) do
+  def rpc!(url, method, params \\ []) do
+    case rpc(url, method, params) do
       {:ok, result} -> result
       {:error, error} -> raise "RPC error: #{inspect(error)}"
     end

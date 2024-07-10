@@ -57,7 +57,7 @@ defmodule Chains.Moonbeam do
     n = RemoteChain.peaknumber(chain)
     n_time = RemoteChain.blocktime(chain, n)
     n_epoch = div(n_time, epoch_length())
-    block_number = n - (epoch - n_epoch) * epoch_length() / expected_block_intervall()
+    block_number = n - (n_epoch - epoch) * epoch_length() / expected_block_intervall()
     floor(block_number)
   end
 

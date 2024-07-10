@@ -252,7 +252,7 @@ defmodule Diode do
 
   def self(hostname) do
     Object.Server.new(hostname, hd(edge2_ports()), peer2_port(), version(), [
-      ["tickets", TicketStore.value(TicketStore.epoch())],
+      ["tickets", TicketStore.epoch_score()],
       ["uptime", Diode.uptime()],
       ["time", System.os_time()]
     ])

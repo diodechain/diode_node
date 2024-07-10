@@ -78,7 +78,7 @@ defmodule Object.TicketV2 do
     [rec, r, s] = Secp256k1.bitcoin_to_rlp(device_signature(tck))
 
     [
-      block_number(tck),
+      epoch(tck),
       fleet_contract(tck),
       server_id(tck),
       total_connections(tck),

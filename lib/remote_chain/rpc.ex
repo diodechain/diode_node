@@ -67,8 +67,12 @@ defmodule RemoteChain.RPC do
     rpc(chain, "eth_call", [%{to: to, data: data, from: from}, block])
   end
 
-  def debugTraceCall(chain, to, from, data, block \\ "latest") do
+  def debug_trace_call(chain, to, from, data, block \\ "latest") do
     rpc(chain, "debug_traceCall", [%{to: to, data: data, from: from}, block])
+  end
+
+  def debug_trace_transaction(chain, tx_hash) do
+    rpc(chain, "debug_traceTransaction", [tx_hash])
   end
 
   def call!(chain, to, from, data, block \\ "latest") do

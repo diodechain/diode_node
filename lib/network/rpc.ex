@@ -236,16 +236,22 @@ defmodule Network.Rpc do
         end
 
       "dio_traffic" ->
-        {chain_id, epoch} =
-          case params do
-            [chain_id, epoch] ->
-              {Base16.decode_int(chain_id), Base16.decode_int(epoch)}
+        chain_id = Base16.decode_int(hd(params))
+        peak = RemoteChain.peaknumber(chain_id)
+        peak_epoch = RemoteChain.epoch(chain_id, peak)
 
-            [chain_id] ->
-              {Base16.decode_int(chain_id), RemoteChain.epoch(Base16.decode_int(chain_id))}
+        epoch =
+          case params do
+            [_chain_id, epoch] -> Base16.decode_int(epoch)
+            [_chain_id] -> peak_epoch
           end
 
-        block = RemoteChain.chainimpl(chain_id).epoch_block(epoch)
+        block =
+          if epoch == peak_epoch do
+            peak
+          else
+            RemoteChain.chainimpl(chain_id).epoch_block(epoch)
+          end
 
         fleets =
           TicketStore.tickets(chain_id, epoch)
@@ -256,17 +262,16 @@ defmodule Network.Rpc do
               total_tickets: Enum.count(tickets),
               total_bytes: Enum.map(tickets, &Ticket.total_bytes/1) |> Enum.sum(),
               total_connections: Enum.map(tickets, &Ticket.total_connections/1) |> Enum.sum(),
-              current_epoch:
-                Contract.Registry.fleet(chain_id, fleet, Base16.encode(block, false)),
-              previous_epoch:
-                Contract.Registry.fleet(chain_id, fleet, Base16.encode(block - 100, false))
+              total_score: Enum.map(tickets, &Ticket.score/1) |> Enum.sum(),
+              state: Contract.Registry.fleet(chain_id, fleet, Base16.encode(block, false))
             }
           end)
 
         result(%{
           chain_id: chain_id,
           epoch: epoch,
-          epoch_time: RemoteChain.blocktime(chain_id, block),
+          epoch_time:
+            RemoteChain.blocktime(chain_id, RemoteChain.chainimpl(chain_id).epoch_block(epoch)),
           fleets: fleets
         })
 
