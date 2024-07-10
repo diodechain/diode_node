@@ -103,13 +103,14 @@ defmodule Shell do
     loader_dir = ~c"/opt/diode_node/"
 
     if List.first(:code.get_path()) != loader_dir do
-      :code.add_path(loader_dir)
+      :code.add_patha(loader_dir)
     end
 
     for mod <- List.wrap(modules) do
-      loaded = :code.load_file(mod)
+      :code.load_file(mod)
       Process.sleep(1000)
-      {loaded, :code.purge(mod)}
+      :code.purge(mod)
+      mod.info(:compile)
     end
   end
 

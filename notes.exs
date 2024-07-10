@@ -7,6 +7,7 @@ TicketStore.fleet_value(chain_id, fleet_addr, 662)
 TicketStore.estimate_ticket_value(tck)
 TicketStore.fleet_value(chain_id, Ticket.fleet_contract(tck), Ticket.epoch(tck))
 
+Network.Rpc.execute_dio("dio_traffic", [Chains.Moonbeam.chain_id()])
 
 # Jul 9th
 :code.add_patha('/opt/diode_node/')

@@ -257,15 +257,17 @@ defmodule Network.Rpc do
           TicketStore.tickets(chain_id, epoch)
           |> Enum.group_by(&Ticket.fleet_contract(&1))
           |> Enum.map(fn {fleet, tickets} ->
-            %{
-              fleet: fleet,
-              total_tickets: Enum.count(tickets),
-              total_bytes: Enum.map(tickets, &Ticket.total_bytes/1) |> Enum.sum(),
-              total_connections: Enum.map(tickets, &Ticket.total_connections/1) |> Enum.sum(),
-              total_score: Enum.map(tickets, &Ticket.score/1) |> Enum.sum(),
-              state: Contract.Registry.fleet(chain_id, fleet, Base16.encode(block, false))
-            }
+            {fleet,
+             %{
+               fleet: fleet,
+               total_tickets: Enum.count(tickets),
+               total_bytes: Enum.map(tickets, &Ticket.total_bytes/1) |> Enum.sum(),
+               total_connections: Enum.map(tickets, &Ticket.total_connections/1) |> Enum.sum(),
+               total_score: Enum.map(tickets, &Ticket.score/1) |> Enum.sum(),
+               state: Contract.Registry.fleet(chain_id, fleet, Base16.encode(block, false))
+             }}
           end)
+          |> Map.new()
 
         result(%{
           chain_id: chain_id,
