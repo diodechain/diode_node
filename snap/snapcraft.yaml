@@ -1,6 +1,6 @@
 name: diode-node # you probably want to 'snapcraft register <name>'
 base: core24
-version: '1.1.1'
+adopt-info: diode-node
 summary: Diode relay node
 description: |
   The Diode Network is a decentralized permissionless ZTNA network allowing 
@@ -9,7 +9,7 @@ description: |
   the network and is rewarded when the new diode relay node is used by other devices. 
 
 grade: devel # must be 'stable' to release into candidate/stable channels
-confinement: devmode # use 'strict' once you have the right plugs and slots
+confinement: strict # use 'strict' once you have the right plugs and slots
 
 parts:
   diode-node:
@@ -39,9 +39,17 @@ parts:
       - libc6
       - libssl3
       - zlib1g
+    override-pull: |
+      craftctl default
+      craftctl set version="$(git describe --tags)"
+      craftctl set grade="devel"
 
 apps:
   diode-node:
     command: bin/diode_node start
     plugs: [network, network-bind]
     daemon: simple
+
+  shell:
+    command: bin/diode_node remote
+    plugs: [network, network-bind]

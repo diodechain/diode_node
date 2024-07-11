@@ -180,72 +180,42 @@ defmodule Diode do
     Wallet.address!(wallet())
   end
 
-  @spec data_dir(binary()) :: binary()
   def data_dir(file \\ "") do
-    Path.join(get_env("DATA_DIR", File.cwd!() <> "/nodedata_" <> Atom.to_string(env())), file)
+    Path.join(Diode.Config.get("DATA_DIR"), file)
   end
 
   def host() do
-    get_env("HOST", fn ->
-      {:ok, interfaces} = :inet.getif()
-      ips = Enum.map(interfaces, fn {ip, _b, _m} -> ip end)
-
-      {a, b, c, d} =
-        Enum.find(ips, hd(ips), fn ip ->
-          case ip do
-            {127, _, _, _} -> false
-            {10, _, _, _} -> false
-            {192, 168, _, _} -> false
-            {172, b, _, _} when b >= 16 and b < 32 -> false
-            _ -> true
-          end
-        end)
-
-      "#{a}.#{b}.#{c}.#{d}"
-    end)
+    Diode.Config.get("HOST")
   end
 
   @spec rpc_port() :: integer()
   def rpc_port() do
-    get_env_int("RPC_PORT", 8545)
+    Diode.Config.get_int("RPC_PORT")
   end
 
   def rpcs_port() do
-    get_env_int("RPCS_PORT", 8443)
+    Diode.Config.get_int("RPCS_PORT")
   end
 
   @spec edge2_ports :: [integer()]
   def edge2_ports() do
-    get_env("EDGE2_PORT", "41046,443,993,1723,10000")
+    Diode.Config.get("EDGE2_PORT")
     |> String.trim()
-    |> String.split(",")
-    |> Enum.map(fn port -> decode_int(String.trim(port)) end)
+    |> String.split(",", trim: true)
+    |> Enum.map(fn port -> String.to_integer(String.trim(port)) end)
   end
 
   @spec peer2_port() :: integer()
   def peer2_port() do
-    get_env_int("PEER2_PORT", default_peer2_port())
+    Diode.Config.get_int("PEER2_PORT")
   end
 
   def default_peer2_port(), do: 51055
 
   def seeds() do
-    case get_env("SEED2") do
-      nil ->
-        [
-          "diode://0xceca2f8cf1983b4cf0c1ba51fd382c2bc37aba58@us1.prenet.diode.io:51055",
-          "diode://0x7e4cd38d266902444dc9c8f7c0aa716a32497d0b@us2.prenet.diode.io:51055",
-          "diode://0x68e0bafdda9ef323f692fc080d612718c941d120@as1.prenet.diode.io:51055",
-          "diode://0x1350d3b501d6842ed881b59de4b95b27372bfae8@as2.prenet.diode.io:51055",
-          "diode://0x937c492a77ae90de971986d003ffbc5f8bb2232c@eu1.prenet.diode.io:51055",
-          "diode://0xae699211c62156b8f29ce17be47d2f069a27f2a6@eu2.prenet.diode.io:51055"
-        ]
-
-      other ->
-        other
-        |> String.split(" ", trim: true)
-        |> Enum.reject(fn item -> item == "none" end)
-    end
+    Diode.Config.get("SEED_LIST")
+    |> String.split(" ", trim: true)
+    |> Enum.reject(fn item -> item == "none" end)
   end
 
   def self(), do: self(host())
@@ -273,35 +243,6 @@ defmodule Diode do
         Logger.info("maybe_import_key: Importing cert from '#{path}'")
         CertMagex.insert(privkey, pubcert)
       end
-    end
-  end
-
-  def get_env(name, default \\ nil) do
-    case System.get_env(name) do
-      nil when is_function(default) -> default.()
-      nil -> default
-      other -> other
-    end
-  end
-
-  def get_env_int(name, default) do
-    decode_int(get_env(name, default))
-  end
-
-  defp decode_int(int) do
-    case int do
-      "" ->
-        0
-
-      <<"0x", _::binary>> = bin ->
-        Base16.decode_int(bin)
-
-      bin when is_binary(bin) ->
-        {num, _} = Integer.parse(bin)
-        num
-
-      int when is_integer(int) ->
-        int
     end
   end
 

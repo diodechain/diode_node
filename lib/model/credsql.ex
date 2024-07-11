@@ -26,7 +26,7 @@ defmodule Model.CredSql do
         )
     """)
 
-    case Diode.get_env_int("PRIVATE", 0) do
+    case Diode.Config.get_int("PRIVATE") do
       # Decode env parameter such as
       # export PRIVATE="0x123456789"
       0 ->

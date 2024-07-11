@@ -91,12 +91,7 @@ defmodule Network.PeerHandlerV2 do
   end
 
   defp send_hello(state) do
-    hostname =
-      Diode.get_env("HOST", fn ->
-        {:ok, {addr, _port}} = :ssl.sockname(state.socket)
-        :erlang.list_to_binary(:inet.ntoa(addr))
-      end)
-
+    hostname = Diode.Config.get("HOST")
     hello = Diode.self(hostname)
     # We don't have server registration atm
     chain_id = 0
