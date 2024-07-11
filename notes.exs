@@ -1,3 +1,9 @@
+# Jul 11th
+
+token = "0x434116a99619f2B465A137199C38c1Aab0353913" |> Base16.decode()
+Shell.call(Chains.Moonbeam.chain_id(), token, "name")
+Shell.call(Chains.Moonbeam.chain_id(), token, "decimals")
+
 # Jul 10th
 chain_id = Chains.Moonbeam.chain_id()
 epoch = RemoteChain.epoch(chain_id)
@@ -6,7 +12,6 @@ TicketStore.fleet_value(chain_id, fleet_addr, 662)
 
 TicketStore.estimate_ticket_value(tck)
 TicketStore.fleet_value(chain_id, Ticket.fleet_contract(tck), Ticket.epoch(tck))
-
 Network.Rpc.execute_dio("dio_traffic", [Chains.Moonbeam.chain_id()])
 
 # Jul 9th
