@@ -1,0 +1,47 @@
+name: diode-node # you probably want to 'snapcraft register <name>'
+base: core24
+version: '1.1.1'
+summary: Diode relay node
+description: |
+  The Diode Network is a decentralized permissionless ZTNA network allowing 
+  any device in the network to communicate with any other device in the network
+  through always end-to-end encrypted channels. Hosting a Diode relay node extends
+  the network and is rewarded when the new diode relay node is used by other devices. 
+
+grade: devel # must be 'stable' to release into candidate/stable channels
+confinement: devmode # use 'strict' once you have the right plugs and slots
+
+parts:
+  diode-node:
+    # See 'snapcraft plugins'
+    plugin: make
+    source: .
+    build-packages:
+      - autoconf
+      - curl
+      - g++
+      - git
+      - libc6
+      - libgmp3-dev
+      - libsctp-dev
+      - libssh-dev
+      - libssl-dev
+      - libstdc++6
+      - libtool
+      - make
+      - libncurses-dev
+      - procps
+      - unzip
+      - zlib1g-dev
+    stage-packages:
+      - libncurses6
+      - libstdc++6
+      - libc6
+      - libssl3
+      - zlib1g
+
+apps:
+  diode-node:
+    command: bin/diode_node start
+    plugs: [network, network-bind]
+    daemon: simple

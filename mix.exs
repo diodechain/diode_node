@@ -20,7 +20,7 @@ defmodule Diode.Mixfile do
       app: :diode,
       compilers: Mix.compilers(),
       deps: deps(),
-      description: "Diode Network Traffic Relay Node implementation",
+      description: "Diode Network Relay Node",
       dialyzer: [plt_add_apps: [:mix]],
       docs: docs(),
       elixir: "~> 1.15",
