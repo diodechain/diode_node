@@ -93,17 +93,27 @@ defmodule Diode.Config do
     System.get_env("SNAP") != nil && System.find_executable("snapctl") != nil
   end
 
+  # For snap the DATA_DIR is dynamically moving around with each refresh
+  # of the container. So we don't want to get it from the persistent
+  # snap configuration but rather dynamically based on the current working directory.
+  def snap_get("DATA_DIR"), do: nil
+
   def snap_get(var) do
     snap?() &&
-      case System.cmd("snapctl", ["get", var]) do
+      case System.cmd("snapctl", ["get", snap_name(var)]) do
         {"", _} -> nil
+        {"\n", _} -> nil
         {value, 0} -> String.trim(value)
         _ -> nil
       end
   end
 
   def snap_set(var, value) do
-    snap?() && System.cmd("snapctl", ["set", var, value])
+    snap?() && System.cmd("snapctl", ["set", "#{snap_name(var)}=#{value}"])
+  end
+
+  defp snap_name(var) do
+    String.downcase(var) |> String.replace("_", "-")
   end
 
   defp eval(fun) when is_function(fun), do: fun.()

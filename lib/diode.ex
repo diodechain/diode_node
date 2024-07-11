@@ -22,6 +22,7 @@ defmodule Diode do
 
   defp do_start(_type, args) do
     :erlang.system_flag(:backtrace_depth, 30)
+    Diode.Config.configure()
 
     puts("====== ENV #{env()} ======")
     puts("Build       : #{Diode.Version.description()}")

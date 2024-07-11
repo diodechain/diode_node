@@ -1,4 +1,6 @@
-name: diode-node # you probably want to 'snapcraft register <name>'
+name: diode-node
+website: https://diode.io
+icon: snap/logo.png
 base: core24
 adopt-info: diode-node
 summary: Diode relay node
@@ -51,5 +53,6 @@ apps:
     daemon: simple
 
   shell:
-    command: bin/diode_node remote
+    command: bin/run_elevated remote
     plugs: [network, network-bind]
+
