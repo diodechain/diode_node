@@ -57,6 +57,6 @@ apps:
     plugs: [network, network-bind]
 
   info:
-    command: bin/diode_node rpc 'Diode.Cmd.status()'
+    command: bin/diode_node rpc Diode.Cmd.status
     plugs: [network, network-bind]
 

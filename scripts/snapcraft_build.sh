@@ -34,10 +34,7 @@ asdf install elixir
 export HEX_HTTP_TIMEOUT=120
 mix local.hex --force --if-missing
 mix local.rebar --force --if-missing
-mix do deps.get
-mix deps.compile
-
+mix deps.get
 mix deps.compile libsecp256k1 
 make -C deps/libsecp256k1 
-mix git_version
-mix release --overwrite
+mix do clean, release --overwrite
