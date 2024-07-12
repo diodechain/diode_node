@@ -160,7 +160,7 @@ defmodule Network.Rpc do
   def execute_std(method, params) do
     case method do
       "web3_clientVersion" ->
-        result(Diode.version())
+        result("Diode Relay Node " <> Diode.Version.description())
 
       "net_listening" ->
         result(true)

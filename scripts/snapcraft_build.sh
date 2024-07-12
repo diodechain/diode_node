@@ -39,4 +39,5 @@ mix deps.compile
 
 mix deps.compile libsecp256k1 
 make -C deps/libsecp256k1 
-mix do compile, git_version, release --overwrite
+mix git_version
+mix release --overwrite

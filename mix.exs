@@ -11,7 +11,6 @@ defmodule Diode.Mixfile do
   use Mix.Project
 
   @vsn "1.2.0"
-  @full_vsn "v1.2.0"
   @url "https://github.com/diodechain/diode_node"
 
   def project do
@@ -26,7 +25,6 @@ defmodule Diode.Mixfile do
       elixir: "~> 1.15",
       elixirc_options: [warnings_as_errors: Mix.target() == :host],
       elixirc_paths: elixirc_paths(Mix.env()),
-      full_version: :persistent_term.get(:full_vsn, @full_vsn),
       package: package(),
       releases: [
         diode_node: [

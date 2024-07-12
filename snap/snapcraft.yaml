@@ -56,3 +56,7 @@ apps:
     command: bin/run_elevated remote
     plugs: [network, network-bind]
 
+  info:
+    command: bin/diode_node rpc 'Diode.Cmd.status()'
+    plugs: [network, network-bind]
+

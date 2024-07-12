@@ -10,10 +10,9 @@ jobs:
       run: sudo apt-get install -y libboost-dev libboost-system-dev
 
     - name: Setup elixir
-      uses: erlef/setup-elixir@v1
+      uses: erlef/setup-beam@v1
       with:
-        otp-version: 24.3.3
-        elixir-version: 1.13.4
+        version-file: .tool-versions
 
     - uses: actions/checkout@v1
     - run: |

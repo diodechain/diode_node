@@ -132,11 +132,6 @@ defmodule Diode do
     {Plug.Cowboy, scheme: scheme, plug: Network.RpcHttp, options: opts}
   end
 
-  @version Mix.Project.config()[:full_version]
-  def version() do
-    "Diode Traffic Relay #{@version}"
-  end
-
   @spec dev_mode? :: boolean
   def dev_mode?() do
     env() == :dev or env() == :test
@@ -222,7 +217,7 @@ defmodule Diode do
   def self(), do: self(host())
 
   def self(hostname) do
-    Object.Server.new(hostname, hd(edge2_ports()), peer2_port(), version(), [
+    Object.Server.new(hostname, hd(edge2_ports()), peer2_port(), Diode.Version.version(), [
       ["tickets", TicketStore.epoch_score()],
       ["uptime", Diode.uptime()],
       ["time", System.os_time()]
