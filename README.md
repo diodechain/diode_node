@@ -1,10 +1,27 @@
 ![diode logo](https://diode.io/images/logo-trans.svg)
 > ### Secure. Super Light. Web3. 
-> EVM anchored secure communication network
 
-# Diode Traffic Gateway
+# Diode Network Relay Node
 
-Traffic Gateways should always be setup on publicly reachable interfaces with a public IP. If the Node is not reachable from other nodes it might eventually blocked. 
+Relay nodes are at the heart of Diodes decentralized infrastructure network. Each node helps devices to communicate securely and efficiently through the Diode network. More nodes in more regions mean more available bandwidth for a growing network.
+
+When deploying a node it should be setup on publicly reachable interfaces with a public IP. If the Node is not reachable from other nodes it might eventually get blocked and not receive any traffic. Nodes are gaining reputation over time when they stay up and available.
+
+# Getting Started
+
+To get started with the diode node install the latest snap release:
+
+```bash
+sudo snap install diode-node
+```
+
+## Snap Configuration
+
+After installation all configuration values are available via the snap config system:
+
+```bash
+sudo snap get diode-node
+```
 
 # Default Ports
 
@@ -21,43 +38,7 @@ TCP port bindings can be controlled through environment variables. The default b
 
 `EDGE2_PORT` and `PEER2_PORT` support multiple port numbers given by a comma separated list.
 
-# Pre-Requisites
-
-* Erlang OTP 25
-* Elixir 1.15
-* make & autoconf & libtool-bin & gcc & g++ & boost
-* daemontools
-
-# Building
-
-```bash
-mix deps.get
-mix compile
-```
-
-## Building on macOS
-
-On macOS after installing boost with brew you might need to add it to the environment variables, so the compiler can find it:
-
-```bash
-brew install boost
-export CFLAGS=-I`brew --prefix boost`/include 
-export LDFLAGS=-L`brew --prefix boost`/lib
-```
-
-# Running tests
-
-```bash
-mix test
-```
-
-# Running
-
-```
-supervise .
-```
-
-# Optimizing Linux
+# Linux Kernel optimization
 
 To optimize Linux for maximum network performance we advise to enable tcp bbr:
 
