@@ -40,20 +40,23 @@ defmodule Diode do
 
     puts("")
 
-    {:ok, cache} =
-      DetsPlus.open_file(:remoterpc_cache, file: data_dir("remoterpc.cache"), compressed: true)
-
-    cache = DetsPlus.LRU.new(cache, 1_000_000, fn obj -> obj != nil end)
-
     children =
       [
-        worker(Cron, []),
-        worker(Network.Stats, []),
-        worker(Stats, []),
+        Cron,
+        Network.Stats,
+        Stats,
         supervisor(Model.Sql),
         supervisor(Channels),
-        worker(PubSub, [args]),
-        worker(TicketStore, []),
+        {PubSub, args},
+        TicketStore,
+        {DetsPlus, name: :remoterpc_cache}
+      ]
+
+    with {:ok, pid} <-
+           Supervisor.start_link(children, strategy: :rest_for_one, name: Diode.Supervisor) do
+      cache = DetsPlus.LRU.new(:remoterpc_cache, 1_000_000, fn obj -> obj != nil end)
+
+      [
         Enum.map(RemoteChain.chains(), fn chain ->
           supervisor(RemoteChain.Sup, [chain, [cache: cache]], {RemoteChain.Sup, chain})
         end),
@@ -66,8 +69,12 @@ defmodule Diode do
         worker(KademliaLight, [args])
       ]
       |> List.flatten()
+      |> Enum.each(fn child ->
+        {:ok, _} = Supervisor.start_child(pid, child)
+      end)
 
-    Supervisor.start_link(children, strategy: :rest_for_one, name: Diode.Supervisor)
+      {:ok, pid}
+    end
   end
 
   def network_children() do
