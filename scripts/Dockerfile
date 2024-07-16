@@ -57,6 +57,7 @@ COPY . /app/
 RUN . ${ASDF_DIR}/asdf.sh && \
     echo "elixir ${ELIXIR_VERSION}${ELIXIR_VARIANT}" > .tool-versions && \
     echo "erlang ref:${OTP_VERSION}" >> .tool-versions && \
-    mix do compile, git_version, release
+    mix compile && \
+    mix release
 
 RUN mv /app/_build/prod/diode_node*.tar.gz /app/_build/prod/diode_node.tar.gz
