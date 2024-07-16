@@ -179,7 +179,6 @@ defmodule TicketStore do
           RemoteChain.chainimpl(chain_id).epoch_block(epoch),
           RemoteChain.peaknumber(chain_id)
         )
-        |> IO.inspect(label: "fleet_value")
 
       Contract.Registry.fleet(chain_id, fleet, n).currentBalance
     end)
