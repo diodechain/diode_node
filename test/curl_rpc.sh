@@ -46,4 +46,8 @@ echo "Usage History:"
 curl -k -H "Content-Type: application/json"  -X POST --data '{"jsonrpc":"2.0","method":"dio_usageHistory","params":[1719312049, 1719312149, 10],"id":74}' $host
 echo ""
 
+echo "Proxy Usage History:"
+curl -k -H "Content-Type: application/json"  -X POST --data '{"jsonrpc":"2.0","method":"dio_usage","params":["0x937c492a77ae90de971986d003ffbc5f8bb2232c", "dio_usageHistory", 1719312049, 1719312149, 10],"id":74}' $host
+echo ""
+
 

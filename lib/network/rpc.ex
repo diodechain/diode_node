@@ -336,6 +336,49 @@ defmodule Network.Rpc do
         end)
         |> result()
 
+      "dio_proxy" ->
+        [node, method | params] = params
+        node = Base16.decode(node)
+
+        if method not in [
+             "dio_getObject",
+             "dio_getNode",
+             "dio_traffic",
+             "dio_usage",
+             "dio_usageHistory"
+           ] do
+          result(nil, 400)
+        else
+          case KademliaLight.find_node(node) do
+            nil ->
+              result(nil, 404)
+
+            item ->
+              server = KBuckets.object(item)
+              host = Object.Server.host(server)
+
+              request = %{
+                "jsonrpc" => "2.0",
+                "method" => method,
+                "params" => params,
+                "id" => 1
+              }
+
+              HTTPoison.post("http://#{host}:8545", Poison.encode!(request), [
+                {"Content-Type", "application/json"}
+              ])
+              |> case do
+                {:ok, %{body: body}} ->
+                  json = Poison.decode!(body)
+                  result(json["result"])
+
+                error = {:error, _reason} ->
+                  Logger.error("Error fetching #{method} from #{host}: #{inspect(error)}")
+                  result(nil, 502)
+              end
+          end
+        end
+
       _ ->
         nil
     end
