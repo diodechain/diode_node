@@ -1,6 +1,7 @@
 defmodule Diode.Config do
   def defaults() do
     %{
+      "LOG_LEVEL" => "info",
       "RPC_PORT" => "8545",
       "RPCS_PORT" => "8443",
       "EDGE2_PORT" => "41046,443,993,1723,10000",
@@ -86,6 +87,7 @@ defmodule Diode.Config do
   def set(var, value) do
     snap_set(var, value)
     System.put_env(var, value)
+    on_set(var, value)
     value
   end
 
@@ -118,4 +120,12 @@ defmodule Diode.Config do
 
   defp eval(fun) when is_function(fun), do: fun.()
   defp eval(other), do: other
+
+  defp on_set("LOG_LEVEL", value) do
+    if value in ~w(emergency alert critical error warning notice info debug) do
+      Logger.configure(level: String.to_atom(value))
+    end
+  end
+
+  defp on_set(_key, _value), do: :ok
 end
