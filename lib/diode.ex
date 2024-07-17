@@ -42,13 +42,13 @@ defmodule Diode do
 
     children =
       [
-        Cron,
-        Network.Stats,
         Stats,
+        Network.Stats,
         supervisor(Model.Sql),
+        TicketStore,
+        Cron,
         supervisor(Channels),
         {PubSub, args},
-        TicketStore,
         {DetsPlus, name: :remoterpc_cache}
       ]
 
@@ -227,7 +227,8 @@ defmodule Diode do
     Object.Server.new(hostname, hd(edge2_ports()), peer2_port(), Diode.Version.version(), [
       ["tickets", TicketStore.epoch_score()],
       ["uptime", Diode.uptime()],
-      ["time", System.os_time()]
+      ["time", System.os_time()],
+      ["block", RemoteChain.peaknumber(Chains.Moonbeam)]
     ])
     |> Object.Server.sign(Wallet.privkey!(Diode.wallet()))
   end
