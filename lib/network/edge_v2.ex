@@ -507,14 +507,7 @@ defmodule Network.EdgeV2 do
             )
 
             # Storing the updated ticket of this device, debounce is 10 sec
-            Debouncer.immediate(
-              :publish_me,
-              fn ->
-                me = Diode.self()
-                KademliaLight.store(me)
-              end,
-              10_000
-            )
+            Diode.broadcast_self()
 
             {response("thanks!", bytes),
              %{

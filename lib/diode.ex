@@ -232,6 +232,14 @@ defmodule Diode do
     |> Object.Server.sign(Wallet.privkey!(Diode.wallet()))
   end
 
+  def broadcast_self() do
+    Debouncer.immediate(
+      :broadcast_self,
+      fn -> KademliaLight.store(Diode.self()) end,
+      10_000
+    )
+  end
+
   def maybe_import_key() do
     paths =
       ["priv", System.get_env("CERT_PATH", ""), System.get_env("PARENT_CWD", "")]
