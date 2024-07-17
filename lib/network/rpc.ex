@@ -336,8 +336,8 @@ defmodule Network.Rpc do
         end)
         |> result()
 
-      "dio_proxy" ->
-        [node, method | params] = params
+      "dio_proxy|" <> method ->
+        [node | params] = params
         node = Base16.decode(node)
 
         if method not in [
