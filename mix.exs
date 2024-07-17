@@ -30,12 +30,12 @@ defmodule Diode.Mixfile do
         diode_node: [
           applications: [runtime_tools: :permanent, ssl: :permanent],
           steps: [:assemble, :tar],
-          version: "1.1.0"
+          version: @vsn
         ]
       ],
       source_url: @url,
       start_permanent: Mix.env() == :prod,
-      version: :persistent_term.get(:vsn, @vsn)
+      version: @vsn
     ]
   end
 
