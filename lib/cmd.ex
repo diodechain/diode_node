@@ -9,11 +9,14 @@ defmodule Diode.Cmd do
 
   def status() do
     IO.puts("== Diode Node #{Wallet.base16(Diode.wallet())} ==")
+    IO.puts("Name             : #{Diode.Config.get("NAME")}")
     IO.puts("Version          : #{Diode.Version.version()}")
 
     if "v" <> Diode.Version.version() != Diode.Version.description() do
       IO.puts("Description      : #{Diode.Version.description()}")
     end
+
+    IO.puts("Uptime           : #{div(Diode.uptime(), 1000)}")
 
     devcount = Network.Server.get_connections(Network.EdgeV2) |> Enum.count()
     IO.puts("Connected Devices: #{devcount}")
