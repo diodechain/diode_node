@@ -37,7 +37,8 @@ defmodule Diode.Config do
       end,
       "DATA_DIR" => fn ->
         File.cwd!() <> "/nodedata_" <> Atom.to_string(Diode.env())
-      end
+      end,
+      "NAME" => ""
     }
   end
 
@@ -51,6 +52,12 @@ defmodule Diode.Config do
   def configure() do
     for {var, _default} <- defaults() do
       set(var, get(var))
+    end
+  end
+
+  def list() do
+    for {var, _default} <- defaults() do
+      {var, get(var)}
     end
   end
 
@@ -81,7 +88,10 @@ defmodule Diode.Config do
   end
 
   defp do_get(var) do
-    snap_get(var) || System.get_env(var)
+    case snap_get(var) || System.get_env(var) do
+      "" -> get_fallback(var)
+      other -> other
+    end
   end
 
   def set(var, value) do
@@ -128,4 +138,11 @@ defmodule Diode.Config do
   end
 
   defp on_set(_key, _value), do: :ok
+
+  defp get_fallback("NAME") do
+    {:ok, host} = :net.gethostname()
+    Wallet.words(Diode.wallet()) <> "@#{host}"
+  end
+
+  defp get_fallback(_key), do: ""
 end

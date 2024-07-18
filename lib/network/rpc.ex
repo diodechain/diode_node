@@ -282,6 +282,9 @@ defmodule Network.Rpc do
         outgoing = Network.Stats.get(:edge_traffic_out)
 
         result(%{
+          address: Wallet.address!(Diode.wallet()) |> Base16.encode(),
+          name: Diode.Config.get("NAME"),
+          uptime: Diode.uptime(),
           devices: map_size(Network.Server.get_connections(Network.EdgeV2)),
           incoming: incoming,
           outgoing: outgoing,

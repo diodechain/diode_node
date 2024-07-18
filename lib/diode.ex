@@ -228,6 +228,7 @@ defmodule Diode do
       ["tickets", TicketStore.epoch_score()],
       ["uptime", Diode.uptime()],
       ["time", System.os_time()],
+      ["name", Diode.Config.get("NAME")],
       ["block", RemoteChain.peaknumber(Chains.Moonbeam)]
     ])
     |> Object.Server.sign(Wallet.privkey!(Diode.wallet()))
