@@ -40,6 +40,7 @@ defmodule Diode.Cmd do
     IO.puts("Previous Epoch   : #{epoch - 1}")
     IO.puts("Ticket Score     : #{TicketStore.epoch_score(epoch - 1)}")
     IO.puts("")
+    IO.puts("Dashboard        : https://diode.io/network/#/node/#{Wallet.base16(Diode.wallet())}")
   end
 
   def env() do
