@@ -1,6 +1,0 @@
-#!/bin/bash
-if [[ $SNAP_UID -ne "0" ]]; then
-	echo "You need to be super user"
-	exit 1
-fi
-${SNAP}/bin/diode_node $*

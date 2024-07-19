@@ -1,0 +1,14 @@
+#!/bin/bash
+if [[ $1 == "elevated" ]]; then
+	shift
+	if [[ $SNAP_UID -ne "0" ]]; then
+		echo "You need to be super user"
+		exit 1
+	fi
+fi
+
+if [[ $1 == "rpc" ]]; then
+	${SNAP}/bin/diode_node $* | awk '/Function: list_dir. Process: application_controller/ { prev = 0; next } { if (prev) { print prev; } prev = $0; }'
+else
+	${SNAP}/bin/diode_node $*
+fi

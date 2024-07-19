@@ -7,6 +7,13 @@ defmodule Diode.Cmd do
     Diode.Config.configure()
   end
 
+  def flush_cache() do
+    DetsPlus.delete_all_objects(:remoterpc_cache)
+    DetsPlus.sync(:remoterpc_cache)
+    DetsPlus.delete_all_objects(Network.Stats.LRU)
+    DetsPlus.sync(Network.Stats.LRU)
+  end
+
   def status() do
     IO.puts("== Diode Node #{Wallet.base16(Diode.wallet())} ==")
     IO.puts("Name             : #{Diode.Config.get("NAME")}")
@@ -33,5 +40,11 @@ defmodule Diode.Cmd do
     IO.puts("Previous Epoch   : #{epoch - 1}")
     IO.puts("Ticket Score     : #{TicketStore.epoch_score(epoch - 1)}")
     IO.puts("")
+  end
+
+  def env() do
+    for {var, value} <- System.get_env() do
+      IO.puts("#{String.pad_trailing(var, 20)} = #{value}")
+    end
   end
 end

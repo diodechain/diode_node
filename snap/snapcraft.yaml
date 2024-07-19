@@ -36,6 +36,7 @@ parts:
       - unzip
       - zlib1g-dev
     stage-packages:
+      - awk
       - libncurses6
       - libstdc++6
       - libc6
@@ -53,10 +54,18 @@ apps:
     daemon: simple
 
   shell:
-    command: bin/run_elevated remote
+    command: bin/run elevated remote
+    plugs: [network, network-bind]
+
+  flush:
+    command: bin/run elevated rpc Diode.Cmd.status
     plugs: [network, network-bind]
 
   info:
-    command: bin/diode_node rpc Diode.Cmd.status
+    command: bin/run rpc Diode.Cmd.status
+    plugs: [network, network-bind]
+
+  env:
+    command: bin/run elevated rpc Diode.Cmd.env
     plugs: [network, network-bind]
 
