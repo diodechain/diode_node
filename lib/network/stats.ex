@@ -6,9 +6,9 @@ defmodule Network.Stats do
   Network statistics for bandwidth usage.
   """
   use GenServer
-  @ticks_per_second 10
+  @seconds_per_tick 60
   def init(_args) do
-    :timer.send_interval(@ticks_per_second * 1000, :tick)
+    :timer.send_interval(@seconds_per_tick * 1000, :tick)
     {:ok, dets} = DetsPlus.open_file(__MODULE__.LRU, file: Diode.data_dir("network_stats.dets+"))
     lru = DetsPlus.LRU.new(dets, 1_000_000)
     :persistent_term.put(__MODULE__.LRU, lru)
@@ -33,9 +33,9 @@ defmodule Network.Stats do
   end
 
   def get_history(from, to, stepping) do
-    from = from - rem(from, @ticks_per_second)
-    to = max(to - rem(to, @ticks_per_second), from)
-    stepping = max(stepping - rem(stepping, @ticks_per_second), 1)
+    from = from - rem(from, @seconds_per_tick)
+    to = max(to - rem(to, @seconds_per_tick), from)
+    stepping = max(stepping - rem(stepping, @seconds_per_tick), 1)
 
     Range.new(from, to, stepping)
     |> Enum.map(&{&1, DetsPlus.LRU.get(:persistent_term.get(__MODULE__.LRU), &1)})
@@ -62,11 +62,13 @@ defmodule Network.Stats do
   def handle_info(:tick, state) do
     # Adding common network counters
     counters =
-      Map.put(state.counters, :devices, map_size(Network.Server.get_connections(Network.EdgeV2)))
+      state.counters
+      |> Map.put(:devices, map_size(Network.Server.get_connections(Network.EdgeV2)))
+      |> Map.put(:ticket_score, TicketStore.epoch_score())
 
     # Roll up the counters
     tick_time = System.system_time(:second)
-    tick_time = tick_time - rem(tick_time, @ticks_per_second)
+    tick_time = tick_time - rem(tick_time, @seconds_per_tick)
     DetsPlus.LRU.put(state.lru, tick_time, counters)
     {:noreply, %{state | done_counters: counters, counters: %{}}}
   end
