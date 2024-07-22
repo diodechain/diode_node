@@ -464,6 +464,7 @@ defmodule Network.Rpc do
     case result do
       %{"result" => result} -> result(result)
       %{"error" => error, "code" => code} -> result(nil, code, error)
+      %{"message" => "Not found"} -> throw(:notfound)
     end
   end
 end
