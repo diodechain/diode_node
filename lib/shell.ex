@@ -110,7 +110,7 @@ defmodule Shell do
       :code.load_file(mod)
       Process.sleep(1000)
       :code.purge(mod)
-      mod.info(:compile)
+      mod.module_info(:compile)
     end
   end
 
