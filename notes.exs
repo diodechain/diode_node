@@ -1,3 +1,12 @@
+# Aug 1st
+
+node = Base16.decode("0x625dc9fb40390992c15f146a8b18850b27b663d6") |> Wallet.from_address()
+nodes = KademliaLight.network() |> KBuckets.to_list()
+
+Enum.find(nodes, fn n -> Wallet.equal?(n.node_id, node) end)
+
+Model.KademliaSql.object("ABC") |> Object.decode!()
+
 # Jul 11th
 
 token = "0x434116a99619f2B465A137199C38c1Aab0353913" |> Base16.decode()

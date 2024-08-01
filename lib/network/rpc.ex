@@ -322,6 +322,18 @@ defmodule Network.Rpc do
       "dio_network" ->
         conns = Network.Server.get_connections(Network.PeerHandlerV2)
 
+        connected =
+          Enum.map(conns, fn {address, _conn} ->
+            %{
+              connected: true,
+              last_seen: System.os_time(:second),
+              last_error: 0,
+              node_id: address,
+              node: Model.KademliaSql.object(Diode.hash(address)) |> Object.decode!(),
+              retries: 0
+            }
+          end)
+
         KademliaLight.network()
         |> KBuckets.to_list()
         |> Enum.filter(fn item -> not KBuckets.is_self(item) end)
@@ -337,6 +349,11 @@ defmodule Network.Rpc do
             retries: item.retries
           }
         end)
+        |> Enum.concat(connected)
+        |> Enum.reduce(%{}, fn item, acc ->
+          Map.put_new(acc, item.node_id, item)
+        end)
+        |> Map.values()
         |> result()
 
       "dio_proxy|" <> method ->
