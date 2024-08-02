@@ -8,7 +8,7 @@ if [[ $1 == "elevated" ]]; then
 fi
 
 if [[ $1 == "rpc" ]]; then
-	${SNAP}/bin/diode_node $* | awk '/Function: list_dir. Process: application_controller/ { prev = 0; next } { if (prev != 0) { print prev; } prev = $0; } END { if (prev != 0) { print prev; } }'
+	${SNAP}/bin/diode_node $* | awk '/Function: list_dir. Process: application_controller/ { prev = 0; next } /Function: get_file. Process: code_server/ { prev = 0; next } { if (prev != 0) { print prev; } prev = $0; } END { if (prev != 0) { print prev; } }'
 else
 	${SNAP}/bin/diode_node $*
 fi
