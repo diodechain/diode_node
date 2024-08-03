@@ -49,7 +49,8 @@ defmodule Diode do
         Cron,
         supervisor(Channels),
         {PubSub, args},
-        {DetsPlus, name: :remoterpc_cache}
+        {DetsPlus,
+         name: :remoterpc_cache, auto_save_memory: 100_000_000, page_cache_memory: 100_000_000}
       ]
 
     with {:ok, pid} <-

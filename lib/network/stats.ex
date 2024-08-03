@@ -9,7 +9,14 @@ defmodule Network.Stats do
   @seconds_per_tick 60
   def init(_args) do
     :timer.send_interval(@seconds_per_tick * 1000, :tick)
-    {:ok, dets} = DetsPlus.open_file(__MODULE__.LRU, file: Diode.data_dir("network_stats.dets+"))
+
+    {:ok, dets} =
+      DetsPlus.open_file(__MODULE__.LRU,
+        file: Diode.data_dir("network_stats.dets+"),
+        auto_save_memory: 100_000_000,
+        page_cache_memory: 100_000_000
+      )
+
     lru = DetsPlus.LRU.new(dets, 1_000_000)
     :persistent_term.put(__MODULE__.LRU, lru)
     {:ok, %{counters: %{}, done_counters: %{}, lru: lru}}
