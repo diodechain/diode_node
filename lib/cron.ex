@@ -9,7 +9,8 @@ defmodule Cron do
   def init(_) do
     jobs = [
       {"Broadcast Self", 5 * 60, &Diode.broadcast_self/0},
-      {"Reload Cert", 24 * 60 * 60, &Diode.maybe_import_key/0}
+      {"Reload Cert", 24 * 60 * 60, &Diode.maybe_import_key/0},
+      {"Check connectivity", 1 * 60 * 60, &Diode.check_connectivity/0}
     ]
 
     for {name, seconds, fun} <- jobs do

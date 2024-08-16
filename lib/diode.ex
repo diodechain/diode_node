@@ -243,6 +243,22 @@ defmodule Diode do
     )
   end
 
+  def check_connectivity() do
+    #  "https://monitor.testnet.diode.io/ip/self?ports=#{Enum.join([peer2_port() | edge2_ports()], ",")}",
+    case HTTPoison.get("https://monitor.testnet.diode.io/ip/self", [],
+           recv_timeout: 20_000,
+           timeout: 20_000
+         ) do
+      {:ok, %{status_code: 200, body: body}} ->
+        Logger.info("check_connectivity: #{body}")
+        %{"ip" => ip, "ports" => _ports} = Jason.decode!(body)
+        Diode.Config.set("HOST", ip)
+
+      {:error, reason} ->
+        Logger.error("check_connectivity: #{inspect(reason)}")
+    end
+  end
+
   def maybe_import_key() do
     paths =
       ["priv", System.get_env("CERT_PATH", ""), System.get_env("PARENT_CWD", "")]
