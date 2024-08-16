@@ -1,3 +1,15 @@
+# Aug 17th
+
+now = System.os_time(:second)
+KademliaLight.network() |> KBuckets.to_list() |> Enum.reject(fn n -> KBuckets.is_self(n) or n.last_connected == nil end) |> Enum.reject(fn n -> now - n.last_connected < 60*30 end) |> length()
+network |> KBuckets.to_list() |> Enum.reject(fn n -> KBuckets.is_self(n) end) |> Enum.reject(fn n -> now - n.last_connected < 60*30 end) |> length()
+
+network = KademliaLight.network()
+deadline = System.os_time(:second) - 60 * 30
+stale = KBuckets.to_list(network) |> Enum.reject(fn n -> KBuckets.is_self(n) end) |> Enum.reject(fn n -> n.last_connected > deadline end)
+network = Enum.reduce(stale, network, fn stale_node, network -> KBuckets.delete_item(network, stale_node) end)
+
+
 # Aug 1st
 
 node = Base16.decode("0x625dc9fb40390992c15f146a8b18850b27b663d6") |> Wallet.from_address()

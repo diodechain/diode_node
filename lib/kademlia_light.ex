@@ -167,6 +167,33 @@ defmodule KademliaLight do
   end
 
   @impl true
+  def handle_info(:clean, state = %KademliaLight{network: network}) do
+    # Remove all nodes who haven't connected in the last 30 hours
+    deadline = System.os_time(:second) - 60 * 30
+
+    stale =
+      KBuckets.to_list(network)
+      |> Enum.reject(fn n -> KBuckets.is_self(n) end)
+      |> Enum.reject(fn n -> n.last_connected > deadline end)
+
+    if length(stale) > 0 do
+      network =
+        Enum.reduce(stale, network, fn stale_node, network ->
+          KBuckets.delete_item(network, stale_node)
+        end)
+
+      state = %{state | network: network}
+
+      spawn(fn ->
+        for stale_node <- stale, do: redistribute_stale(network, stale_node)
+      end)
+
+      {:noreply, state}
+    else
+      {:noreply, state}
+    end
+  end
+
   def handle_info(:save, state) do
     spawn(fn -> Model.File.store(Diode.data_dir(@storage_file), state, true) end)
     Process.send_after(self(), :save, 60_000)
@@ -347,6 +374,44 @@ defmodule KademliaLight do
     Enum.each(objs, fn {key, value} -> rpcast(node, [PeerHandlerV2.store(), key, value]) end)
   end
 
+  @doc """
+    opposite operation of redistribute() resends all key/values belonged to a now missing
+    node to the still existing neighbouring nodes
+  """
+  @max_key 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF
+  def redistribute_stale(network, %KBuckets.Item{} = node) do
+    online = Network.Server.get_connections(PeerHandlerV2)
+
+    {previ, prev} =
+      case filter_online(KBuckets.prev(network, node), online) do
+        [prev | _] -> {KBuckets.integer(prev), prev}
+        [] -> {KBuckets.integer(node), nil}
+      end
+
+    nodei = KBuckets.integer(node)
+
+    {nexti, next} =
+      case filter_online(KBuckets.next(network, node), online) do
+        [next | _] -> {KBuckets.integer(next), next}
+        [] -> {KBuckets.integer(node), nil}
+      end
+
+    nodes = Enum.filter([prev, next], fn x -> x != nil end)
+
+    if nodes != [] do
+      range_start = rem(div(previ + nodei, 2), @max_key)
+      range_end = rem(div(nexti + nodei, 2), @max_key)
+
+      objs = KademliaSql.objects(range_start, range_end)
+
+      for {key, value} <- objs do
+        for node <- nodes do
+          rpcast(node, [PeerHandlerV2.store(), key, value])
+        end
+      end
+    end
+  end
+
   # -------------------------------------------------------------------------------------
   # Helpers calls
   # -------------------------------------------------------------------------------------
@@ -371,6 +436,9 @@ defmodule KademliaLight do
       end
     end
 
+    # Clean dead nodes every 10 minutes
+    :timer.send_interval(10 * 60 * 1000, :clean)
+
     {:ok, kb, {:continue, :seed}}
   end
 
@@ -379,6 +447,10 @@ defmodule KademliaLight do
     call(fn _from, _state ->
       {:reply, :ok, %KademliaLight{network: KBuckets.new()}}
     end)
+  end
+
+  def clean() do
+    send(__MODULE__, :clean)
   end
 
   def append(key, value, store_self \\ false) do
