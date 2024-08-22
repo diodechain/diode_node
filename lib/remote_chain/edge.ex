@@ -72,16 +72,12 @@ defmodule RemoteChain.Edge do
           |> Base16.decode()
 
         storage_root =
-          if code == "" do
-            ""
-          else
-            RemoteChain.RPCCache.get_account_root(
-              chain,
-              hex_address(address),
-              hex_blockref(block)
-            )
-            |> Base16.decode()
-          end
+          RemoteChain.RPCCache.get_account_root(
+            chain,
+            hex_address(address),
+            hex_blockref(block)
+          )
+          |> Base16.decode()
 
         response(%{
           nonce:

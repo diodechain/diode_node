@@ -185,14 +185,18 @@ defmodule RemoteChain.RPCCache do
 
   def get_account_root(chain, address, block)
       when chain in [Chains.MoonbaseAlpha, Chains.Moonbeam, Chains.Moonriver] do
-    block = resolve_block(chain, block)
-    # this code is specific to Moonbeam (EVM on Substrate) simulating the account_root
-    # we're now using the `ChangeTracker.sol` slot for signaling: 0x1e4717b2dc5dfd7f487f2043bfe9999372d693bf4d9c51b5b84f1377939cd487
+    if Base16.decode(get_code(chain, address, block)) == "" do
+      "0x"
+    else
+      block = resolve_block(chain, block)
+      # this code is specific to Moonbeam (EVM on Substrate) simulating the account_root
+      # we're now using the `ChangeTracker.sol` slot for signaling: 0x1e4717b2dc5dfd7f487f2043bfe9999372d693bf4d9c51b5b84f1377939cd487
 
-    last_change = get_last_change(chain, address, block)
+      last_change = get_last_change(chain, address, block)
 
-    Hash.keccak_256(address <> "#{last_change}")
-    |> Base16.encode()
+      Hash.keccak_256(address <> "#{last_change}")
+      |> Base16.encode()
+    end
   end
 
   def rpc!(chain, method, params) do
