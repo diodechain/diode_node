@@ -50,12 +50,15 @@ defmodule Diode do
         supervisor(Channels),
         {PubSub, args},
         {DetsPlus,
-         name: :remoterpc_cache, auto_save_memory: 100_000_000, page_cache_memory: 100_000_000}
+         name: :remoterpc_cache,
+         auto_save_memory: 100_000_000,
+         page_cache_memory: 100_000_000,
+         file: data_dir("remoterpc.cache")}
       ]
 
     with {:ok, pid} <-
            Supervisor.start_link(children, strategy: :rest_for_one, name: Diode.Supervisor) do
-      cache = DetsPlus.LRU.new(:remoterpc_cache, 1_000_000, fn obj -> obj != nil end)
+      cache = DetsPlus.HashLRU.new(:remoterpc_cache, 1_000_000, fn obj -> obj != nil end)
 
       [
         Enum.map(RemoteChain.chains(), fn chain ->

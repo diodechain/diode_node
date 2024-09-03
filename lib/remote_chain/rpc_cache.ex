@@ -90,7 +90,11 @@ defmodule RemoteChain.RPCCache do
         {:rpc, "eth_getStorageAt", [address, slot, Base16.encode(block, false)]}
       end)
       |> Enum.map(fn rpc = {:rpc, method, params} ->
-        {rpc, Cache.get(cache, {chain, method, params})}
+        with %{"result" => result} <- Cache.get(cache, {chain, method, params}) do
+          {rpc, result}
+        else
+          _ -> {rpc, nil}
+        end
       end)
 
     calls =
@@ -118,7 +122,7 @@ defmodule RemoteChain.RPCCache do
 
     Enum.zip(calls, call_results)
     |> Enum.reduce(cache_results, fn {rpc, result}, cache_results ->
-      List.keyreplace(cache_results, 1, rpc, {rpc, result})
+      List.keyreplace(cache_results, rpc, 0, {rpc, result})
     end)
     |> Enum.map(fn {_, result} -> result end)
   end
