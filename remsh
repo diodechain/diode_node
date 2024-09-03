@@ -4,4 +4,4 @@
 # Licensed under the Diode License, Version 1.1
 export ERL_EPMD_ADDRESS=127.0.0.1
 export MIX_ENV=prod
-exec iex --sname remsh_$$ --remsh diode
+exec iex --sname remsh_$$ --remsh diode_light

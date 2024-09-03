@@ -83,25 +83,44 @@ defmodule RemoteChain.RPCCache do
     # any contract not using change tracking will suffer 240 blocks (one hour) of caching
     block = get_last_change(chain, address, block)
 
-    calls =
+    cache = GenServer.call(name(chain), :cache, @default_timeout)
+
+    cache_results =
       Enum.map(slots, fn slot ->
         {:rpc, "eth_getStorageAt", [address, slot, Base16.encode(block, false)]}
       end)
+      |> Enum.map(fn rpc = {:rpc, method, params} ->
+        {rpc, Cache.get(cache, {chain, method, params})}
+      end)
 
-    RemoteChain.Util.batch_call(name(chain), calls, @default_timeout)
-    |> Enum.map(fn
-      {:reply, %{"result" => result}} ->
-        result
+    calls =
+      Enum.filter(cache_results, fn
+        {_, nil} -> true
+        _ -> false
+      end)
+      |> Enum.map(fn {rpc, _} -> rpc end)
 
-      {:reply, %{"error" => error}} ->
-        raise "RPC error in get_storage_many(#{inspect({chain, address, slots, block})}): #{inspect(error)}"
+    call_results =
+      RemoteChain.Util.batch_call(name(chain), calls, @default_timeout)
+      |> Enum.map(fn
+        {:reply, %{"result" => result}} ->
+          result
 
-      {:error, reason} ->
-        raise "Batch error in get_storage_many(#{inspect({chain, address, slots, block})}): #{inspect(reason)}"
+        {:reply, %{"error" => error}} ->
+          raise "RPC error in get_storage_many(#{inspect({chain, address, slots, block})}): #{inspect(error)}"
 
-      :timeout ->
-        raise "Timeout error in get_storage_many(#{inspect({chain, address, slots, block})})"
+        {:error, reason} ->
+          raise "Batch error in get_storage_many(#{inspect({chain, address, slots, block})}): #{inspect(reason)}"
+
+        :timeout ->
+          raise "Timeout error in get_storage_many(#{inspect({chain, address, slots, block})})"
+      end)
+
+    Enum.zip(calls, call_results)
+    |> Enum.reduce(cache_results, fn {rpc, result}, cache_results ->
+      List.keyreplace(cache_results, 1, rpc, {rpc, result})
     end)
+    |> Enum.map(fn {_, result} -> result end)
   end
 
   def call(chain, to, from, data, block \\ "latest") do
@@ -126,14 +145,15 @@ defmodule RemoteChain.RPCCache do
 
   def get_last_change(chain, address, block \\ "latest") do
     block = resolve_block(chain, block)
+    cache = GenServer.call(name(chain), :cache, @default_timeout)
 
     if chain in [Chains.Diode, Chains.DiodeDev, Chains.DiodeStaging] do
-      case GenServer.call(name(chain), {:cache, {:last_change_block, block}}) do
+      case Cache.get(cache, {chain, {:last_change_block, block}}) do
         nil ->
           root =
             get_account_root(chain, address, block)
 
-          case GenServer.call(name(chain), {:cache, {:last_change_root, root}}) do
+          case Cache.get(cache, {chain, {:last_change_root, root}}) do
             nil ->
               GenServer.cast(name(chain), {:set_cache, {:last_change_root, root}, block})
               GenServer.cast(name(chain), {:set_cache, {:last_change_block, block}, block})
@@ -210,7 +230,19 @@ defmodule RemoteChain.RPCCache do
   end
 
   def rpc(chain, method, params) do
-    GenServer.call(name(chain), {:rpc, method, params}, @default_timeout)
+    cache = GenServer.call(name(chain), :cache, @default_timeout)
+
+    case Cache.get(cache, {chain, method, params}) do
+      nil ->
+        GenServer.call(name(chain), {:rpc, method, params}, @default_timeout)
+
+      result ->
+        if :rand.uniform() < 0.1 do
+          GenServer.cast(name(chain), {:refresh, method, params})
+        end
+
+        result
+    end
   end
 
   @impl true
@@ -226,25 +258,19 @@ defmodule RemoteChain.RPCCache do
     {:reply, number, state}
   end
 
-  def handle_call({:rpc, method, params}, from, state = %RPCCache{chain: chain, cache: cache}) do
-    case Cache.get(cache, {chain, method, params}) do
-      nil ->
-        {:noreply, send_request(method, params, from, state)}
-
-      result ->
-        cond do
-          not should_cache_result(result) -> {:noreply, send_request(method, params, from, state)}
-          :rand.uniform() < 0.1 -> {:reply, result, send_request(method, params, nil, state)}
-          true -> {:reply, result, state}
-        end
-    end
+  def handle_call(:cache, _from, state = %RPCCache{cache: cache}) do
+    {:reply, cache, state}
   end
 
-  def handle_call({:cache, key}, _from, state = %RPCCache{chain: chain, cache: cache}) do
-    {:reply, Cache.get(cache, {chain, key}), state}
+  def handle_call({:rpc, method, params}, from, state = %RPCCache{}) do
+    {:noreply, send_request(method, params, from, state)}
   end
 
   @impl true
+  def handle_cast({:refresh, method, params}, state = %RPCCache{}) do
+    {:noreply, send_request(method, params, nil, state)}
+  end
+
   def handle_cast({:set_cache, key, value}, state = %RPCCache{chain: chain, cache: cache}) do
     cache = Cache.put(cache, {chain, key}, value)
     {:noreply, %RPCCache{state | cache: cache}}
