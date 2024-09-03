@@ -251,7 +251,7 @@ defmodule Diode do
          ) do
       {:ok, %{status_code: 200, body: body}} ->
         Logger.info("check_connectivity: #{body}")
-        %{"ip" => ip, "ports" => _ports} = Jason.decode!(body)
+        %{"ip" => ip, "ports" => _ports} = Poison.decode!(body)
         Diode.Config.set("HOST", ip)
 
       {:error, reason} ->
