@@ -10,7 +10,7 @@ end
 defmodule Diode.Mixfile do
   use Mix.Project
 
-  @vsn "1.2.8"
+  @vsn "1.2.9"
   @url "https://github.com/diodechain/diode_node"
 
   def project do
