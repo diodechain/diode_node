@@ -367,6 +367,10 @@ defmodule RemoteChain.RPCCache do
                 if should_cache_method(method, params) and should_cache_result(ret) do
                   %RPCCache{state | cache: Cache.put(cache, {chain, method, params}, ret)}
                 else
+                  Logger.info(
+                    "Not caching rpc request result #{inspect(ret)} from: #{inspect({method, params})}"
+                  )
+
                   state
                 end
 
@@ -410,12 +414,11 @@ defmodule RemoteChain.RPCCache do
     true
   end
 
-  defp should_cache_result({:error, _}) do
-    false
+  defp should_cache_result(%{"result" => _}) do
+    true
   end
 
   defp should_cache_result(_ret) do
-    # IO.inspect(ret, label: "should_cache_result")
-    true
+    false
   end
 end
