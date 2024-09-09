@@ -294,16 +294,14 @@ defmodule Network.EdgeV2 do
           response(online)
 
         ["getobject", key] ->
-          case KademliaLight.find_value(key) do
-            nil -> nil
-            binary -> Object.encode_list!(Object.decode!(binary))
+          with binary when binary != nil <- KademliaLight.find_value(key) do
+            Object.encode_list!(Object.decode!(binary))
           end
           |> response()
 
         ["getnode", node] ->
-          case KademliaLight.find_node(node) do
-            nil -> nil
-            item -> Object.encode_list!(KBuckets.object(item))
+          with object when object != nil <- KademliaLight.find_node_object(node) do
+            Object.encode_list!(object)
           end
           |> response()
 

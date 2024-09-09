@@ -25,10 +25,6 @@ defmodule KademliaLight do
     GenServer.start_link(__MODULE__, :ok, name: __MODULE__, hibernate_after: 5_000)
   end
 
-  def ping(node_id) do
-    rpc(find_node(node_id), [PeerHandlerV2.ping()])
-  end
-
   @doc """
     store/1 same as store/2 but usees Object.key/1 and Object.encode/1
   """
@@ -107,19 +103,31 @@ defmodule KademliaLight do
     end
   end
 
-  def find_node(address) do
+  @doc """
+    find_node_object() is an power-up version of find_value()
+    in that it first search in it's own kbuckets network
+    and then secondly visits the value store
+  """
+  def find_node_object(address) do
     case find_nodes(address) do
       [] ->
         nil
 
       [first | _] ->
         case Wallet.address!(first.node_id) do
-          ^address -> first
+          ^address -> KBuckets.object(first)
           _ -> nil
         end
-    end
+    end ||
+      with binary when is_binary(binary) <- find_value(address) do
+        Object.decode!(binary)
+      end
   end
 
+  @doc """
+    find_nodes() is following the kademlia paper 'find_node' algorithm.
+    It returns the nodes that are closest to the given address.
+  """
   def find_nodes(key) do
     key = hash(key)
     visited = do_find_nodes(key, KBuckets.k(), PeerHandlerV2.find_node())

@@ -230,9 +230,9 @@ defmodule Network.Rpc do
       "dio_getNode" ->
         node = Base16.decode(hd(params))
 
-        case KademliaLight.find_node(node) do
+        case KademliaLight.find_node_object(node) do
           nil -> result(nil, 404)
-          item -> result(Object.encode_list!(KBuckets.object(item)))
+          object -> result(Object.encode_list!(object))
         end
 
       "dio_traffic" ->
@@ -369,12 +369,11 @@ defmodule Network.Rpc do
            ] do
           result(nil, 400)
         else
-          case KademliaLight.find_node(node) do
+          case KademliaLight.find_node_object(node) do
             nil ->
               result(nil, 404)
 
-            item ->
-              server = KBuckets.object(item)
+            server ->
               host = Object.Server.host(server)
 
               request = %{

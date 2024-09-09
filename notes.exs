@@ -1,3 +1,21 @@
+# Sep 9th
+
+ddriveupdate = <<53, 72, 15, 77, 228, 34, 130, 125, 79, 216, 12, 71, 165, 207, 95, 47, 70, 34, 242, 170>>
+KademliaLight.find_value(ddriveupdate) |> Object.decode!()
+
+KademliaLight.find_value(key) |> Object.decode!()
+
+key = KademliaLight.hash(ddriveupdate)
+Model.KademliaSql.object(key) |> Object.decode!()
+
+us2 = Base16.decode("0x7e4cd38d266902444dc9c8f7c0aa716a32497d0b")
+as1 = Base16.decode("0x68e0bafdda9ef323f692fc080d612718c941d120")
+
+KademliaLight.find_value(us2)
+KademliaLight.find_node(us2)
+KademliaLight.find_node(as1)
+
+
 # Aug 17th
 
 now = System.os_time(:second)
