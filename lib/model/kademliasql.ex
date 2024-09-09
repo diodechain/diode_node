@@ -41,8 +41,17 @@ defmodule Model.KademliaSql do
         existing ->
           existing_object = Object.decode!(existing)
 
-          if Object.block_number(existing_object) < Object.block_number(object) do
-            put_object(hkey, Object.encode!(object))
+          case {Object.modname(existing_object), Object.modname(object)} do
+            {Object.TicketV1, Object.TicketV2} ->
+              put_object(hkey, Object.encode!(object))
+
+            {Object.TicketV2, Object.TicketV1} ->
+              nil
+
+            _ ->
+              if Object.block_number(existing_object) < Object.block_number(object) do
+                put_object(hkey, Object.encode!(object))
+              end
           end
       end
     end
