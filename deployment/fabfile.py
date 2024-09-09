@@ -15,7 +15,7 @@ if len(env.hosts) == 0:
   env.hosts=[
     "root@eu1.prenet.diode.io", "root@eu2.prenet.diode.io",
     "root@us1.prenet.diode.io", "root@us2.prenet.diode.io",
-    "root@as1.prenet.diode.io", "root@as2.prenet.diode.io", "root@as3.prenet.diode.io",
+    "root@as1.prenet.diode.io", "root@as2.prenet.diode.io",
   ]
 
 # Install on Ubuntu 18.04
