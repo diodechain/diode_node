@@ -1,3 +1,27 @@
+# Sep 11th
+
+from = "0xdD1970aFe4D76038D5f0F4a44d9Cb435450c623a"
+to = "0x8a093e3A83F63A00FFFC4729aa55482845a49294"
+data = "0x3e49fb7e00000000000000000000000000000000000000000000000000000000000000400000000000000000000000006a91521d1adc31ca434cb5346d9d95ce4b244a68000000000000000000000000000000000000000000000000000000000000000f64696f6465746573742d68723231350000000000000000000000000000000000"
+method = "eth_call"
+params = [%{to: to, data: data, from: from}, 7408732]
+{:ok, tx} = RemoteChain.HTTP.rpc(url, method, params)
+
+
+
+anvil --fork-url https://moonbeam.unitedbloc.com:3000 -p1454
+
+url = "https://moonbeam.api.onfinality.io/rpc?apikey=49e8baf7-14c3-4d0f-916a-94abf1c4c14a"
+url = "https://moonbeam.unitedbloc.com:3000"
+url = "http://localhost:1454"
+tx_hash = "0x3db297eb5ea034a01ff795de5ab4b0bcc4ef582a952d8840abc8036ccc093d39"
+{:ok, trace} = RemoteChain.HTTP.rpc(url, "debug_traceTransaction", [tx_hash])
+
+
+{:ok, tx} = RemoteChain.HTTP.rpc(url, "eth_getTransactionByHash", [tx_hash])
+
+
+
 # Sep 9th
 
 ddriveupdate = <<53, 72, 15, 77, 228, 34, 130, 125, 79, 216, 12, 71, 165, 207, 95, 47, 70, 34, 242, 170>>

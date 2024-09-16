@@ -10,7 +10,7 @@ description: |
   through always end-to-end encrypted channels. Hosting a Diode relay node extends
   the network and is rewarded when the new diode relay node is used by other devices. 
 
-grade: devel # must be 'stable' to release into candidate/stable channels
+grade: stable # must be 'stable' to release into candidate/stable channels
 confinement: strict # use 'strict' once you have the right plugs and slots
 
 parts:
