@@ -43,3 +43,25 @@ defimpl RemoteChain.Cache, for: DetsPlus.HashLRU do
     cache
   end
 end
+
+defimpl RemoteChain.Cache, for: BinaryLRU.Handle do
+  def get(cache, key) do
+    BinaryLRU.get(cache, key)
+  end
+
+  def put(cache, key, value) do
+    BinaryLRU.put(cache, key, value)
+    cache
+  end
+end
+
+defimpl RemoteChain.Cache, for: CacheChain do
+  def get(cache, key) do
+    CacheChain.get(cache, key)
+  end
+
+  def put(cache, key, value) do
+    CacheChain.put(cache, key, value)
+    cache
+  end
+end
