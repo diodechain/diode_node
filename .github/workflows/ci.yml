@@ -9,13 +9,14 @@ jobs:
     - name: Install deps
       run: sudo apt-get install -y libboost-dev libboost-system-dev
 
+    - uses: actions/checkout@v1
+    
     - name: Setup elixir
       uses: erlef/setup-beam@v1
       with:
         version-file: .tool-versions
         version-type: strict
 
-    - uses: actions/checkout@v1
     - run: |
         mix local.hex --force
         mix local.rebar --force

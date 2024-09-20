@@ -116,8 +116,7 @@ defmodule BinaryLRU do
       key_queue = :queue.delete({key, byte_size(data)}, key_queue)
       {:noreply, %BinaryLRU{state | current_size: current_size, key_queue: key_queue}}
     else
-      other ->
-        IO.inspect(other, label: "other")
+      _other ->
         {:noreply, state}
     end
   end
