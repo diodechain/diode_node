@@ -23,21 +23,6 @@ After installation all configuration values are available via the snap config sy
 sudo snap get diode-node
 ```
 
-# Default Ports
-
-TCP port bindings can be controlled through environment variables. The default bindings are:
-
-| Variable     | Description                       | Default Port(s) |
-| --------     | -----------                       | ---- |
-| `RPC_PORT`   | Ethereum JSON API endpoint        | 8545
-| `RPCS_PORT`  | SSL version of `RPC_PORT`*        | 8443
-| `EDGE2_PORT` | Client Communication Port         | 41046,443,993,1723,10000
-| `PEER2_PORT`  | Miner-To-Miner Communication Port | 51054
-
-`RPCS_PORT` is only used & needed for access from Web2 services such as the blockchain explorer at https://diode.io/prenet/ - the port can be ignored in most deployments.
-
-`EDGE2_PORT` and `PEER2_PORT` support multiple port numbers given by a comma separated list.
-
 # Linux Kernel optimization
 
 To optimize Linux for maximum network performance we advise to enable tcp bbr:
