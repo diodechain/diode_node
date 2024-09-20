@@ -45,7 +45,7 @@ parts:
     override-pull: |
       craftctl default
       craftctl set version="$(git describe --tags)"
-      craftctl set grade="devel"
+      craftctl set grade="stable"
 
 apps:
   diode-node:
