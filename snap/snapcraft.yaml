@@ -25,9 +25,6 @@ parts:
       - git
       - libc6
       - libgmp3-dev
-      - libsctp-dev
-      - libssh-dev
-      - libssl-dev
       - libstdc++6
       - libtool
       - make
@@ -40,7 +37,6 @@ parts:
       - libncurses6
       - libstdc++6
       - libc6
-      - libssl3
       - zlib1g
     override-pull: |
       craftctl default

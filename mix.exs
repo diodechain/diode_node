@@ -89,6 +89,7 @@ defmodule Diode.Mixfile do
       {:exqlite, "~> 0.17"},
       {:httpoison, "~> 2.0"},
       {:keccakf1600, github: "diodechain/erlang-keccakf1600"},
+      # {:libsecp256k1, path: "../libsecp256k1"},
       {:libsecp256k1, github: "diodechain/libsecp256k1"},
       {:oncrash, "~> 0.0"},
       {:plug_cowboy, "~> 2.5"},
