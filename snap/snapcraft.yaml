@@ -35,7 +35,7 @@ parts:
       - unzip
       - zlib1g-dev
     stage-packages:
-      - awk
+      - mawk
       - libsigsegv2
       - libncurses6
       - libstdc++6
