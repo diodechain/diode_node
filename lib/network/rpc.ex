@@ -264,7 +264,7 @@ defmodule Network.Rpc do
                total_bytes: Enum.map(tickets, &Ticket.total_bytes/1) |> Enum.sum(),
                total_connections: Enum.map(tickets, &Ticket.total_connections/1) |> Enum.sum(),
                total_score: Enum.map(tickets, &Ticket.score/1) |> Enum.sum(),
-               state: Contract.Registry.fleet(chain_id, fleet, Base16.encode(block, false))
+               state: Contract.Registry.fleet(chain_id, fleet, encode16(block))
              }}
           end)
           |> Map.new()
@@ -282,13 +282,13 @@ defmodule Network.Rpc do
         outgoing = Network.Stats.get(:edge_traffic_out)
 
         raw_result(%{
-          address: Wallet.address!(Diode.wallet()) |> Base16.encode(),
+          address: Wallet.address!(Diode.wallet()) |> encode16(),
           name: Diode.Config.get("NAME"),
-          uptime: Base16.encode(Diode.uptime(), false),
-          devices: Base16.encode(map_size(Network.Server.get_connections(Network.EdgeV2)), false),
-          incoming: Base16.encode(incoming, false),
-          outgoing: Base16.encode(outgoing, false),
-          total: Base16.encode(incoming + outgoing, false)
+          uptime: encode16(Diode.uptime()),
+          devices: encode16(map_size(Network.Server.get_connections(Network.EdgeV2))),
+          incoming: encode16(incoming),
+          outgoing: encode16(outgoing),
+          total: encode16(incoming + outgoing)
         })
 
       "dio_usageHistory" ->
@@ -307,7 +307,7 @@ defmodule Network.Rpc do
                     "#{key}:nil"
 
                   {key, address} when is_atom(key) ->
-                    "#{key}:#{Base16.encode(address)}"
+                    "#{key}:#{encode16(address)}"
                 end
 
               {key, value}
@@ -328,11 +328,14 @@ defmodule Network.Rpc do
           Enum.map(conns, fn {address, _conn} ->
             %{
               connected: true,
-              last_seen: Base16.encode(System.os_time(:second), false),
-              last_error: Base16.encode(0, false),
-              node_id: address,
-              node: Model.KademliaSql.object(Diode.hash(address)) |> Object.decode!(),
-              retries: Base16.encode(0, false)
+              last_seen: encode16(System.os_time(:second)),
+              last_error: encode16(0),
+              node_id: encode16(address),
+              node:
+                Model.KademliaSql.object(Diode.hash(address))
+                |> Object.decode!()
+                |> Json.prepare!(big_x: false),
+              retries: encode16(0)
             }
           end)
 
@@ -344,11 +347,11 @@ defmodule Network.Rpc do
 
           %{
             connected: Map.has_key?(conns, Wallet.address!(item.node_id)),
-            last_seen: Base16.encode(item.last_connected, false),
-            last_error: Base16.encode(item.last_error, false),
-            node_id: address,
-            node: KBuckets.object(item),
-            retries: Base16.encode(item.retries, false)
+            last_seen: encode16(item.last_connected),
+            last_error: encode16(item.last_error),
+            node_id: encode16(address),
+            node: Json.prepare!(KBuckets.object(item), big_x: false),
+            retries: encode16(item.retries)
           }
         end)
         |> Enum.concat(connected)
@@ -462,7 +465,7 @@ defmodule Network.Rpc do
 
     nonce =
       if nonce == nil do
-        RemoteChain.RPC.get_transaction_count(chain_id, Base16.encode(Wallet.address!(wallet)))
+        RemoteChain.RPC.get_transaction_count(chain_id, encode16(Wallet.address!(wallet)))
         |> Base16.decode_int()
       else
         nonce
@@ -505,4 +508,7 @@ defmodule Network.Rpc do
       %{"message" => "Not found"} -> throw(:notfound)
     end
   end
+
+  defp encode16(nil), do: nil
+  defp encode16(value), do: Base16.encode(value, false)
 end
