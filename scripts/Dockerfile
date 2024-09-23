@@ -4,16 +4,18 @@
 ARG BASE_IMAGE=ubuntu:18.04
 FROM ${BASE_IMAGE}
 
-ARG PLATFORM
-ENV PLATFORM=${PLATFORM:-x86_64}
-RUN bash -c 'if [[ ${PLATFORM} == *"arm"* ]]; then dpkg --add-architecture arm64 && apt-get update && apt-get install -y libc6:arm64 libstdc++6:arm64; fi'
-
 # Installing deps
 RUN apt-get update
 RUN apt-get install -y \
     wget zlib1g-dev autoconf libtool \
-    libssh-dev libgmp3-dev libsctp-dev git \
+    libgmp3-dev git \
     curl g++ make unzip procps libc6 libstdc++6
+
+# Installing libncurses for terminfo but ensuring
+# it's statically linked:
+RUN apt-get install -y libncurses-dev
+RUN dpkg -L libncurses5-dev | grep ".so" | xargs rm
+RUN dpkg -L libtinfo-dev | grep ".so" | xargs rm
 
 ENV MIX_ENV=prod
 
@@ -22,6 +24,7 @@ ENV OTP_VERSION=${OTP_VERSION:-OTP-26.2.5.3}
 ARG OTP_GITHUB_URL
 ENV OTP_GITHUB_URL=${OTP_GITHUB_URL:-https://github.com/erlang/otp.git}
 
+ENV MAKEFLAGS="-j4"
 ENV CFLAGS="-O3"
 ENV ELIXIR_ERL_OPTIONS="+fnu"
 ARG ELIXIR_VERSION
@@ -40,7 +43,7 @@ RUN git clone https://github.com/asdf-vm/asdf.git ${ASDF_DIR} && \
     asdf plugin add erlang && \
     echo "erlang ref:${OTP_VERSION}" >> .tool-versions
 
-ENV KERL_CONFIGURE_OPTIONS="--disable-odbc --disable-javac --disable-debug --with-ssl=/usr/local/openssl/ --disable-dynamic-ssl-lib --without-cdv --without-termcap"
+ENV KERL_CONFIGURE_OPTIONS="--disable-odbc --disable-javac --disable-debug --with-ssl=/usr/local/openssl/ --disable-dynamic-ssl-lib --without-cdv"
 RUN . ${ASDF_DIR}/asdf.sh && asdf install
 
 COPY mix.* /app/
