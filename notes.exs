@@ -1,9 +1,19 @@
 # Sep 23rd
 
+Network.Rpc.execute_dio("dio_usageHistory", [1727072000, 1727100800, 300])
+Network.Rpc.execute_dio("dio_proxy|dio_usageHistory", ["0x7e4cd38d266902444dc9c8f7c0aa716a32497d0b", 1727072000, 1727100800, 300])
+Network.Rpc.execute_dio("dio_checkConnectivity", [])
 Network.Rpc.execute_dio("dio_checkConnectivity", [])
 Connectivity.query_connectivity()
 
+{"jsonrpc":"2.0","id":3,"method":"dio_proxy|dio_usageHistory","params":["0x090ad02cebd8fbbe0b411f5d870ab69d1004d6d8"]}
+{"jsonrpc":"2.0","id":3,"method":"dio_proxy|dio_connectivity","params":["0x090ad02cebd8fbbe0b411f5d870ab69d1004d6d8"]}
 {"jsonrpc":"2.0","id":3,"method":"dio_proxy|dio_connectivity","params":["0xce0b425bf2f2e7c26b4c2401435c655f8f446052"]}
+
+HTTPoison.post("http://eu2.prenet.diode.io:8545", ~S({"jsonrpc":"2.0","id":3,"method":"dio_proxy|dio_usageHistory","params":["0x090ad02cebd8fbbe0b411f5d870ab69d1004d6d8", 1727072000, 1727100800, 300]}), [
+  {"Content-Type", "application/json"},
+  {"Accept-Encoding", "gzip"}
+])
 
 # Sep 11th
 

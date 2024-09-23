@@ -29,12 +29,9 @@ defmodule Json do
   end
 
   defp do_encode(map, conv) when is_map(map) do
-    Enum.into(
-      Enum.map(Map.to_list(map), fn {key, value} ->
-        {do_encode(key, conv), do_encode(value, conv)}
-      end),
-      %{}
-    )
+    Enum.reduce(map, %{}, fn {key, value}, acc ->
+      Map.put(acc, do_encode(key, conv), do_encode(value, conv))
+    end)
   end
 
   defp do_encode(list, conv) when is_list(list) do

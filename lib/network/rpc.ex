@@ -294,30 +294,34 @@ defmodule Network.Rpc do
       "dio_usageHistory" ->
         [from, to, stepping] = params
 
-        Network.Stats.get_history(from, to, stepping)
-        |> Enum.map(fn {time, data} ->
-          data =
-            Enum.map(data, fn {key, value} ->
-              key =
-                case key do
-                  key when is_atom(key) ->
-                    Atom.to_string(key)
+        ret =
+          Network.Stats.get_history(from, to, stepping)
+          |> Task.async_stream(fn {time, data} ->
+            data =
+              Enum.map(data, fn {key, value} ->
+                key =
+                  case key do
+                    key when is_atom(key) ->
+                      Atom.to_string(key)
 
-                  {key, nil} when is_atom(key) ->
-                    "#{key}:nil"
+                    {key, nil} when is_atom(key) ->
+                      "#{key}:nil"
 
-                  {key, address} when is_atom(key) ->
-                    "#{key}:#{Base16.encode(address)}"
-                end
+                    {key, address} when is_atom(key) ->
+                      "#{key}:#{Base16.encode(address)}"
+                  end
 
-              {key, value}
-            end)
-            |> Map.new()
+                {key, value}
+              end)
+              |> Map.new()
 
-          {time, data}
-        end)
-        |> Map.new()
-        |> result()
+            {time, data}
+          end)
+          |> Enum.reduce(%{}, fn {:ok, {key, value}}, acc ->
+            Map.put(acc, key, value)
+          end)
+
+        result({:raw, ret})
 
       "dio_network" ->
         conns = Network.Server.get_connections(Network.PeerHandlerV2)
@@ -389,12 +393,21 @@ defmodule Network.Rpc do
               }
 
               HTTPoison.post("http://#{host}:8545", Poison.encode!(request), [
-                {"Content-Type", "application/json"}
+                {"Content-Type", "application/json"},
+                {"Accept-Encoding", "gzip"}
               ])
               |> case do
-                {:ok, %{body: body}} ->
-                  json = Poison.decode!(body)
-                  result(json["result"])
+                {:ok, %{body: body, headers: headers}} ->
+                  json =
+                    if List.keyfind(headers, "content-encoding", 0) ==
+                         {"content-encoding", "gzip"} do
+                      :zlib.gunzip(body)
+                    else
+                      body
+                    end
+                    |> Poison.decode!()
+
+                  result({:raw, json["result"]})
 
                 error = {:error, _reason} ->
                   Logger.error("Error fetching #{method} from #{host}: #{inspect(error)}")
