@@ -20,7 +20,9 @@ parts:
     source: .
     build-packages:
       - autoconf
+      - automake
       - curl
+      - wget
       - g++
       - git
       - libc6
