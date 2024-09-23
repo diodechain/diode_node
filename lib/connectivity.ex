@@ -34,8 +34,15 @@ defmodule Connectivity do
   end
 
   defp do_check_connectivity(ports) do
+    ports =
+      if ports == [] do
+        ""
+      else
+        "?ports=#{Enum.join(ports, ",")}"
+      end
+
     case HTTPoison.get(
-           "https://monitor.testnet.diode.io/ip/self?ports=#{Enum.join(ports, ",")}",
+           "https://monitor.testnet.diode.io/ip/self#{ports}",
            [],
            recv_timeout: 60_000,
            timeout: 60_000

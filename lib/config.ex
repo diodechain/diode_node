@@ -38,20 +38,25 @@ defmodule Diode.Config do
       "DATA_DIR" => fn ->
         File.cwd!() <> "/nodedata_" <> Atom.to_string(Diode.env())
       end,
-      "NAME" => ""
+      "NAME" => nil
     }
   end
 
   def default!(var) do
-    case Map.get(defaults(), var) do
-      nil -> raise "No default for #{var}"
-      other -> other
+    if not Map.has_key?(defaults(), var) do
+      raise "No default for #{var}"
     end
+
+    Map.get(defaults(), var)
   end
 
   def configure() do
     for {var, _default} <- defaults() do
-      set(var, get(var))
+      value = get_config_value(var)
+
+      if value != nil do
+        set(var, value)
+      end
     end
   end
 
@@ -62,8 +67,7 @@ defmodule Diode.Config do
   end
 
   def get(var) do
-    def = default!(var)
-    do_get(var) || eval(def)
+    get_config_value(var) || get_runtime_fallback(var)
   end
 
   def get_int(name) do
@@ -72,6 +76,9 @@ defmodule Diode.Config do
 
   defp decode_int(int) do
     case int do
+      nil ->
+        0
+
       "" ->
         0
 
@@ -87,17 +94,15 @@ defmodule Diode.Config do
     end
   end
 
-  defp do_get(var) do
-    case snap_get(var) || System.get_env(var) do
-      "" -> get_fallback(var)
-      other -> other
-    end
+  defp get_config_value(var) do
+    snap_get(var) || System.get_env(var) || eval(default!(var))
   end
 
   def set(var, value) do
+    old_value = System.get_env(var)
     snap_set(var, value)
     System.put_env(var, value)
-    on_set(var, value)
+    on_set(var, value, old_value)
     value
   end
 
@@ -131,18 +136,30 @@ defmodule Diode.Config do
   defp eval(fun) when is_function(fun), do: fun.()
   defp eval(other), do: other
 
-  defp on_set("LOG_LEVEL", value) do
+  defp on_set("LOG_LEVEL", value, _old_value) do
     if value in ~w(emergency alert critical error warning notice info debug) do
       Logger.configure(level: String.to_atom(value))
     end
   end
 
-  defp on_set(_key, _value), do: :ok
+  defp on_set("HOST", host, old_host) do
+    if host != old_host do
+      Debouncer.apply(
+        {__MODULE__, :restart_peer_handler},
+        fn ->
+          Process.exit(Process.whereis(Network.PeerHandlerV2), :restart_host_changed)
+        end,
+        10_000
+      )
+    end
+  end
 
-  defp get_fallback("NAME") do
+  defp on_set(_key, _value, _old_value), do: :ok
+
+  defp get_runtime_fallback("NAME") do
     {:ok, host} = :net.gethostname()
     Wallet.words(Diode.wallet()) <> "@#{host}"
   end
 
-  defp get_fallback(_key), do: ""
+  defp get_runtime_fallback(_key), do: nil
 end

@@ -1,3 +1,10 @@
+# Sep 23rd
+
+Network.Rpc.execute_dio("dio_checkConnectivity", [])
+Connectivity.query_connectivity()
+
+{"jsonrpc":"2.0","id":3,"method":"dio_proxy|dio_connectivity","params":["0xce0b425bf2f2e7c26b4c2401435c655f8f446052"]}
+
 # Sep 11th
 
 from = "0xdD1970aFe4D76038D5f0F4a44d9Cb435450c623a"
