@@ -36,6 +36,7 @@ parts:
       - zlib1g-dev
     stage-packages:
       - awk
+      - libsigsegv2
       - libncurses6
       - libstdc++6
       - libc6
