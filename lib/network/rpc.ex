@@ -405,7 +405,6 @@ defmodule Network.Rpc do
                   else
                     body
                   end
-                  |> IO.inspect()
                   |> Poison.decode!()
                   |> Map.get("result")
                   |> raw_result()
