@@ -356,11 +356,16 @@ defmodule Network.Rpc do
         |> Map.values()
         |> result()
 
+      "dio_checkConnectivity" ->
+        Connectivity.query_connectivity()
+        |> result()
+
       "dio_proxy|" <> method ->
         [node | params] = params
         node = Base16.decode(node)
 
         if method not in [
+             "dio_checkConnectivity",
              "dio_getObject",
              "dio_getNode",
              "dio_traffic",

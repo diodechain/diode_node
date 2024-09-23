@@ -31,6 +31,7 @@ defmodule Model.Sql do
 
     @impl true
     def init(_args) do
+      Model.Ets.init(Diode)
       Model.TicketSql.init()
       Model.KademliaSql.init()
       {:ok, :done}

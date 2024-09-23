@@ -14,6 +14,10 @@ defmodule Model.Ets do
     :ets.insert(name, {idx, item})
   end
 
+  def put_new(name, idx, item) do
+    :ets.insert_new(name, {idx, item})
+  end
+
   def remove(name, idx) do
     :ets.delete(name, idx)
   end
