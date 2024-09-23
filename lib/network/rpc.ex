@@ -281,47 +281,45 @@ defmodule Network.Rpc do
         incoming = Network.Stats.get(:edge_traffic_in)
         outgoing = Network.Stats.get(:edge_traffic_out)
 
-        result(%{
+        raw_result(%{
           address: Wallet.address!(Diode.wallet()) |> Base16.encode(),
           name: Diode.Config.get("NAME"),
-          uptime: Diode.uptime(),
-          devices: map_size(Network.Server.get_connections(Network.EdgeV2)),
-          incoming: incoming,
-          outgoing: outgoing,
-          total: incoming + outgoing
+          uptime: Base16.encode(Diode.uptime(), false),
+          devices: Base16.encode(map_size(Network.Server.get_connections(Network.EdgeV2)), false),
+          incoming: Base16.encode(incoming, false),
+          outgoing: Base16.encode(outgoing, false),
+          total: Base16.encode(incoming + outgoing, false)
         })
 
       "dio_usageHistory" ->
         [from, to, stepping] = params
 
-        ret =
-          Network.Stats.get_history(from, to, stepping)
-          |> Task.async_stream(fn {time, data} ->
-            data =
-              Enum.map(data, fn {key, value} ->
-                key =
-                  case key do
-                    key when is_atom(key) ->
-                      Atom.to_string(key)
+        Network.Stats.get_history(from, to, stepping)
+        |> Task.async_stream(fn {time, data} ->
+          data =
+            Enum.map(data, fn {key, value} ->
+              key =
+                case key do
+                  key when is_atom(key) ->
+                    Atom.to_string(key)
 
-                    {key, nil} when is_atom(key) ->
-                      "#{key}:nil"
+                  {key, nil} when is_atom(key) ->
+                    "#{key}:nil"
 
-                    {key, address} when is_atom(key) ->
-                      "#{key}:#{Base16.encode(address)}"
-                  end
+                  {key, address} when is_atom(key) ->
+                    "#{key}:#{Base16.encode(address)}"
+                end
 
-                {key, value}
-              end)
-              |> Map.new()
+              {key, value}
+            end)
+            |> Map.new()
 
-            {time, data}
-          end)
-          |> Enum.reduce(%{}, fn {:ok, {key, value}}, acc ->
-            Map.put(acc, key, value)
-          end)
-
-        result({:raw, ret})
+          {time, data}
+        end)
+        |> Enum.reduce(%{}, fn {:ok, {key, value}}, acc ->
+          Map.put(acc, key, value)
+        end)
+        |> raw_result()
 
       "dio_network" ->
         conns = Network.Server.get_connections(Network.PeerHandlerV2)
@@ -330,11 +328,11 @@ defmodule Network.Rpc do
           Enum.map(conns, fn {address, _conn} ->
             %{
               connected: true,
-              last_seen: System.os_time(:second),
-              last_error: 0,
+              last_seen: Base16.encode(System.os_time(:second), false),
+              last_error: Base16.encode(0, false),
               node_id: address,
               node: Model.KademliaSql.object(Diode.hash(address)) |> Object.decode!(),
-              retries: 0
+              retries: Base16.encode(0, false)
             }
           end)
 
@@ -346,11 +344,11 @@ defmodule Network.Rpc do
 
           %{
             connected: Map.has_key?(conns, Wallet.address!(item.node_id)),
-            last_seen: item.last_connected,
-            last_error: item.last_error,
+            last_seen: Base16.encode(item.last_connected, false),
+            last_error: Base16.encode(item.last_error, false),
             node_id: address,
             node: KBuckets.object(item),
-            retries: item.retries
+            retries: Base16.encode(item.retries, false)
           }
         end)
         |> Enum.concat(connected)
@@ -358,7 +356,7 @@ defmodule Network.Rpc do
           Map.put_new(acc, item.node_id, item)
         end)
         |> Map.values()
-        |> result()
+        |> raw_result()
 
       "dio_checkConnectivity" ->
         Connectivity.query_connectivity()
@@ -397,17 +395,20 @@ defmodule Network.Rpc do
                 {"Accept-Encoding", "gzip"}
               ])
               |> case do
-                {:ok, %{body: body, headers: headers}} ->
-                  json =
-                    if List.keyfind(headers, "content-encoding", 0) ==
-                         {"content-encoding", "gzip"} do
-                      :zlib.gunzip(body)
-                    else
-                      body
-                    end
-                    |> Poison.decode!()
+                {:ok, %{body: ""}} ->
+                  result("")
 
-                  result({:raw, json["result"]})
+                {:ok, %{body: body, headers: headers}} ->
+                  if List.keyfind(headers, "content-encoding", 0) ==
+                       {"content-encoding", "gzip"} do
+                    :zlib.gunzip(body)
+                  else
+                    body
+                  end
+                  |> IO.inspect()
+                  |> Poison.decode!()
+                  |> Map.get("result")
+                  |> raw_result()
 
                 error = {:error, _reason} ->
                   Logger.error("Error fetching #{method} from #{host}: #{inspect(error)}")
@@ -488,6 +489,10 @@ defmodule Network.Rpc do
     else
       %{tx | signature: {:fake, Wallet.address!(wallet)}}
     end
+  end
+
+  defp raw_result(result, code \\ 200, error \\ nil) do
+    {{:raw, result}, code, error}
   end
 
   defp result(result, code \\ 200, error \\ nil) do
