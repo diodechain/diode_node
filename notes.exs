@@ -1,5 +1,10 @@
+# Sep 24rd
+
+Recover ids can be changed cuasing Ticket.device_address(tck) to crash
+
 # Sep 23rd
 
+Network.Rpc.execute_dio("dio_network", [])
 Network.Rpc.execute_dio("dio_usageHistory", [1727072000, 1727100800, 300])
 Network.Rpc.execute_dio("dio_proxy|dio_usageHistory", ["0x7e4cd38d266902444dc9c8f7c0aa716a32497d0b", 1727072000, 1727100800, 300])
 Network.Rpc.execute_dio("dio_checkConnectivity", [])

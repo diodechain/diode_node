@@ -126,8 +126,10 @@ defmodule RemoteChain.WSConn do
     age = DateTime.diff(DateTime.utc_now(), lastblock_at, :second)
 
     if age > chain.expected_block_intervall() * 4 do
+      {:message_queue_len, len} = Process.info(self(), :message_queue_len)
+
       Logger.warning(
-        "WSConn did not receive a block from #{chain} (#{ws_url}) since quad interval. Restarting..."
+        "WSConn #{inspect({self(), len})} block timeout #{chain} (#{ws_url}). Restarting..."
       )
 
       {:close, state}
