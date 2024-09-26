@@ -133,8 +133,23 @@ defmodule RemoteChain.RPCCache do
   end
 
   def get_code(chain, address, block \\ "latest") do
-    block = resolve_block(chain, block)
-    rpc!(chain, "eth_getCode", [address, Base16.encode(block, false)])
+    cache = GenServer.call(name(chain), :cache, @default_timeout)
+
+    # Optimization since code once set can never change
+    case Cache.get(cache, {chain, {:code, address}}) do
+      nil ->
+        block = resolve_block(chain, block)
+        code = rpc!(chain, "eth_getCode", [address, Base16.encode(block, false)])
+
+        if Base16.decode(code) != "" do
+          Cache.put(cache, {chain, {:code, address}}, code)
+        end
+
+        code
+
+      code ->
+        code
+    end
   end
 
   def get_transaction_count(chain, address, block \\ "latest") do

@@ -1,4 +1,23 @@
-# Sep 24rd
+# Sep 26th
+
+{:global, name} = RemoteChain.NodeProxy.name(Chains.Moonbeam)
+pid = :global.whereis_name(name)
+state = :sys.get_state(pid)
+
+:sys.get_state(pid).requests
+
+sample = fn ->
+  :sys.get_state(pid).requests |> Enum.map(fn {_, req} ->
+    {req.method, req.params}
+  end)
+end
+
+
+0x1e4717b2dc5dfd7f487f2043bfe9999372d693bf4d9c51b5b84f1377939cd487
+
+0x42a7b7dd785cd69714a189dffb3fd7d7174edc9ece837694ce50f7078f7c31ae
+
+# Sep 24th
 
 Recover ids can be changed cuasing Ticket.device_address(tck) to crash
 
