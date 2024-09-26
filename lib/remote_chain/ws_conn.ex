@@ -125,7 +125,7 @@ defmodule RemoteChain.WSConn do
       ) do
     age = DateTime.diff(DateTime.utc_now(), lastblock_at, :second)
 
-    if age > chain.expected_block_intervall() * 4 do
+    if age > chain.expected_block_intervall() * 10 do
       {:message_queue_len, len} = Process.info(self(), :message_queue_len)
 
       Logger.warning(
