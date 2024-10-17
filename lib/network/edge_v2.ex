@@ -305,6 +305,12 @@ defmodule Network.EdgeV2 do
           end
           |> response()
 
+        ["getnodes", node] ->
+          KademliaLight.find_nodes(node)
+          |> Enum.map(&KBuckets.object/1)
+          |> Enum.map(&Object.encode_list!/1)
+          |> response()
+
         ["portopen", device_id, port, flags] ->
           portopen(state, device_id, to_num(port), flags)
 
