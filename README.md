@@ -11,6 +11,8 @@ When deploying a node it should be setup on publicly reachable interfaces with a
 
 To get started with the diode node install the latest snap release:
 
+[![Get it from the Snap Store](https://snapcraft.io/en/dark/install.svg)](https://snapcraft.io/diode-node)
+
 ```bash
 sudo snap install diode-node
 ```
