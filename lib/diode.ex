@@ -38,6 +38,12 @@ defmodule Diode do
       puts("Cookie   : #{System.get_env("COOKIE")}")
     end
 
+    # Remove old cache file if still present,
+    # new file is at data_dir("remoterpc.cache")
+    if File.exists?("remoterpc_cache") do
+      File.rm("remoterpc_cache")
+    end
+
     puts("")
 
     children =
@@ -53,7 +59,8 @@ defmodule Diode do
          name: :remoterpc_cache,
          auto_save_memory: 100_000_000,
          page_cache_memory: 100_000_000,
-         file: data_dir("remoterpc.cache")},
+         file: data_dir("remoterpc.cache"),
+         compressed: true},
         {BinaryLRU, max_memory_size: 100_000_000, name: :memory_cache}
       ]
 

@@ -14,7 +14,8 @@ defmodule Network.Stats do
       DetsPlus.open_file(__MODULE__.LRU,
         file: Diode.data_dir("network_stats.dets+"),
         auto_save_memory: 100_000_000,
-        page_cache_memory: 100_000_000
+        page_cache_memory: 100_000_000,
+        compressed: true
       )
 
     lru = DetsPlus.LRU.new(dets, 1_000_000)

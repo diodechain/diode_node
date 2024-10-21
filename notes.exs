@@ -1,3 +1,11 @@
+# Oct 18th
+
+anvil --steps-tracing --fork-url https://moonbeam.unitedbloc.com:3000 -p1454
+url = "http://localhost:1454"
+tx_hash = "0x35df975d150e0c3bed459909ae4deb924b88de2cc441aa894f5fef08ee08af66"
+{:ok, trace} = RemoteChain.HTTP.rpc(url, "debug_traceTransaction", [tx_hash, %{tracer: "callTracer"}])
+
+
 # Sep 26th
 
 {:global, name} = RemoteChain.NodeProxy.name(Chains.Moonbeam)
