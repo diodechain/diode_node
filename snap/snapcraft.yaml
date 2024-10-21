@@ -57,7 +57,7 @@ apps:
     plugs: [network, network-bind]
 
   flush:
-    command: bin/run elevated rpc Diode.Cmd.status
+    command: bin/run elevated rpc Diode.Cmd.flush_cache
     plugs: [network, network-bind]
 
   info:
