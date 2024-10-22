@@ -51,50 +51,50 @@ defmodule TicketStore do
   end
 
   def submit_tickets(chain_id, epoch) do
-    tickets =
-      tickets(chain_id, epoch)
-      |> Enum.filter(fn tck ->
-        estimate_ticket_value(tck) > 1_000_000
-      end)
-      |> Enum.filter(fn tck ->
-        Ticket.raw(tck)
-        |> Contract.Registry.submit_ticket_raw_tx(chain_id)
-        |> Shell.call_tx("latest")
-        |> case do
-          {:ok, "0x"} ->
-            true
+    tickets(chain_id, epoch)
+    |> submit_tickets()
+  end
 
-          {:error, %{"message" => reason}} ->
-            Logger.error("TicketStore:submit_tickets(#{epoch}) ticket error: #{inspect(reason)}")
-            false
-
-          other ->
-            Logger.error("TicketStore:submit_tickets(#{epoch}) ticket error: #{inspect(other)}")
-            false
-        end
-      end)
+  def submit_tickets(tickets) when is_list(tickets) do
+    tickets = Enum.filter(tickets, fn tck -> validate_ticket(tck) == :ok end)
 
     if length(tickets) > 0 do
+      chain_id = Ticket.chain_id(hd(tickets))
+
       tx =
-        Enum.flat_map(tickets, fn tck ->
-          store_ticket_value(tck)
-          Ticket.raw(tck)
-        end)
+        Enum.flat_map(tickets, &Ticket.raw/1)
         |> Contract.Registry.submit_ticket_raw_tx(chain_id)
 
       case Shell.call_tx!(tx, "latest") do
-        {"", _gas_cost} ->
-          Shell.submit_tx(tx)
+        "0x" ->
+          txhash = Shell.submit_tx(tx)
+
+          if is_binary(txhash) do
+            Enum.each(tickets, &store_ticket_value/1)
+          end
+
+          txhash
 
         {{:evmc_revert, reason}, _} ->
-          Logger.error(
-            "TicketStore:submit_tickets(#{epoch}) transaction error: #{inspect(reason)}"
-          )
+          {:error, "EVM error: #{inspect(reason)}"}
 
         other ->
-          Logger.error(
-            "TicketStore:submit_tickets(#{epoch}) transaction error: #{inspect(other)}"
-          )
+          {:error, "Unknown error: #{inspect(other)}"}
+      end
+    end
+  end
+
+  def validate_ticket(ticket) do
+    if estimate_ticket_value(ticket) < 1_000_000 do
+      {:error, "Ticket value too low"}
+    else
+      Ticket.raw(ticket)
+      |> Contract.Registry.submit_ticket_raw_tx(Ticket.chain_id(ticket))
+      |> Shell.call_tx("latest")
+      |> case do
+        {:ok, "0x"} -> :ok
+        {:error, %{"message" => reason}} -> {:error, "EVM error: #{inspect(reason)}"}
+        other -> {:error, "#{inspect(other)}"}
       end
     end
   end
@@ -192,7 +192,7 @@ defmodule TicketStore do
     fleet = Ticket.fleet_contract(tck)
     ticket_value = ticket_score(tck) * fleet_value(chain_id, fleet, epoch)
 
-    case EtsLru.get(@ticket_value_cache, {:ticket, chain_id, fleet, device, epoch}) do
+    case EtsLru.get(@ticket_value_cache, {:ticket, chain_id, fleet, device, epoch}, 0) do
       prev when prev >= ticket_value ->
         prev
 
