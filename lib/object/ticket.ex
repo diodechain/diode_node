@@ -28,5 +28,5 @@ defmodule Object.Ticket do
   def total_connections(tck), do: mod(tck).total_connections(tck)
   def total_bytes(tck), do: mod(tck).total_bytes(tck)
   def local_address(tck), do: mod(tck).local_address(tck)
-  def score(tck), do: total_connections(tck) * 1024 * total_bytes(tck)
+  def score(tck), do: total_connections(tck) * 1024 + total_bytes(tck)
 end

@@ -51,51 +51,84 @@ defmodule TicketStore do
   end
 
   def submit_tickets(chain_id, epoch) do
+    update_fleet_scores(epoch)
+
     tickets(chain_id, epoch)
     |> submit_tickets()
   end
 
   def submit_tickets(tickets) when is_list(tickets) do
-    tickets = Enum.filter(tickets, fn tck -> validate_ticket(tck) == :ok end)
+    # Submit max 10 tickets at a time
+    tickets =
+      tickets
+      |> Enum.sort_by(&estimate_ticket_value/1, :desc)
+      |> Stream.filter(fn tck -> validate_ticket(tck) == :ok end)
+      |> Enum.take(10)
 
-    if length(tickets) > 0 do
-      chain_id = Ticket.chain_id(hd(tickets))
+    if tickets != [] do
+      submit_tickets_transaction(tickets)
 
-      tx =
-        Enum.flat_map(tickets, &Ticket.raw/1)
-        |> Contract.Registry.submit_ticket_raw_tx(chain_id)
+      # Enum.chunk_every(tickets, 100)
+      # |> Enum.reduce_while([], fn chunk, acc ->
+      #   case submit_tickets_transaction(chunk) do
+      #     {:ok, txhash} -> {:cont, [txhash | acc]}
+      #     {:error, reason} -> {:halt, {:error, reason}}
+      #   end
+      # end)
+    end
+  end
 
-      case Shell.call_tx!(tx, "latest") do
-        "0x" ->
-          txhash = Shell.submit_tx(tx)
+  def submit_tickets_transaction(tickets) when is_list(tickets) do
+    chain_id = Ticket.chain_id(hd(tickets))
 
-          if is_binary(txhash) do
-            Enum.each(tickets, &store_ticket_value/1)
-          end
+    tx =
+      Enum.flat_map(tickets, &Ticket.raw/1)
+      |> Contract.Registry.submit_ticket_raw_tx(chain_id)
 
-          txhash
+    case Shell.call_tx!(tx, "latest") do
+      "0x" ->
+        txhash = Shell.submit_tx(tx)
 
-        {{:evmc_revert, reason}, _} ->
-          {:error, "EVM error: #{inspect(reason)}"}
+        if is_binary(txhash) do
+          Enum.each(tickets, &store_submitted_ticket_score/1)
 
-        other ->
-          {:error, "Unknown error: #{inspect(other)}"}
-      end
+          Debouncer.delay(
+            txhash,
+            fn ->
+              Enum.each(tickets, &update_submitted_ticket_score/1)
+            end,
+            :timer.minutes(5)
+          )
+        end
+
+        Logger.info("Submitted ticket tx #{inspect(txhash)} for #{length(tickets)} tickets")
+        {:ok, txhash}
+
+      {{:evmc_revert, reason}, _} ->
+        {:error, "EVM error: #{inspect(reason)}"}
+
+      other ->
+        {:error, "Unknown error: #{inspect(other)}"}
     end
   end
 
   def validate_ticket(ticket) do
-    if estimate_ticket_value(ticket) < 1_000_000 do
-      {:error, "Ticket value too low"}
-    else
-      Ticket.raw(ticket)
-      |> Contract.Registry.submit_ticket_raw_tx(Ticket.chain_id(ticket))
-      |> Shell.call_tx("latest")
-      |> case do
-        {:ok, "0x"} -> :ok
-        {:error, %{"message" => reason}} -> {:error, "EVM error: #{inspect(reason)}"}
-        other -> {:error, "#{inspect(other)}"}
-      end
+    cond do
+      estimate_ticket_score(ticket) < 1_000_000 ->
+        {:error, "Ticket score below 1mb"}
+
+      estimate_ticket_value(ticket) < Shell.gwei(1) ->
+        {:error, "Ticket value under 1gwei"}
+
+      true ->
+        Ticket.raw(ticket)
+        |> Contract.Registry.submit_ticket_raw_tx(Ticket.chain_id(ticket))
+        |> Shell.call_tx("latest")
+        |> case do
+          {:ok, "0x"} -> :ok
+          {:error, %{"message" => reason}} -> {:error, "EVM error: #{inspect(reason)}"}
+          other -> {:error, "#{inspect(other)}"}
+        end
     end
   end
 
@@ -159,17 +192,29 @@ defmodule TicketStore do
     TicketSql.count(epoch)
   end
 
-  def estimate_ticket_value(tck) do
-    chain_id = Ticket.chain_id(tck)
-    epoch = Ticket.epoch(tck)
-    device = Ticket.device_address(tck)
-    fleet = Ticket.fleet_contract(tck)
-    ticket_score = ticket_score(tck) * fleet_value(chain_id, fleet, epoch + 1)
+  def estimate_ticket_score(tck) do
+    ticket_score(tck) - EtsLru.get(@ticket_value_cache, ets_key(tck), 0)
+  end
 
-    case EtsLru.get(@ticket_value_cache, {:ticket, chain_id, fleet, device, epoch}) do
-      nil -> ticket_score
-      prev -> ticket_score - prev
-    end
+  def estimate_ticket_value(tck) do
+    div(estimate_ticket_score(tck) * fleet_value(tck), fleet_score(tck))
+  end
+
+  defp ets_key(tck) do
+    {:ticket, Ticket.chain_id(tck), Ticket.fleet_contract(tck), Ticket.device_address(tck),
+     Ticket.epoch(tck)}
+  end
+
+  def fetch_submitted_ticket_score(tck) do
+    chain_id = Ticket.chain_id(tck)
+    node = Ticket.server_id(tck)
+    fleet = Ticket.fleet_contract(tck)
+    device = Ticket.device_address(tck)
+    Contract.Registry.client_score(chain_id, fleet, node, device, "latest")
+  end
+
+  def fleet_value(tck) when is_tuple(tck) do
+    fleet_value(Ticket.chain_id(tck), Ticket.fleet_contract(tck), Ticket.epoch(tck) + 1)
   end
 
   def fleet_value(chain_id, fleet, epoch) do
@@ -185,20 +230,38 @@ defmodule TicketStore do
     |> div(100)
   end
 
-  def store_ticket_value(tck) do
-    chain_id = Ticket.chain_id(tck)
-    epoch = Ticket.epoch(tck)
-    device = Ticket.device_address(tck)
-    fleet = Ticket.fleet_contract(tck)
-    ticket_value = ticket_score(tck) * fleet_value(chain_id, fleet, epoch)
+  def fleet_score(tck) when is_tuple(tck) do
+    fleet_score(Ticket.fleet_contract(tck), Ticket.epoch(tck))
+  end
 
-    case EtsLru.get(@ticket_value_cache, {:ticket, chain_id, fleet, device, epoch}, 0) do
-      prev when prev >= ticket_value ->
-        prev
+  def fleet_score(fleet, epoch) do
+    EtsLru.get(@ticket_value_cache, {:fleet_score, fleet, epoch}) ||
+      update_fleet_scores(epoch)[fleet]
+  end
 
-      _other ->
-        EtsLru.put(@ticket_value_cache, {:ticket, chain_id, fleet, device, epoch}, ticket_value)
+  def update_fleet_scores(epoch) do
+    tickets(epoch)
+    |> Enum.group_by(fn tck -> Ticket.fleet_contract(tck) end)
+    |> Enum.map(fn {fleet, tcks} ->
+      total_score = Enum.map(tcks, fn tck -> ticket_score(tck) end) |> Enum.sum()
+      EtsLru.put(@ticket_value_cache, {:fleet_score, fleet, epoch}, total_score)
+      {fleet, total_score}
+    end)
+    |> Map.new()
+  end
+
+  def store_submitted_ticket_score(tck) do
+    ticket_score = ticket_score(tck)
+
+    case EtsLru.get(@ticket_value_cache, ets_key(tck), 0) do
+      prev when prev >= ticket_score -> prev
+      _other -> EtsLru.put(@ticket_value_cache, ets_key(tck), ticket_score)
     end
+  end
+
+  def update_submitted_ticket_score(tck) do
+    ticket_score = fetch_submitted_ticket_score(tck)
+    EtsLru.put(@ticket_value_cache, ets_key(tck), ticket_score)
   end
 
   def ticket_score(tck) when is_tuple(tck) do

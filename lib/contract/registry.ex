@@ -43,6 +43,23 @@ defmodule Contract.Registry do
     end
   end
 
+  def client_score(chain_id, fleet, node, client, block_ref) do
+    if RemoteChain.chainimpl(chain_id) in [Chains.Diode, Chains.DiodeStaging, Chains.DiodeDev] do
+      nil
+    else
+      score =
+        call(
+          chain_id,
+          "GetClientScore",
+          ["address", "address", "address"],
+          [fleet, node, client],
+          block_ref
+        )
+
+      hd(ABI.decode_types(["uint256"], score))
+    end
+  end
+
   def relay_rewards(chain_id, address) do
     call(chain_id, "relayRewards", ["address"], [address]) |> :binary.decode_unsigned()
   end

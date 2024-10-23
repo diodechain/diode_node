@@ -1,4 +1,14 @@
-# Oct 18th
+# Oct 22nd
+
+chain_id = Chains.Moonbeam.chain_id()
+
+blocknum = RemoteChain.peaknumber(chain_id)
+RemoteChain.epoch_progress(chain_id, blocknum)
+
+epoch = RemoteChain.epoch(chain_id, blocknum)
+TicketStore.submit_tickets(chain_id, epoch - 1)
+
+# Oct  18th
 
 anvil --steps-tracing --fork-url https://moonbeam.unitedbloc.com:3000 -p1454
 url = "http://localhost:1454"

@@ -56,7 +56,12 @@ contract DiodeRegistryLight is Initializable {
      *
      */
     address[] public relayArray;
-    mapping(address => uint256) public relayRewards;
+    mapping(address => RelayReward) public relayRewards;
+
+    struct RelayReward {
+        bool exists;
+        uint256 reward;
+    }
 
     uint256 public currentEpoch;
     uint256 public currentEpochStart;
@@ -160,9 +165,9 @@ contract DiodeRegistryLight is Initializable {
     }
 
     function RelayWithdraw(address nodeAddress) public {
-        require (relayRewards[nodeAddress] > 1, "No rewards to withdraw");
-        Token.safeTransfer(nodeAddress, relayRewards[nodeAddress] - 1);
-        relayRewards[nodeAddress] = 1;
+        require (relayRewards[nodeAddress].reward > 0, "No rewards to withdraw");
+        Token.safeTransfer(nodeAddress, relayRewards[nodeAddress].reward);
+        relayRewards[nodeAddress].reward = 0;
     }
 
     function SetFoundationTax(uint256 _taxRate) external onlyFoundation {
@@ -238,10 +243,11 @@ contract DiodeRegistryLight is Initializable {
             uint value = (reward * node.score) / fleet.score;
 
             if (value > 0) {
-                if (relayRewards[nodeAddress] == 0) {
+                if (!relayRewards[nodeAddress].exists) {
                     relayArray.push(nodeAddress);
+                    relayRewards[nodeAddress].exists = true;
                 }
-                relayRewards[nodeAddress] += value;
+                relayRewards[nodeAddress].reward += value;
                 rest -= value;
             }
 
@@ -361,9 +367,7 @@ contract DiodeRegistryLight is Initializable {
 
     struct Node {
         address node;
-        uint256 totalConnections;
-        uint256 totalBytes;
-        Client[] clients;
+        uint256 score;
     }
 
     struct Client {
@@ -402,6 +406,23 @@ contract DiodeRegistryLight is Initializable {
                 f.currentEpoch,
                 f.score
             );
+    }
+
+    function GetClientScore(IFleetContract _fleet, address nodeAddress, address clientAddress) external view returns (uint256) {
+        return fleetStats[address(_fleet)].nodeStats[nodeAddress].clientStats[clientAddress].score;
+    }
+
+    function GetNode(
+        IFleetContract _fleet,
+        address nodeAddress
+    ) external view returns (Node memory) {
+        NodeStats storage n = fleetStats[address(_fleet)].nodeStats[nodeAddress];
+        Node memory node = Node(nodeAddress, n.score);
+        return node;
+    }
+
+    function RelayRewards(address nodeAddress) external view returns (uint256) {
+        return relayRewards[nodeAddress].reward;
     }
 
     // ====================================================================================
@@ -447,5 +468,9 @@ contract DiodeRegistryLight is Initializable {
 
     function validateFleetAccess(IFleetContract fleetContract, address client) internal view {
         require(fleetContract.DeviceAllowlist(client), string(abi.encodePacked("Unregistered device\x00", address(client))));
+    }
+
+    function Version() external pure returns (uint256) {
+        return 110;
     }
 }
