@@ -42,7 +42,13 @@ defmodule TicketStore do
   end
 
   # Should be called on each new block
-  def newblock(chain_id, blocknum) do
+  def maybe_submit_tickets() do
+    maybe_submit_tickets(Chains.Moonbeam)
+  end
+
+  def maybe_submit_tickets(chain_id) do
+    blocknum = RemoteChain.peaknumber(chain_id)
+
     if not Diode.dev_mode?() and
          RemoteChain.epoch_progress(chain_id, blocknum) > 0.5 do
       epoch = RemoteChain.epoch(chain_id, blocknum)
@@ -66,6 +72,16 @@ defmodule TicketStore do
       |> Enum.take(10)
 
     if tickets != [] do
+      if length(tickets) == 10 do
+        Debouncer.delay(
+          {__MODULE__, :submit_tickets},
+          fn ->
+            maybe_submit_tickets()
+          end,
+          :timer.minutes(5)
+        )
+      end
+
       submit_tickets_transaction(tickets)
 
       # Enum.chunk_every(tickets, 100)
