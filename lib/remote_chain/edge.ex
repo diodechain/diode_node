@@ -134,69 +134,77 @@ defmodule RemoteChain.Edge do
         |> response()
 
       ["sendmetatransaction", tx] ->
-        # These are CallPermit metatransactions
-        # Testing transaction
-        [from, to, value, call, gaslimit, deadline, v, r, s] = Rlp.decode!(tx)
-        value = Rlpx.bin2num(value)
-        gaslimit = Rlpx.bin2num(gaslimit)
-        deadline = Rlpx.bin2num(deadline)
-        v = Rlpx.bin2num(v)
-        r = Rlpx.bin2num(r)
-        s = Rlpx.bin2num(s)
+        if Shell.get_balance(chain, Diode.address()) / Shell.ether(1) < 1 do
+          msg = Rlp.encode!(msg) |> Base16.encode()
 
-        call = CallPermit.dispatch(from, to, value, call, gaslimit, deadline, v, r, s)
-        gas_price = RemoteChain.RPC.gas_price(chain) |> Base16.decode_int()
-        nonce = RemoteChain.NonceProvider.nonce(chain)
+          RemoteChain.RPCCache.rpc!(RemoteChain.diode_l1_fallback(), "dio_edgev2", [msg])
+          |> Base16.decode()
+          |> Rlp.decode!()
+        else
+          # These are CallPermit metatransactions
+          # Testing transaction
+          [from, to, value, call, gaslimit, deadline, v, r, s] = Rlp.decode!(tx)
+          value = Rlpx.bin2num(value)
+          gaslimit = Rlpx.bin2num(gaslimit)
+          deadline = Rlpx.bin2num(deadline)
+          v = Rlpx.bin2num(v)
+          r = Rlpx.bin2num(r)
+          s = Rlpx.bin2num(s)
 
-        # Can't do this pre-check always because we will be receiving batches of future nonces
-        # those are not yet valid but will be valid in the future, after the other txs have
-        # been processed...
-        if nonce == RemoteChain.NonceProvider.fetch_nonce(chain) do
+          call = CallPermit.dispatch(from, to, value, call, gaslimit, deadline, v, r, s)
+          gas_price = RemoteChain.RPC.gas_price(chain) |> Base16.decode_int()
+          nonce = RemoteChain.NonceProvider.nonce(chain)
+
+          # Can't do this pre-check always because we will be receiving batches of future nonces
+          # those are not yet valid but will be valid in the future, after the other txs have
+          # been processed...
+          if nonce == RemoteChain.NonceProvider.fetch_nonce(chain) do
+            spawn(fn ->
+              CallPermit.rpc_call(chain, call, Wallet.address!(CallPermit.wallet()))
+              |> case do
+                {:ok, _} -> :ok
+                error -> Logger.error("RTX rpc_call failed: #{inspect(error)}")
+              end
+            end)
+          end
+
+          tx =
+            Shell.raw(CallPermit.wallet(), call,
+              to: CallPermit.address(),
+              chainId: chain.chain_id(),
+              gas: 12_000_000,
+              gasPrice: gas_price + div(gas_price, 10),
+              value: 0,
+              nonce: nonce
+            )
+
+          payload =
+            tx
+            |> RemoteChain.Transaction.to_rlp()
+            |> Rlp.encode!()
+            |> Base16.encode()
+
+          tx_hash =
+            RemoteChain.Transaction.hash(tx)
+            |> Base16.encode()
+
+          Logger.info("Submitting RTX: #{tx_hash} (#{inspect(tx)})")
+          # We're pushing to the TxRelay keep alive server to ensure the TX
+          # is broadcasted even if the RPC connection goes down in the next call.
+          # This is so to preserve the nonce ordering if at all possible
+          RemoteChain.TxRelay.keep_alive(chain, tx, payload)
+
+          # In order to ensure delivery we're broadcasting to all known endpoints of this chain
           spawn(fn ->
-            CallPermit.rpc_call(chain, call, Wallet.address!(CallPermit.wallet()))
-            |> case do
-              {:ok, _} -> :ok
-              error -> Logger.error("RTX rpc_call failed: #{inspect(error)}")
+            RemoteChain.RPC.send_raw_transaction(chain, payload)
+
+            for endpoint <- Enum.shuffle(chain.rpc_endpoints()) do
+              RemoteChain.HTTP.send_raw_transaction(endpoint, payload)
             end
           end)
+
+          response("ok", tx_hash)
         end
-
-        tx =
-          Shell.raw(CallPermit.wallet(), call,
-            to: CallPermit.address(),
-            chainId: chain.chain_id(),
-            gas: 12_000_000,
-            gasPrice: gas_price + div(gas_price, 10),
-            value: 0,
-            nonce: nonce
-          )
-
-        payload =
-          tx
-          |> RemoteChain.Transaction.to_rlp()
-          |> Rlp.encode!()
-          |> Base16.encode()
-
-        tx_hash =
-          RemoteChain.Transaction.hash(tx)
-          |> Base16.encode()
-
-        Logger.info("Submitting RTX: #{tx_hash} (#{inspect(tx)})")
-        # We're pushing to the TxRelay keep alive server to ensure the TX
-        # is broadcasted even if the RPC connection goes down in the next call.
-        # This is so to preserve the nonce ordering if at all possible
-        RemoteChain.TxRelay.keep_alive(chain, tx, payload)
-
-        # In order to ensure delivery we're broadcasting to all known endpoints of this chain
-        spawn(fn ->
-          RemoteChain.RPC.send_raw_transaction(chain, payload)
-
-          for endpoint <- Enum.shuffle(chain.rpc_endpoints()) do
-            RemoteChain.HTTP.send_raw_transaction(endpoint, payload)
-          end
-        end)
-
-        response("ok", tx_hash)
 
       _ ->
         default(msg, state)

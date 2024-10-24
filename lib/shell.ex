@@ -138,8 +138,8 @@ defmodule Shell do
     Network.Rpc.create_transaction(wallet, callcode, opts, sign)
   end
 
-  def get_balance(_chain_id, _address) do
-    :todo
+  def get_balance(chain_id, address = <<_::binary-size(20)>>) do
+    RemoteChain.RPC.get_balance(chain_id, Base16.encode(address)) |> Base16.decode_int()
   end
 
   @spec get_miner_stake(non_neg_integer(), binary()) :: non_neg_integer()
