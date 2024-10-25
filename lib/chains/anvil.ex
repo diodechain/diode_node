@@ -2,6 +2,7 @@
 # Copyright 2021-2024 Diode
 # Licensed under the Diode License, Version 1.1
 defmodule Chains.Anvil do
+  alias DiodeClient.{Base16, Wallet, Hash}
   def chain_id(), do: 31337
   def expected_block_intervall(), do: 15
   def epoch(n), do: div(RemoteChain.blocktime(__MODULE__, n), epoch_length())

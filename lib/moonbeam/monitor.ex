@@ -1,4 +1,6 @@
 defmodule Monitor do
+  alias DiodeClient.{Base16, Hash}
+
   def chain(), do: Chains.Moonbeam
 
   def nodes() do

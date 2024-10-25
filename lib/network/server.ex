@@ -10,6 +10,8 @@ defmodule Network.Server do
 
     Then it spawns client connection based on the protocol handler
   """
+
+  alias DiodeClient.{Secp256k1, Wallet}
   use GenServer
   require Logger
 

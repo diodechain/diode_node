@@ -1,9 +1,9 @@
-defmodule Object.Ticket do
-  import Object.TicketV1, only: [ticketv1: 0]
-  import Object.TicketV2, only: [ticketv2: 0]
+defmodule DiodeClient.Object.Ticket do
+  import DiodeClient.Object.TicketV1, only: [ticketv1: 0]
+  import DiodeClient.Object.TicketV2, only: [ticketv2: 0]
 
-  def mod(ticketv1()), do: Object.TicketV1
-  def mod(ticketv2()), do: Object.TicketV2
+  def mod(ticketv1()), do: DiodeClient.Object.TicketV1
+  def mod(ticketv2()), do: DiodeClient.Object.TicketV2
 
   def key(tck), do: mod(tck).key(tck)
   def valid?(tck), do: mod(tck).valid?(tck)

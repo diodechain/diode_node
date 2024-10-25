@@ -6,6 +6,7 @@ defmodule KademliaSearch do
     A @alpha multi-threaded kademlia search. Starts a master as well as @alpha workers
     and executed the specified cmd query in the network.
   """
+  alias DiodeClient.Object
   use GenServer
   require Logger
 

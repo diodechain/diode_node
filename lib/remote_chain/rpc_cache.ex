@@ -4,9 +4,8 @@
 defmodule RemoteChain.RPCCache do
   use GenServer, restart: :permanent
   require Logger
-  alias RemoteChain.Cache
-  alias RemoteChain.NodeProxy
-  alias RemoteChain.RPCCache
+  alias DiodeClient.{Base16, Hash, Rlp, Rlpx}
+  alias RemoteChain.{Cache, NodeProxy, RPCCache}
   @default_timeout 25_000
 
   defstruct [

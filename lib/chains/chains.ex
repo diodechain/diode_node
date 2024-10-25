@@ -2,6 +2,8 @@
 # Copyright 2021-2024 Diode
 # Licensed under the Diode License, Version 1.1
 defmodule Chains.Diode do
+  alias DiodeClient.{Base16, Hash}
+
   def chain_id(), do: 15
   def expected_block_intervall(), do: 15
   def epoch(n), do: div(n, 40320)
@@ -16,6 +18,8 @@ defmodule Chains.Diode do
 end
 
 defmodule Chains.DiodeStaging do
+  alias DiodeClient.{Base16, Hash}
+
   def chain_id(), do: 13
   def expected_block_intervall(), do: 15
   def epoch(n), do: div(n, 40320)
@@ -30,6 +34,8 @@ defmodule Chains.DiodeStaging do
 end
 
 defmodule Chains.DiodeDev do
+  alias DiodeClient.{Base16, Hash}
+
   def chain_id(), do: 5777
   def expected_block_intervall(), do: 15
   def epoch(n), do: div(n, 40320)
@@ -44,6 +50,8 @@ defmodule Chains.DiodeDev do
 end
 
 defmodule Chains.Moonbeam do
+  alias DiodeClient.{Base16, Hash}
+
   def chain_id(), do: 1284
   def expected_block_intervall(), do: 15
   def epoch(n), do: div(RemoteChain.blocktime(__MODULE__, n), epoch_length())
@@ -92,6 +100,8 @@ defmodule Chains.Moonbeam do
 end
 
 defmodule Chains.MoonbaseAlpha do
+  alias DiodeClient.{Base16, Hash}
+
   def chain_id(), do: 1287
   def expected_block_intervall(), do: 15
   defdelegate epoch(n), to: Chains.Moonbeam
@@ -122,6 +132,8 @@ defmodule Chains.MoonbaseAlpha do
 end
 
 defmodule Chains.Moonriver do
+  alias DiodeClient.{Base16, Hash}
+
   def chain_id(), do: 1285
   def expected_block_intervall(), do: 15
   defdelegate epoch(n), to: Chains.Moonbeam

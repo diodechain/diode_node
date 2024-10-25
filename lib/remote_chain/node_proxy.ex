@@ -6,6 +6,7 @@ defmodule RemoteChain.NodeProxy do
   Manage websocket connections to the given chain rpc node
   """
   use GenServer, restart: :permanent
+  alias DiodeClient.{Base16, Rlp}
   alias RemoteChain.RPCCache
   alias RemoteChain.NodeProxy
   require Logger

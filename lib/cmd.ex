@@ -3,6 +3,8 @@ defmodule Diode.Cmd do
   Diode Snap command line interface functions
   """
 
+  alias DiodeClient.{Wallet}
+
   def configure() do
     Diode.Config.configure()
   end

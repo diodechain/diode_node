@@ -5,6 +5,7 @@ require Logger
 
 defmodule Diode do
   use Application
+  alias DiodeClient.{Hash, Object, Wallet}
 
   def start(type, args) do
     if Application.get_env(:diode, :no_start) do

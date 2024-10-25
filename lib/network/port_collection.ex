@@ -2,6 +2,8 @@
 # Copyright 2021-2024 Diode
 # Licensed under the Diode License, Version 1.1
 defmodule Network.PortCollection do
+  alias DiodeClient.Base16
+
   @moduledoc """
     Port opening flow:
 

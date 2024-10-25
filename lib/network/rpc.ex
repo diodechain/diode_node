@@ -2,8 +2,8 @@
 # Copyright 2021-2024 Diode
 # Licensed under the Diode License, Version 1.1
 defmodule Network.Rpc do
-  alias Object.Ticket
   require Logger
+  alias DiodeClient.{Base16, Wallet, Object, Object.Ticket}
 
   def handle_jsonrpc(rpcs, opts \\ [])
 

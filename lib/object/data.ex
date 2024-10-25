@@ -1,9 +1,10 @@
 # Diode Server
 # Copyright 2021-2024 Diode
 # Licensed under the Diode License, Version 1.1
-defmodule Object.Data do
+defmodule DiodeClient.Object.Data do
+  alias DiodeClient.{ABI, Secp256k1, Wallet}
   require Record
-  @behaviour Object
+  @behaviour DiodeClient.Object
 
   Record.defrecord(:data,
     block_number: nil,

@@ -1,4 +1,6 @@
 defmodule Moonbeam do
+  alias DiodeClient.{Base16, Hash}
+
   def chain(), do: Chains.Moonbeam
 
   # https://moonbeam.foundation/glimmer-token/transparency/

@@ -2,6 +2,7 @@
 # Copyright 2021-2024 Diode
 # Licensed under the Diode License, Version 1.1
 defmodule RemoteChain.Edge do
+  alias DiodeClient.{Base16, Contracts.CallPermit, Hash, Rlp, Rlpx, Wallet}
   import Network.EdgeV2, only: [response: 1, response: 2, error: 1]
   require Logger
 
@@ -129,7 +130,7 @@ defmodule RemoteChain.Edge do
         end
 
       ["getmetanonce", block, address] ->
-        CallPermit.rpc_call!(chain, CallPermit.nonces(address), nil, hex_blockref(block))
+        CallPermitAdapter.rpc_call!(chain, CallPermit.nonces(address), nil, hex_blockref(block))
         |> Base16.decode_int()
         |> response()
 
@@ -144,14 +145,14 @@ defmodule RemoteChain.Edge do
           # These are CallPermit metatransactions
           # Testing transaction
           [from, to, value, call, gaslimit, deadline, v, r, s] = Rlp.decode!(tx)
-          value = Rlpx.bin2num(value)
-          gaslimit = Rlpx.bin2num(gaslimit)
-          deadline = Rlpx.bin2num(deadline)
-          v = Rlpx.bin2num(v)
-          r = Rlpx.bin2num(r)
-          s = Rlpx.bin2num(s)
+          value = Rlpx.bin2uint(value)
+          gaslimit = Rlpx.bin2uint(gaslimit)
+          deadline = Rlpx.bin2uint(deadline)
+          v = Rlpx.bin2uint(v)
+          r = Rlpx.bin2uint(r)
+          s = Rlpx.bin2uint(s)
 
-          call = CallPermit.dispatch(from, to, value, call, gaslimit, deadline, v, r, s)
+          call = CallPermit.dispatch(from, to, value, call, gaslimit, deadline, {v, r, s})
           gas_price = RemoteChain.RPC.gas_price(chain) |> Base16.decode_int()
           nonce = RemoteChain.NonceProvider.nonce(chain)
 
@@ -160,7 +161,7 @@ defmodule RemoteChain.Edge do
           # been processed...
           if nonce == RemoteChain.NonceProvider.fetch_nonce(chain) do
             spawn(fn ->
-              CallPermit.rpc_call(chain, call, Wallet.address!(CallPermit.wallet()))
+              CallPermitAdapter.rpc_call(chain, call, Wallet.address!(CallPermitAdapter.wallet()))
               |> case do
                 {:ok, _} -> :ok
                 error -> Logger.error("RTX rpc_call failed: #{inspect(error)}")
@@ -169,7 +170,7 @@ defmodule RemoteChain.Edge do
           end
 
           tx =
-            Shell.raw(CallPermit.wallet(), call,
+            Shell.raw(CallPermitAdapter.wallet(), call,
               to: CallPermit.address(),
               chainId: chain.chain_id(),
               gas: 12_000_000,
@@ -234,6 +235,6 @@ defmodule RemoteChain.Edge do
   end
 
   defp hex_slot(key) when is_binary(key) do
-    Base16.encode(Rlpx.bin2num(key), false)
+    Base16.encode(Rlpx.bin2uint(key), false)
   end
 end

@@ -1,9 +1,10 @@
 # Diode Server
 # Copyright 2021-2024 Diode
 # Licensed under the Diode License, Version 1.1
-defmodule Object.Channel do
+defmodule DiodeClient.Object.Channel do
+  alias DiodeClient.{ABI, Hash, Rlp, Secp256k1, Wallet}
   require Record
-  @behaviour Object
+  @behaviour DiodeClient.Object
 
   Record.defrecord(:channel,
     server_id: nil,

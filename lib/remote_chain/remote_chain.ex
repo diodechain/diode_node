@@ -6,6 +6,8 @@ defmodule RemoteChain do
   Wrapper to access RemoteChain details. Usually each method requires the chain_id to be passed as the first argument.
   """
 
+  alias DiodeClient.Base16
+
   def epoch(chain_id, number \\ nil),
     do: chainimpl(chain_id).epoch(number || peaknumber(chain_id))
 

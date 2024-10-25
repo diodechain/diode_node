@@ -5,7 +5,7 @@ defmodule KBuckets do
   @moduledoc """
   Provides 256 bits k-buckets for hashes
   """
-  alias Object.Server, as: Server
+  alias DiodeClient.{Object, Wallet, Object.Server}
   import Wallet
 
   defmodule Item do

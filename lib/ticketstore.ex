@@ -2,7 +2,7 @@
 # Copyright 2021-2024 Diode
 # Licensed under the Diode License, Version 1.1
 defmodule TicketStore do
-  alias Object.Ticket
+  alias DiodeClient.{ETSLru, Object.Ticket, Wallet}
   alias Model.TicketSql
   alias Model.Ets
   use GenServer
@@ -16,7 +16,7 @@ defmodule TicketStore do
 
   def init([]) do
     Ets.init(__MODULE__)
-    EtsLru.new(@ticket_value_cache, 1024)
+    ETSLru.new(@ticket_value_cache, 1024)
     {:ok, nil}
   end
 
@@ -26,6 +26,10 @@ defmodule TicketStore do
 
   def epoch() do
     div(System.os_time(:second), Chains.Moonbeam.epoch_length())
+  end
+
+  def tickets(chainmod, epoch) when is_atom(chainmod) do
+    tickets(chainmod.chain_id(), epoch)
   end
 
   def tickets(chain_id, epoch) do
@@ -44,6 +48,10 @@ defmodule TicketStore do
   # Should be called on each new block
   def maybe_submit_tickets() do
     maybe_submit_tickets(Chains.Moonbeam)
+  end
+
+  def maybe_submit_tickets(chainmod) when is_atom(chainmod) do
+    maybe_submit_tickets(chainmod.chain_id())
   end
 
   def maybe_submit_tickets(chain_id) do
@@ -83,14 +91,6 @@ defmodule TicketStore do
       end
 
       submit_tickets_transaction(tickets)
-
-      # Enum.chunk_every(tickets, 100)
-      # |> Enum.reduce_while([], fn chunk, acc ->
-      #   case submit_tickets_transaction(chunk) do
-      #     {:ok, txhash} -> {:cont, [txhash | acc]}
-      #     {:error, reason} -> {:halt, {:error, reason}}
-      #   end
-      # end)
     end
   end
 
@@ -209,7 +209,7 @@ defmodule TicketStore do
   end
 
   def estimate_ticket_score(tck) do
-    ticket_score(tck) - EtsLru.get(@ticket_value_cache, ets_key(tck), 0)
+    ticket_score(tck) - ETSLru.get(@ticket_value_cache, ets_key(tck), 0)
   end
 
   def estimate_ticket_value(tck) do
@@ -233,8 +233,12 @@ defmodule TicketStore do
     fleet_value(Ticket.chain_id(tck), Ticket.fleet_contract(tck), Ticket.epoch(tck) + 1)
   end
 
+  def fleet_value(chainmod, fleet, epoch) when is_atom(chainmod) do
+    fleet_value(chainmod.chain_id(), fleet, epoch)
+  end
+
   def fleet_value(chain_id, fleet, epoch) do
-    EtsLru.fetch(@ticket_value_cache, {:fleet, chain_id, fleet, epoch}, fn ->
+    ETSLru.fetch(@ticket_value_cache, {:fleet, chain_id, fleet, epoch}, fn ->
       n =
         min(
           RemoteChain.chainimpl(chain_id).epoch_block(epoch),
@@ -251,7 +255,7 @@ defmodule TicketStore do
   end
 
   def fleet_score(fleet, epoch) do
-    EtsLru.get(@ticket_value_cache, {:fleet_score, fleet, epoch}) ||
+    ETSLru.get(@ticket_value_cache, {:fleet_score, fleet, epoch}) ||
       update_fleet_scores(epoch)[fleet]
   end
 
@@ -260,7 +264,7 @@ defmodule TicketStore do
     |> Enum.group_by(fn tck -> Ticket.fleet_contract(tck) end)
     |> Enum.map(fn {fleet, tcks} ->
       total_score = Enum.map(tcks, fn tck -> ticket_score(tck) end) |> Enum.sum()
-      EtsLru.put(@ticket_value_cache, {:fleet_score, fleet, epoch}, total_score)
+      ETSLru.put(@ticket_value_cache, {:fleet_score, fleet, epoch}, total_score)
       {fleet, total_score}
     end)
     |> Map.new()
@@ -269,15 +273,15 @@ defmodule TicketStore do
   def store_submitted_ticket_score(tck) do
     ticket_score = ticket_score(tck)
 
-    case EtsLru.get(@ticket_value_cache, ets_key(tck), 0) do
+    case ETSLru.get(@ticket_value_cache, ets_key(tck), 0) do
       prev when prev >= ticket_score -> prev
-      _other -> EtsLru.put(@ticket_value_cache, ets_key(tck), ticket_score)
+      _other -> ETSLru.put(@ticket_value_cache, ets_key(tck), ticket_score)
     end
   end
 
   def update_submitted_ticket_score(tck) do
     ticket_score = fetch_submitted_ticket_score(tck)
-    EtsLru.put(@ticket_value_cache, ets_key(tck), ticket_score)
+    ETSLru.put(@ticket_value_cache, ets_key(tck), ticket_score)
   end
 
   def ticket_score(tck) when is_tuple(tck) do

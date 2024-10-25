@@ -1,4 +1,5 @@
 defmodule EIP712 do
+  alias DiodeClient.{ABI, Hash}
   defstruct [:primary_type, :types, :message]
 
   def encode(domain_separator, primary_type, type_data, message) do

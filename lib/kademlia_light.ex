@@ -12,7 +12,7 @@ defmodule KademliaLight do
   """
   use GenServer
   alias Network.PeerHandlerV2
-  alias Object.Server
+  alias DiodeClient.{Base16, ETSLru, Object, Object.Server, Wallet}
   alias Model.KademliaSql
   require Logger
   @k 3
@@ -425,7 +425,7 @@ defmodule KademliaLight do
   # -------------------------------------------------------------------------------------
   @impl true
   def init(:ok) do
-    EtsLru.new(__MODULE__, 2048, fn value ->
+    ETSLru.new(__MODULE__, 2048, fn value ->
       case value do
         nil -> false
         [] -> false
@@ -522,14 +522,14 @@ defmodule KademliaLight do
   defp get_cached(fun, key) do
     cache_key = {fun, key}
 
-    case EtsLru.get(__MODULE__, cache_key) do
+    case ETSLru.get(__MODULE__, cache_key) do
       nil ->
-        EtsLru.fetch(__MODULE__, cache_key, fn -> fun.(key) end)
+        ETSLru.fetch(__MODULE__, cache_key, fn -> fun.(key) end)
 
       other ->
         Debouncer.immediate(
           cache_key,
-          fn -> EtsLru.put(__MODULE__, cache_key, fun.(key)) end,
+          fn -> ETSLru.put(__MODULE__, cache_key, fun.(key)) end,
           @cache_timeout
         )
 

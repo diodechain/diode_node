@@ -2,6 +2,7 @@
 # Copyright 2021-2024 Diode
 # Licensed under the Diode License, Version 1.1
 defmodule RemoteChain.Transaction do
+  alias DiodeClient.{Base16, Hash, Rlp, Rlpx, Secp256k1, Wallet}
   @enforce_keys [:chain_id]
   defstruct nonce: 1,
             gasPrice: 0,
@@ -37,11 +38,11 @@ defmodule RemoteChain.Transaction do
     to = Rlpx.bin2addr(to)
 
     %RemoteChain.Transaction{
-      nonce: Rlpx.bin2num(nonce),
-      gasPrice: Rlpx.bin2num(gas_price),
-      gasLimit: Rlpx.bin2num(gas_limit),
+      nonce: Rlpx.bin2uint(nonce),
+      gasPrice: Rlpx.bin2uint(gas_price),
+      gasLimit: Rlpx.bin2uint(gas_limit),
       to: to,
-      value: Rlpx.bin2num(value),
+      value: Rlpx.bin2uint(value),
       init: if(to == nil, do: init, else: nil),
       data: if(to != nil, do: init, else: nil),
       signature: Secp256k1.rlp_to_bitcoin(rec, r, s),

@@ -4,6 +4,7 @@
 defmodule Channels do
   # Automatically defines child_spec/1
   use Supervisor
+  alias DiodeClient.Object
 
   def start_link() do
     Supervisor.start_link(__MODULE__, [], name: __MODULE__)

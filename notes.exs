@@ -1,7 +1,20 @@
+# Oct 24th
+
+chain_id = Chains.Moonbeam.chain_id()
+blocknum = RemoteChain.peaknumber(chain_id)
+RemoteChain.epoch_progress(chain_id, blocknum)
+
+epoch = RemoteChain.epoch(chain_id, blocknum)
+TicketStore.tickets(chain_id, epoch - 1)
+
+
+
+TicketStore.submit_tickets(chain_id, epoch - 1)
+
+
 # Oct 22nd
 
 chain_id = Chains.Moonbeam.chain_id()
-
 blocknum = RemoteChain.peaknumber(chain_id)
 RemoteChain.epoch_progress(chain_id, blocknum)
 

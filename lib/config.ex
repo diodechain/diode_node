@@ -1,4 +1,6 @@
 defmodule Diode.Config do
+  alias DiodeClient.Base16
+
   def defaults() do
     %{
       "LOG_LEVEL" => "info",
@@ -158,7 +160,7 @@ defmodule Diode.Config do
 
   defp get_runtime_fallback("NAME") do
     {:ok, host} = :net.gethostname()
-    Wallet.words(Diode.wallet()) <> "@#{host}"
+    Words.encode(Diode.address()) <> "@#{host}"
   end
 
   defp get_runtime_fallback(_key), do: nil

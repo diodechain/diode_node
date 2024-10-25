@@ -3,8 +3,8 @@
 # Licensed under the Diode License, Version 1.1
 defmodule Shell do
   @moduledoc false
-  alias RemoteChain.NodeProxy
-  alias RemoteChain.Transaction
+  alias DiodeClient.{ABI, Base16, Rlp}
+  alias RemoteChain.{NodeProxy, Transaction}
 
   def call(chain_id, address, name, types \\ [], values \\ [], opts \\ [])
       when is_list(types) and is_list(values) do

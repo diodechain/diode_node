@@ -7,6 +7,8 @@ defmodule Contract.Fleet do
     as needed by the tests
   """
 
+  alias DiodeClient.{Base16, Hash}
+
   def set_device_allowlist(chain_id, fleet, address, bool) when is_boolean(bool) do
     Shell.transaction(
       Diode.wallet(),

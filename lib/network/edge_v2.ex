@@ -6,11 +6,10 @@ defmodule Network.EdgeV2 do
   require Logger
   alias Network.PortCollection
   alias Network.PortCollection.Port
-  alias Object.Ticket
-  alias Object.Channel
-  import Object.TicketV1, only: :macros
-  import Object.TicketV2, only: :macros
-  import Channel, only: :macros
+  alias DiodeClient.{Base16, Object, Object.Ticket}
+  import DiodeClient.Object.TicketV1, only: :macros
+  import DiodeClient.Object.TicketV2, only: :macros
+  import DiodeClient.Object.Channel, only: :macros
 
   @type state :: %{
           blocked: :queue.queue(tuple()),
@@ -745,11 +744,11 @@ defmodule Network.EdgeV2 do
   end
 
   defp to_num(bin) do
-    Rlpx.bin2num(bin)
+    Rlpx.bin2uint(bin)
   end
 
   defp to_bin(num) do
-    Rlpx.num2bin(num)
+    Rlpx.uint2bin(num)
   end
 
   def trace(nil), do: :nop

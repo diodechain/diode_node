@@ -3,6 +3,7 @@
 # Licensed under the Diode License, Version 1.1
 defmodule Model.CredSql do
   alias Model.Sql
+  alias DiodeClient.{Wallet, Secp256k1}
   use GenServer
   require Logger
 

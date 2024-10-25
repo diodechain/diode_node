@@ -1,9 +1,10 @@
 # Diode Server
 # Copyright 2021-2024 Diode
 # Licensed under the Diode License, Version 1.1
-defmodule Object.TicketV2 do
+defmodule DiodeClient.Object.TicketV2 do
+  alias DiodeClient.{ABI, Hash, Secp256k1, Wallet}
   require Record
-  @behaviour Object
+  @behaviour DiodeClient.Object
 
   Record.defrecord(:ticketv2,
     server_id: nil,

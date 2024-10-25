@@ -2,6 +2,8 @@
 # Copyright 2021-2024 Diode
 # Licensed under the Diode License, Version 1.1
 defmodule Contract.BNS do
+  alias DiodeClient.{ABI, Base16, Hash}
+
   @moduledoc """
     Wrapper for the BNS contract functions
     as needed by the inner workings of the chain

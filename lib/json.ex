@@ -2,6 +2,8 @@
 # Copyright 2021-2024 Diode
 # Licensed under the Diode License, Version 1.1
 defmodule Json do
+  alias DiodeClient.Base16
+
   def encode!(object, conv \\ []) do
     prepare!(object, conv)
     |> Poison.encode!()

@@ -6,6 +6,7 @@ defmodule Contract.Registry do
     Wrapper for the DiodeRegistry contract functions
     as needed by the inner workings of the chain
   """
+  alias DiodeClient.{ABI, Base16}
 
   def epoch(chain_id, blockRef) do
     call(chain_id, "Epoch", [], [], blockRef)

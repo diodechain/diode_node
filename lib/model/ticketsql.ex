@@ -3,7 +3,7 @@
 # Licensed under the Diode License, Version 1.1
 defmodule Model.TicketSql do
   alias Model.Sql
-  alias Object.Ticket
+  alias DiodeClient.Object.Ticket
 
   defp query!(sql, params \\ []) do
     Sql.query!(__MODULE__, sql, params)

@@ -4,7 +4,8 @@
 defmodule Network.Channel do
   use GenServer
   require Logger
-  import Object.Channel
+  import DiodeClient.Object.Channel
+  alias DiodeClient.Base16
   alias Network.PortCollection
 
   def start_link(ch = channel()) do

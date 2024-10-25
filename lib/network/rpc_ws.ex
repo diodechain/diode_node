@@ -3,6 +3,7 @@
 # Licensed under the Diode License, Version 1.1
 defmodule Network.RpcWs do
   @behaviour :cowboy_websocket
+  alias DiodeClient.{Base16, Random}
   require Logger
 
   def init(req, state) do

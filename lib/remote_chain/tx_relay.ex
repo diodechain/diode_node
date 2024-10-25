@@ -8,6 +8,7 @@ defmodule RemoteChain.TxRelay do
   use GenServer, restart: :permanent
   alias RemoteChain.TxRelay
   alias RemoteChain.Transaction
+  alias DiodeClient.Base16
   require Logger
 
   defstruct [:chain, :txlist]

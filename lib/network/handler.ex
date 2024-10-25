@@ -2,6 +2,7 @@
 # Copyright 2021-2024 Diode
 # Licensed under the Diode License, Version 1.1
 defmodule Network.Handler do
+  alias DiodeClient.{Base16, Certs, Object, Random, Rlp, Rlpx, Wallet}
   require Record
   @callback ssl_options([]) :: []
   @callback do_init() :: any()
@@ -12,6 +13,7 @@ defmodule Network.Handler do
     quote do
       use GenServer
       import Network.Handler
+      alias DiodeClient.{Base16, Certs, Object, Random, Rlp, Rlpx, Wallet}
       require Logger
 
       def init({state, :init}) do

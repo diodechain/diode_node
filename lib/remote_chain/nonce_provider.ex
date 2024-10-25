@@ -1,6 +1,7 @@
 defmodule RemoteChain.NonceProvider do
   use GenServer, restart: :permanent
   require Logger
+  alias DiodeClient.{Base16, Wallet}
   alias RemoteChain.NonceProvider
 
   defstruct [:nonce, :fetched_nonce, :chain]
@@ -69,7 +70,7 @@ defmodule RemoteChain.NonceProvider do
     nonce =
       RemoteChain.RPCCache.get_transaction_count(
         chain,
-        Wallet.base16(CallPermit.wallet()),
+        Wallet.base16(CallPermitAdapter.wallet()),
         "latest"
       )
       |> Base16.decode_int()
