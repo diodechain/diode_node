@@ -4,7 +4,7 @@
 defmodule RpcTest do
   use ExUnit.Case, async: false
   import TestHelper
-  alias RemoteChain.Transaction
+  alias DiodeClient.Transaction
   alias Network.Rpc
 
   setup_all do

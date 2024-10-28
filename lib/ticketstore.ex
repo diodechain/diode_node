@@ -2,7 +2,7 @@
 # Copyright 2021-2024 Diode
 # Licensed under the Diode License, Version 1.1
 defmodule TicketStore do
-  alias DiodeClient.{ETSLru, Object.Ticket, Wallet}
+  alias DiodeClient.{ETSLru, MetaTransaction, Object.Ticket, Rlp, Wallet}
   alias Model.TicketSql
   alias Model.Ets
   use GenServer
@@ -103,7 +103,34 @@ defmodule TicketStore do
 
     case Shell.call_tx!(tx, "latest") do
       "0x" ->
-        txhash = Shell.submit_tx(tx)
+        chain = RemoteChain.chainimpl(chain_id)
+
+        txhash =
+          if CallPermitAdapter.should_submit_metatransaction?(chain) do
+            tx =
+              MetaTransaction.sign(
+                %MetaTransaction{
+                  from: Diode.address(),
+                  to: tx.to,
+                  call: tx.data,
+                  gaslimit: tx.gasLimit,
+                  deadline: System.os_time(:second) + 3600,
+                  value: tx.value,
+                  nonce: tx.nonce,
+                  chain_id: chain_id
+                },
+                Diode.wallet()
+              )
+              |> MetaTransaction.to_rlp()
+              |> Rlp.encode!()
+
+            case CallPermitAdapter.submit_metatransaction(chain, tx) do
+              ["ok", txhash] -> txhash
+              other -> {:error, other}
+            end
+          else
+            Shell.submit_tx(tx)
+          end
 
         if is_binary(txhash) do
           Enum.each(tickets, &store_submitted_ticket_score/1)
@@ -115,10 +142,16 @@ defmodule TicketStore do
             end,
             :timer.minutes(5)
           )
-        end
 
-        Logger.info("Submitted ticket tx #{inspect(txhash)} for #{length(tickets)} tickets")
-        {:ok, txhash}
+          Logger.info("Submitted ticket tx #{inspect(txhash)} for #{length(tickets)} tickets")
+          {:ok, txhash}
+        else
+          Logger.info(
+            "Failed to submit ticket tx #{inspect(txhash)} for #{length(tickets)} tickets"
+          )
+
+          {:error, txhash}
+        end
 
       {{:evmc_revert, reason}, _} ->
         {:error, "EVM error: #{inspect(reason)}"}

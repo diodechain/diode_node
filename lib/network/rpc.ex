@@ -3,7 +3,7 @@
 # Licensed under the Diode License, Version 1.1
 defmodule Network.Rpc do
   require Logger
-  alias DiodeClient.{Base16, Wallet, Object, Object.Ticket}
+  alias DiodeClient.{Base16, Wallet, Object, Object.Ticket, Transaction}
 
   def handle_jsonrpc(rpcs, opts \\ [])
 
@@ -475,7 +475,7 @@ defmodule Network.Rpc do
       raise "Unhandled create_transaction(opts): #{inspect(opts)}"
     end
 
-    tx = %RemoteChain.Transaction{
+    tx = %Transaction{
       to: to,
       nonce: nonce,
       gasPrice: gas_price,
@@ -487,7 +487,7 @@ defmodule Network.Rpc do
     }
 
     if sign do
-      RemoteChain.Transaction.sign(tx, Wallet.privkey!(wallet))
+      Transaction.sign(tx, Wallet.privkey!(wallet))
     else
       %{tx | signature: {:fake, Wallet.address!(wallet)}}
     end

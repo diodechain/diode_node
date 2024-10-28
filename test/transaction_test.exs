@@ -3,7 +3,7 @@
 # Licensed under the Diode License, Version 1.1
 defmodule TransactionTest do
   use ExUnit.Case, async: true
-  alias RemoteChain.Transaction
+  alias DiodeClient.Transaction
   import TestHelper
 
   test "recoding" do

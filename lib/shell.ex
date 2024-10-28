@@ -3,8 +3,8 @@
 # Licensed under the Diode License, Version 1.1
 defmodule Shell do
   @moduledoc false
-  alias DiodeClient.{ABI, Base16, Rlp}
-  alias RemoteChain.{NodeProxy, Transaction}
+  alias DiodeClient.{ABI, Base16, Rlp, Transaction}
+  alias RemoteChain.NodeProxy
 
   def call(chain_id, address, name, types \\ [], values \\ [], opts \\ [])
       when is_list(types) and is_list(values) do
@@ -31,8 +31,8 @@ defmodule Shell do
   end
 
   def submit_tx(tx) do
-    id = RemoteChain.Transaction.chain_id(tx)
-    hex = RemoteChain.Transaction.to_rlp(tx) |> Rlp.encode!() |> Base16.encode()
+    id = DiodeClient.Transaction.chain_id(tx)
+    hex = DiodeClient.Transaction.to_rlp(tx) |> Rlp.encode!() |> Base16.encode()
     RemoteChain.RPC.send_raw_transaction(id, hex)
   end
 

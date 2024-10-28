@@ -634,7 +634,7 @@ defmodule Edge2Test do
   end
 
   defp to_rlp(tx) do
-    tx |> RemoteChain.Transaction.to_rlp() |> Rlp.encode!()
+    tx |> DiodeClient.Transaction.to_rlp() |> Rlp.encode!()
   end
 
   defp check_counters() do

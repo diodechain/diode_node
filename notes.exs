@@ -260,7 +260,7 @@ multisig = Base16.decode("0x3d565Ec28595c1a0710ABCBd8C0F979d31E38704")
 Shell.call_from(Chains.Moonbeam, from, multisig, "executeTransaction", ["uint256"],  [9])
 {tx, blockRef} = Shell.tx_from(Chains.Moonbeam, from, multisig, "executeTransaction", ["uint256"],  [9])
 
-alias RemoteChain.Transaction
+alias DiodeClient.Transaction
 
 RemoteChain.RPC.rpc(
   Chains.Moonbeam,

@@ -135,12 +135,8 @@ defmodule RemoteChain.Edge do
         |> response()
 
       ["sendmetatransaction", tx] ->
-        if Shell.get_balance(chain, Diode.address()) / Shell.ether(1) < 1 do
-          msg = Rlp.encode!(msg) |> Base16.encode()
-
-          RemoteChain.RPCCache.rpc!(RemoteChain.diode_l1_fallback(), "dio_edgev2", [msg])
-          |> Base16.decode()
-          |> Rlp.decode!()
+        if CallPermitAdapter.should_submit_metatransaction?(chain) do
+          CallPermitAdapter.submit_metatransaction(chain, tx)
         else
           # These are CallPermit metatransactions
           # Testing transaction
@@ -181,12 +177,12 @@ defmodule RemoteChain.Edge do
 
           payload =
             tx
-            |> RemoteChain.Transaction.to_rlp()
+            |> DiodeClient.Transaction.to_rlp()
             |> Rlp.encode!()
             |> Base16.encode()
 
           tx_hash =
-            RemoteChain.Transaction.hash(tx)
+            DiodeClient.Transaction.hash(tx)
             |> Base16.encode()
 
           Logger.info("Submitting RTX: #{tx_hash} (#{inspect(tx)})")

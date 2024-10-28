@@ -1,5 +1,5 @@
 defmodule CallPermitAdapter do
-  alias DiodeClient.{Base16}
+  alias DiodeClient.{Base16, Rlp}
 
   # 0xe7f13b866a7fc159cb6ee32bcb4103cf0477652e
   def wallet() do
@@ -21,5 +21,21 @@ defmodule CallPermitAdapter do
       Base16.encode(call),
       blockref
     )
+  end
+
+  def should_submit_metatransaction?(chain) do
+    chain in [Chains.Moonbeam, Chains.Moonriver, Chains.MoonbeamTestnet] and
+      Shell.get_balance(chain, Diode.address()) / Shell.ether(1) < 1
+  end
+
+  # RLP encoded MetaTransaction
+  def submit_metatransaction(chain, meta_transaction) when is_binary(meta_transaction) do
+    msg =
+      Rlp.encode!([chain.chain_prefix() <> ":sendmetatransaction", meta_transaction])
+      |> Base16.encode()
+
+    RemoteChain.RPCCache.rpc!(RemoteChain.diode_l1_fallback(), "dio_edgev2", [msg])
+    |> Base16.decode()
+    |> Rlp.decode!()
   end
 end
