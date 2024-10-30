@@ -3,7 +3,7 @@
 # Licensed under the Diode License, Version 1.1
 defmodule Network.Rpc do
   require Logger
-  alias DiodeClient.{Base16, Wallet, Object, Object.Ticket, Transaction}
+  alias DiodeClient.{Base16, Object, Object.Ticket, Rlp, Transaction, Wallet}
 
   def handle_jsonrpc(rpcs, opts \\ [])
 
@@ -123,7 +123,6 @@ defmodule Network.Rpc do
 
   def execute_std(method, params)
       when method in [
-             "dio_edgev2",
              "dio_codeGroups",
              "dio_supply",
              "eth_call",
@@ -219,6 +218,15 @@ defmodule Network.Rpc do
 
   def execute_dio(method, params) do
     case method do
+      "dio_edgev2" ->
+        hd(params)
+        |> Base16.decode()
+        |> Rlp.decode!()
+        |> Network.EdgeV2.handle_async_msg(nil)
+        |> Rlp.encode!()
+        |> Base16.encode()
+        |> result()
+
       "dio_getObject" ->
         key = Base16.decode(hd(params))
 
