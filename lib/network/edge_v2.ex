@@ -476,6 +476,14 @@ defmodule Network.EdgeV2 do
 
         error("epoch number too high")
 
+      Ticket.total_bytes(dl) > 1024 * 1024 * 1024 * 1024 * 1024 ->
+        log(state, "Ticket with too many bytes #{Ticket.total_bytes(dl)}!")
+        error("too many bytes")
+
+      Ticket.total_connections(dl) > 1024 * 1024 * 1024 * 1024 ->
+        log(state, "Ticket with too many connections #{Ticket.total_connections(dl)}!")
+        error("too many connections")
+
       not Ticket.device_address?(dl, device_id(state)) ->
         log(state, "Received invalid ticket signature!")
         error("signature mismatch")
