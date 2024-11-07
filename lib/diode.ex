@@ -99,6 +99,32 @@ defmodule Diode do
     ]
   end
 
+  def any_ip() do
+    case :persistent_term.get(:any_ip, nil) do
+      nil ->
+        ip = if ipv6?(), do: {0, 0, 0, 0, 0, 0, 0, 0}, else: {0, 0, 0, 0}
+        :persistent_term.put(:any_ip, ip)
+        ip
+
+      ip ->
+        ip
+    end
+  end
+
+  defp ipv6?() do
+    case :gen_tcp.connect({0, 0, 0, 0, 0, 0, 0, 0}, 0, []) do
+      {:error, :econnrefused} ->
+        true
+
+      {:ok, port} ->
+        :gen_tcp.close(port)
+        true
+
+      {:error, :eaddrnotavail} ->
+        false
+    end
+  end
+
   def start_client_network() do
     for child <- network_children() do
       Supervisor.start_child(Network, child)
@@ -147,7 +173,7 @@ defmodule Diode do
       {:_, [{"/ws", Network.RpcWs, []}, {:_, Plug.Cowboy.Handler, {Network.RpcHttp, []}}]}
 
     opts =
-      [ip: {0, 0, 0, 0}, compress: not Diode.dev_mode?(), dispatch: [dispatch]]
+      [ip: any_ip(), compress: not Diode.dev_mode?(), dispatch: [dispatch]]
       |> Keyword.merge(opts)
 
     {Plug.Cowboy, scheme: scheme, plug: Network.RpcHttp, options: opts}

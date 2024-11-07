@@ -1,3 +1,19 @@
+# Nov 6th
+Network.Rpc.execute_dio("dio_traffic", [Chains.Moonbeam.chain_id()])
+
+
+chain_id = Chains.Moonbeam.chain_id()
+blocknum = RemoteChain.peaknumber(chain_id)
+RemoteChain.epoch_progress(chain_id, blocknum)
+
+epoch = RemoteChain.epoch(chain_id, blocknum)
+tickets = TicketStore.tickets(chain_id, epoch - 1)
+
+best = tickets |> Enum.sort_by(&TicketStore.estimate_ticket_value/1, :desc) |> Stream.filter(fn tck -> TicketStore.validate_ticket(tck) == :ok end) |> Enum.take(10)
+
+
+
+
 # Oct 24th
 
 chain_id = Chains.Moonbeam.chain_id()

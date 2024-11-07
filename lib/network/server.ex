@@ -56,7 +56,7 @@ defmodule Network.Server do
 
     {ports, sockets} =
       Enum.reduce(ports, {[], %{}}, fn port, {ports, sockets} ->
-        case :ssl.listen(port, protocolHandler.ssl_options([])) do
+        case :ssl.listen(port, protocolHandler.ssl_options([]) ++ [ip: Diode.any_ip()]) do
           {:ok, socket} ->
             {ports ++ [port], Map.put(sockets, port, socket)}
 
