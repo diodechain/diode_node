@@ -2,7 +2,7 @@ DESTDIR ?= /opt/diode_node
 SHELL = /bin/bash
 
 all:
-	./scripts/snapcraft_build.sh
+	./snap/build.sh
 
 install:
 	mkdir -p $(DESTDIR)/meta/hooks

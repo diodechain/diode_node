@@ -17,22 +17,24 @@ parts:
   diode-node:
     # See 'snapcraft plugins'
     plugin: make
+    make-parameters: [-f snap/Makefile]
     source: .
     build-packages:
       - autoconf
       - automake
       - curl
-      - wget
       - g++
       - git
       - libc6
       - libgmp3-dev
+      - libncurses-dev
       - libstdc++6
       - libtool
       - make
-      - libncurses-dev
       - procps
+      - snapd
       - unzip
+      - wget
       - zlib1g-dev
     stage-packages:
       - mawk
@@ -47,7 +49,7 @@ parts:
       craftctl set grade="stable"
 
 apps:
-  diode-node:
+  service:
     command: bin/diode_node start
     plugs: [network, network-bind]
     daemon: simple
