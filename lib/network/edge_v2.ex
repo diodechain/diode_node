@@ -597,7 +597,6 @@ defmodule Network.EdgeV2 do
       {:device_id, _} -> error("invalid device id")
       {:valid_flags, false} -> error("invalid flags")
       {:self, true} -> error("can't connect to yourself")
-      other -> error("invalid address #{inspect(other)}")
     end
   end
 

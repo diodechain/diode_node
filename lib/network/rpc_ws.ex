@@ -49,10 +49,8 @@ defmodule Network.RpcWs do
           {:ok, state}
       end
     else
-      {:ok, state} ->
-        {:ok, state}
-
-      _ ->
+      error ->
+        Logger.error("Received invalid json #{inspect(error)}")
         {:reply, {:text, Poison.encode!("what?")}, state}
     end
   end
