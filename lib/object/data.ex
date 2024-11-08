@@ -26,7 +26,6 @@ defmodule DiodeClient.Object.Data do
   end
 
   @impl true
-  @spec key(data()) :: Object.key()
   def key(d = data(name: name)) do
     key(owner_address(d), name)
   end
