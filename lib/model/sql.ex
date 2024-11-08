@@ -62,7 +62,7 @@ defmodule Model.Sql do
 
     Stats.tc(:query, fn ->
       {:ok, stmt} = Exqlite.Sqlite3.prepare(conn, sql)
-      :ok = Exqlite.Sqlite3.bind(conn, stmt, params)
+      :ok = Exqlite.Sqlite3.bind(stmt, params)
       ret = collect(conn, stmt, []) |> Enum.reverse()
       :ok = Exqlite.Sqlite3.release(conn, stmt)
       {:ok, ret}
