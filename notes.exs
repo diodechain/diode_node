@@ -1,4 +1,8 @@
 # Nov 8th
+
+letz = "0x0530f2dfdab4860f4c0bde8a7bced46b1b76038d"
+
+
 node_id = "0x39905d59e9de79912e2545bc1751dbb900249493"
 node = DiodeClient.Base16.decode(node_id)
 Network.Rpc.execute_dio("dio_network", []) |> elem(0) |> elem(1) |> Enum.filter(fn n -> n.node_id == node_id end)

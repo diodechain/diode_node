@@ -2,7 +2,7 @@
 # Copyright 2021-2024 Diode
 # Licensed under the Diode License, Version 1.1
 defmodule TicketStore do
-  alias DiodeClient.{ETSLru, MetaTransaction, Object.Ticket, Rlp, Wallet}
+  alias DiodeClient.{Base16, ETSLru, MetaTransaction, Object.Ticket, Rlp, Wallet}
   alias Model.TicketSql
   alias Model.Ets
   use GenServer
@@ -17,6 +17,13 @@ defmodule TicketStore do
   def init([]) do
     Ets.init(__MODULE__)
     ETSLru.new(@ticket_value_cache, 1024)
+
+    for tck <- TicketSql.tickets() do
+      if Ticket.too_many_bytes?(tck) do
+        TicketSql.delete(tck)
+      end
+    end
+
     {:ok, nil}
   end
 
@@ -194,26 +201,24 @@ defmodule TicketStore do
     if tepoch in [epoch, epoch - 1] do
       last = find(address, fleet, tepoch)
 
-      case last do
-        nil ->
+      if last == nil or Ticket.too_many_bytes?(last) do
+        put_ticket(tck, address, fleet, tepoch)
+        {:ok, Ticket.total_bytes(tck)}
+      else
+        if Ticket.total_connections(last) < Ticket.total_connections(tck) or
+             Ticket.total_bytes(last) < Ticket.total_bytes(tck) do
           put_ticket(tck, address, fleet, tepoch)
-          {:ok, Ticket.total_bytes(tck)}
-
-        last ->
-          if Ticket.total_connections(last) < Ticket.total_connections(tck) or
-               Ticket.total_bytes(last) < Ticket.total_bytes(tck) do
+          {:ok, max(0, Ticket.total_bytes(tck) - Ticket.total_bytes(last))}
+        else
+          if address != Ticket.device_address(last) do
+            Logger.warning("Ticked Signed on Fork RemoteChain")
+            Logger.warning("Last: #{inspect(last)}\nTck: #{inspect(tck)}")
             put_ticket(tck, address, fleet, tepoch)
-            {:ok, max(0, Ticket.total_bytes(tck) - Ticket.total_bytes(last))}
+            {:ok, Ticket.total_bytes(tck)}
           else
-            if address != Ticket.device_address(last) do
-              Logger.warning("Ticked Signed on Fork RemoteChain")
-              Logger.warning("Last: #{inspect(last)}\nTck: #{inspect(tck)}")
-              put_ticket(tck, address, fleet, tepoch)
-              {:ok, Ticket.total_bytes(tck)}
-            else
-              {:too_low, last}
-            end
+            {:too_low, last}
           end
+        end
       end
     else
       {:too_old, epoch - 1}
@@ -224,6 +229,11 @@ defmodule TicketStore do
     key = {device, fleet, epoch}
 
     Debouncer.delay(key, fn ->
+      addr = Ticket.device_address(tck) |> Base16.encode()
+      bytes = Ticket.total_bytes(tck)
+      conns = Ticket.total_connections(tck)
+      epoch = Ticket.epoch(tck)
+      Logger.info("Storing device ticket #{addr} #{bytes} bytes #{conns} conns @ #{epoch}")
       TicketSql.put_ticket(tck)
       Ets.remove(__MODULE__, key)
     end)

@@ -55,6 +55,11 @@ defmodule Model.TicketSql do
     |> Enum.map(fn [ticket] -> BertInt.decode!(ticket) end)
   end
 
+  def tickets() do
+    query!("SELECT ticket FROM tickets")
+    |> Enum.map(fn [ticket] -> BertInt.decode!(ticket) end)
+  end
+
   def find(tck) do
     find(Ticket.device_address(tck), Ticket.fleet_contract(tck), Ticket.epoch(tck))
   end

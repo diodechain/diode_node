@@ -476,7 +476,7 @@ defmodule Network.EdgeV2 do
 
         error("epoch number too high")
 
-      Ticket.total_bytes(dl) > 1024 * 1024 * 1024 * 1024 * 1024 ->
+      Ticket.too_many_bytes?(dl) ->
         log(state, "Ticket with too many bytes #{Ticket.total_bytes(dl)}!")
         error("too many bytes")
 

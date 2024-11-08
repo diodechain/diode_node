@@ -29,4 +29,8 @@ defmodule DiodeClient.Object.Ticket do
   def total_bytes(tck), do: mod(tck).total_bytes(tck)
   def local_address(tck), do: mod(tck).local_address(tck)
   def score(tck), do: total_connections(tck) * 1024 + total_bytes(tck)
+
+  def too_many_bytes?(tck) do
+    total_bytes(tck) > 1024 * 1024 * 1024 * 1024 * 1024
+  end
 end
