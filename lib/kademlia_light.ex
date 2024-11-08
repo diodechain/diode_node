@@ -246,20 +246,25 @@ defmodule KademliaLight do
     {:noreply, state}
   end
 
+  def register_node(node_id, server) do
+    Model.KademliaSql.maybe_update_object(nil, server)
+    GenServer.cast(__MODULE__, {:register_node, node_id})
+  end
+
   # Private call used by PeerHandlerV2 when connections are established
   @impl true
-  def handle_cast({:register_node, node_id, server}, state) do
+  def handle_cast({:register_node, node_id}, state) do
     case KBuckets.item(state.network, node_id) do
-      nil -> {:noreply, register_node(state, node_id, server)}
+      nil -> {:noreply, do_register_node(state, node_id)}
       %KBuckets.Item{} -> {:noreply, state}
     end
   end
 
   # Private call used by PeerHandlerV2 when is stable for 10 msgs and 30 seconds
-  def handle_cast({:stable_node, node_id, server}, state) do
+  def handle_cast({:stable_node, node_id}, state) do
     case KBuckets.item(state.network, node_id) do
       nil ->
-        {:noreply, register_node(state, node_id, server)}
+        {:noreply, do_register_node(state, node_id)}
 
       %KBuckets.Item{} = node ->
         network = KBuckets.update_item(state.network, %KBuckets.Item{node | retries: 0})
@@ -276,9 +281,7 @@ defmodule KademliaLight do
     end
   end
 
-  defp register_node(state = %KademliaLight{network: network}, node_id, server) do
-    KademliaSql.maybe_update_object(nil, server)
-
+  defp do_register_node(state = %KademliaLight{network: network}, node_id) do
     node = %KBuckets.Item{
       node_id: node_id,
       last_connected: System.os_time(:second)

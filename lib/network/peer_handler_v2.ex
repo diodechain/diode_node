@@ -130,7 +130,7 @@ defmodule Network.PeerHandlerV2 do
       if state.stable == false and
            state.msg_count > 10 and
            state.start_time + 300 < System.os_time(:second) do
-        GenServer.cast(KademliaLight, {:stable_node, state.node_id, state.server})
+        GenServer.cast(KademliaLight, {:stable_node, state.node_id})
         %{state | stable: true}
       else
         state
@@ -164,18 +164,17 @@ defmodule Network.PeerHandlerV2 do
   # Provides a `chain_id` for potential of checking server registration in the corresponding Diode Registry contract
   # `attr` is provided for future attributes, should be a kv-list
   defp handle_msg([@hello, server, _chain_id, _attr], state) do
+    log(state, "hello from: #{Wallet.printable(state.node_id)}")
+    server = Object.decode!(server)
+    id = Wallet.address!(state.node_id)
+    ^id = Object.key(server)
+    KademliaLight.register_node(state.node_id, server)
+
     if Map.has_key?(state, :peer_port) do
       {:noreply, state}
     else
-      server = Object.decode!(server)
-      id = Wallet.address!(state.node_id)
-      ^id = Object.key(server)
-
       port = Server.peer_port(server)
-
-      log(state, "hello from: #{Wallet.printable(state.node_id)}")
       state = Map.put(state, :peer_port, port)
-      GenServer.cast(KademliaLight, {:register_node, state.node_id, server})
       {:noreply, %{state | server: server}}
     end
   end
