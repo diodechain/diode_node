@@ -52,7 +52,6 @@ defmodule Diode do
         Stats,
         Network.Stats,
         supervisor(Model.Sql),
-        TicketStore,
         Cron,
         supervisor(Channels),
         {PubSub, args},
@@ -64,6 +63,7 @@ defmodule Diode do
          compressed: true},
         {BinaryLRU, max_memory_size: 100_000_000, name: :memory_cache}
       ]
+      |> IO.inspect()
 
     with {:ok, pid} <-
            Supervisor.start_link(children, strategy: :rest_for_one, name: Diode.Supervisor) do
@@ -74,6 +74,7 @@ defmodule Diode do
         Enum.map(RemoteChain.chains(), fn chain ->
           supervisor(RemoteChain.Sup, [chain, [cache: cache]], {RemoteChain.Sup, chain})
         end),
+        TicketStore,
         Network.Server.child(peer2_port(), Network.PeerHandlerV2),
         supervisor(
           Supervisor,
@@ -84,11 +85,12 @@ defmodule Diode do
       ]
       |> List.flatten()
       |> Enum.each(fn child ->
-        {:ok, _} = Supervisor.start_child(pid, child)
+        {:ok, _} = Supervisor.start_child(pid, child) |> IO.inspect()
       end)
 
       {:ok, pid}
     end
+    |> IO.inspect()
   end
 
   def network_children() do
