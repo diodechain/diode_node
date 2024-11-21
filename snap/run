@@ -7,4 +7,11 @@ if [[ $1 == "elevated" ]]; then
 	fi
 fi
 
+# env | grep -i snap
+host=$(hostname)
+export ERL_INETRC="$SNAP_USER_DATA/erl_inetrc"
+echo "{host, {127,0,0,1}, [\"$host\", \"diode_node@$host\"]}." > $ERL_INETRC
+echo "{edns,0}." >> $ERL_INETRC
+echo "{lookup, [file, dns]}." >> $ERL_INETRC
+
 ${SNAP}/bin/diode_node $*
