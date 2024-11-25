@@ -496,12 +496,8 @@ defmodule Network.EdgeV2 do
       true ->
         dl = Ticket.server_sign(dl, Wallet.privkey!(Diode.wallet()))
         ret = TicketStore.add(dl, device_id(state))
-
-        # address = Ticket.device_address(dl)
-        # short = String.slice(Base16.encode(address), 0..7)
-        # total = Ticket.total_bytes(dl)
-        # unpaid = state.unpaid_bytes
-        # IO.puts("[#{short}] TICKET total: #{total} unpaid: #{unpaid} ret => #{inspect(ret)}")
+        total = Ticket.total_bytes(dl)
+        log(state, "ticket total: #{total} ret => #{inspect(ret)}")
 
         case ret do
           {:ok, bytes} ->
@@ -530,6 +526,9 @@ defmodule Network.EdgeV2 do
 
           {:too_old, min} ->
             response("too_old", min)
+
+          {:too_big_jump, min} ->
+            response("too_big_jump", min)
 
           {:too_low, last} ->
             response_array(["too_low" | Ticket.summary(last)])

@@ -197,31 +197,31 @@ defmodule TicketStore do
     epoch = RemoteChain.epoch(chain_id)
     address = Wallet.address!(wallet)
     fleet = Ticket.fleet_contract(tck)
+    last = find(address, fleet, tepoch)
 
-    if tepoch in [epoch, epoch - 1] do
-      last = find(address, fleet, tepoch)
+    cond do
+      tepoch not in [epoch, epoch - 1] ->
+        {:too_old, epoch - 1}
 
-      if last == nil or Ticket.too_many_bytes?(last) do
+      last == nil or Ticket.too_many_bytes?(last) ->
         put_ticket(tck, address, fleet, tepoch)
         {:ok, Ticket.total_bytes(tck)}
-      else
-        if Ticket.total_connections(last) < Ticket.total_connections(tck) or
-             Ticket.total_bytes(last) < Ticket.total_bytes(tck) do
-          put_ticket(tck, address, fleet, tepoch)
-          {:ok, max(0, Ticket.total_bytes(tck) - Ticket.total_bytes(last))}
-        else
-          if address != Ticket.device_address(last) do
-            Logger.warning("Ticked Signed on Fork RemoteChain")
-            Logger.warning("Last: #{inspect(last)}\nTck: #{inspect(tck)}")
-            put_ticket(tck, address, fleet, tepoch)
-            {:ok, Ticket.total_bytes(tck)}
-          else
-            {:too_low, last}
-          end
-        end
-      end
-    else
-      {:too_old, epoch - 1}
+
+      Ticket.total_bytes(tck) - Ticket.total_bytes(last) > 100_000_000 ->
+        {:too_big_jump, epoch - 1}
+
+      Ticket.score(last) < Ticket.score(tck) ->
+        put_ticket(tck, address, fleet, tepoch)
+        {:ok, max(0, Ticket.total_bytes(tck) - Ticket.total_bytes(last))}
+
+      address != Ticket.device_address(last) ->
+        Logger.warning("Ticked Signed on Fork RemoteChain")
+        Logger.warning("Last: #{inspect(last)}\nTck: #{inspect(tck)}")
+        put_ticket(tck, address, fleet, tepoch)
+        {:ok, Ticket.total_bytes(tck)}
+
+      true ->
+        {:too_low, last}
     end
   end
 
