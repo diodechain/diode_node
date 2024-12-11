@@ -1,5 +1,6 @@
 name: diode-node
 website: https://diode.io
+source-code: https://github.com/diodechain/diode_node
 icon: snap/logo.png
 base: core24
 adopt-info: diode-node
