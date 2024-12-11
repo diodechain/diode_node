@@ -8,6 +8,8 @@ if [[ $1 == "elevated" ]]; then
 	fi
 fi
 
+ulimit -n 120000
+
 cd $SNAP_REAL_HOME
 host=$(hostname)
 export ERL_INETRC="$SNAP_USER_DATA/erl_inetrc"
