@@ -11,6 +11,13 @@ RUN apt-get install -y \
     libgmp3-dev git \
     curl g++ make unzip procps libc6 libstdc++6 locales
 
+RUN apt-get install -y software-properties-common
+RUN add-apt-repository ppa:ubuntu-toolchain-r/test
+
+RUN apt-get install -y gcc-11 g++-11
+RUN update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-7 700 --slave /usr/bin/g++ g++ /usr/bin/g++-7
+RUN update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-11 900 --slave /usr/bin/g++ g++ /usr/bin/g++-11
+
 # Installing libncurses for terminfo but ensuring
 # it's statically linked:
 RUN apt-get install -y libncurses-dev

@@ -1,6 +1,7 @@
 #!/bin/bash
 set -e
 export CFLAGS="-O3"
+export LDFLAGS="-static-libstdc++ -static-libgcc"
 export KERL_CONFIGURE_OPTIONS="--disable-odbc --disable-javac --disable-debug --with-ssl=/usr/local/openssl/ --disable-dynamic-ssl-lib --without-cdv --without-wx"
 export ASDF_DIR=${HOME}/.asdf
 
