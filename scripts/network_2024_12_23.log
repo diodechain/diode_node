@@ -1,22 +1,3 @@
-> Mon Dec 23 10:30:00 2024
-> ./network.exs 
-epoch: 667
-0x12bfc799f131a4120cb83d0dc27f975cf18b5d65      10.73.230.1     protect_coin@dominic-zephyrus
-0x131a24483657a0e5746009cd9a4161b125340941      154.38.162.145  choice_south@vmi2053052.contaboserver.net
-                chain: 1284 fleet: 0x8afe08d333f785c818199a5bdc7a52ac6ffc492a score: 0x7aed14c00
-0x1350d3b501d6842ed881b59de4b95b27372bfae8      194.233.80.251  fringe_quiz@diode-as2b
-                chain: 1284 fleet: 0x8afe08d333f785c818199a5bdc7a52ac6ffc492a score: 0x865cc524800
-0x141ddb559f7fd3fe2d16519998aa3ce9cd026edf      167.71.0.52     swim_answer@webserver
-0x1a15e3f026f0dfbca96297428eefa888edb804a4      186.220.38.141  nest_theme@fajucar-VirtualBox
-0x203d154fb6b78d9c9ee0b3da73d0b98c040b7a96      211.75.143.219  fan_combine@exosite-linux
-                chain: 1284 fleet: 0x8afe08d333f785c818199a5bdc7a52ac6ffc492a score: 0x7353f3400
-0x24e22f3e0843b1df1419397acdfb01bf1bd0aeb3      101.56.75.41    stool_dress@alimar37ubuntu2-OptiPlex-7010
-0x2a24806713ded233a5a633212ff2a09d257596fe      94.136.186.167  thank_stone@vmi2053127.contaboserver.net
-                chain: 1284 fleet: 0x8afe08d333f785c818199a5bdc7a52ac6ffc492a score: 0x80fc8c000
-0x2a6c90816e4cb7df77247e4ae939cd7a35c0346f      202.51.82.233   mistake_absorb@node18978-santa-bahadur-basnet.ktm.yetiappcloud.com
-                chain: 1284 fleet: 0x8afe08d333f785c818199a5bdc7a52ac6ffc492a score: 0x20a4fa800
-0x2f82536416f309708a5d8e0fb5a1faa3289f6415      38.148.120.19   live_laugh@diode-cos-relay
-Dominics-MacBook-Air:scripts dominicletz$ ./network.exs 
 epoch: 667
 0x12bfc799f131a4120cb83d0dc27f975cf18b5d65      10.73.230.1     protect_coin@dominic-zephyrus
 0x131a24483657a0e5746009cd9a4161b125340941      154.38.162.145  choice_south@vmi2053052.contaboserver.net

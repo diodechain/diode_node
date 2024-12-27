@@ -27,7 +27,7 @@ for node <- nodes do
 
   IO.puts("#{summary.id}\t#{summary.ip}\t#{summary.name}")
 
-  for chain_id <- [15] do
+  for chain_id <- [1284] do
     %{body: body} =
       Req.post!("https://prenet.diode.io:8443",
         json: %{
