@@ -1,6 +1,9 @@
 #!/usr/bin/env elixir
 
-files = File.ls!(".") |> Enum.filter(&String.ends_with?(&1, ".log"))
+files =
+  File.ls!(".")
+  |> Enum.filter(&Regex.match?(~r/network_\d{4}_\d{2}_\d{2}.?.log/, &1))
+  |> Enum.sort()
 
 list =
   for file <- files do
