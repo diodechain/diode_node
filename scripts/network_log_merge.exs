@@ -1,13 +1,16 @@
 #!/usr/bin/env elixir
 
+epoch = System.argv() |> List.first() |> String.to_integer()
+IO.puts("epoch: #{epoch}")
+
 files =
-  File.ls!(".")
+  File.ls!("epoch_#{epoch}")
   |> Enum.filter(&Regex.match?(~r/network_\d{4}_\d{2}_\d{2}.?.log/, &1))
   |> Enum.sort()
 
 list =
   for file <- files do
-    content = File.read!(file)
+    content = File.read!(Path.join("epoch_#{epoch}", file))
     lines = String.split(content, "\n") |> Enum.drop(1)
 
     list =
@@ -16,17 +19,18 @@ list =
 
         case String.split(line, " ", trim: true) do
           [node_id, ip, name] ->
-            [%{node_id: node_id, ip: ip, name: name, score: %{}} | acc]
+            [%{node_id: node_id, ip: ip, name: name, score: 0} | acc]
 
-          ["chain:", "1284", "fleet:", fleet, "score:", "0x" <> score] ->
+          ["chain:", "1284", "fleet:", _fleet, "score:", "0x" <> score] ->
             [prev | acc] = acc
-            [%{prev | score: %{fleet: fleet, score: score}} | acc]
+            score = String.to_integer(score, 16)
+            [%{prev | score: prev.score + score} | acc]
 
           [] ->
             acc
         end
       end)
-      |> Enum.filter(&(map_size(&1.score) > 0))
+      |> Enum.filter(&(&1.score > 0))
 
     IO.puts("#{file}: #{length(list)} unique entries")
     list
@@ -39,5 +43,5 @@ IO.puts("total unique entries: #{length(list)}")
 
 for node <- list do
   ip = String.pad_trailing(node.ip, 15)
-  IO.puts("#{node.node_id} #{ip} score:#{node.score.score}\t#{node.name}")
+  IO.puts("#{node.node_id} #{ip} score:#{node.score}\t#{node.name}")
 end

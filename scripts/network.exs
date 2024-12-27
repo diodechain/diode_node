@@ -1,7 +1,7 @@
 #!/usr/bin/env elixir
 Mix.install([:req])
 
-epoch = 667
+epoch = System.argv() |> List.first() |> String.to_integer()
 IO.puts("epoch: #{epoch}")
 
 %{body: body} =
@@ -14,7 +14,7 @@ IO.puts("epoch: #{epoch}")
     }
   )
 
-nodes = Enum.sort_by(body["result"], fn node -> node["node_id"] end)
+nodes = Enum.sort_by(body["result"], fn node -> node["node_id"] end) |> Enum.drop(30)
 
 for node <- nodes do
   summary = %{
