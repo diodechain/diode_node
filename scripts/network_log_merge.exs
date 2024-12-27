@@ -43,5 +43,6 @@ IO.puts("total unique entries: #{length(list)}")
 
 for node <- list do
   ip = String.pad_trailing(node.ip, 15)
-  IO.puts("#{node.node_id} #{ip} score:#{node.score}\t#{node.name}")
+  score = String.pad_trailing("#{node.score}", 14)
+  IO.puts("#{node.node_id} #{ip} score:#{score} #{node.name}")
 end

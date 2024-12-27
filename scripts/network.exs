@@ -2,7 +2,19 @@
 Mix.install([:req])
 
 epoch = System.argv() |> List.first() |> String.to_integer()
-IO.puts("epoch: #{epoch}")
+postfix = System.argv() |> Enum.at(1, "")
+
+now = DateTime.utc_now()
+chain_id = 1284
+filename = "epoch_#{epoch}/network_#{now.year}_#{now.month}_#{now.day}#{postfix}.log"
+IO.puts("Writing to #{filename}")
+
+puts = fn line ->
+  File.write!(filename, line <> "\n", [:append])
+  IO.puts(line)
+end
+
+puts.("epoch: #{epoch}")
 
 %{body: body} =
   Req.post!("https://prenet.diode.io:8443",
@@ -14,20 +26,19 @@ IO.puts("epoch: #{epoch}")
     }
   )
 
-nodes = Enum.sort_by(body["result"], fn node -> node["node_id"] end) |> Enum.drop(30)
+nodes = Enum.sort_by(body["result"], fn node -> node["node_id"] end)
 
-for node <- nodes do
-  summary = %{
-    id: node["node_id"],
-    ip: Enum.at(node["node"], 1),
-    name:
-      Enum.at(node["node"], 5)
-      |> Enum.find_value(fn [key, value] -> if key == "name", do: value end)
-  }
+Task.async_stream(
+  nodes,
+  fn node ->
+    summary = %{
+      id: node["node_id"],
+      ip: Enum.at(node["node"], 1),
+      name:
+        Enum.at(node["node"], 5)
+        |> Enum.find_value(fn [key, value] -> if key == "name", do: value end)
+    }
 
-  IO.puts("#{summary.id}\t#{summary.ip}\t#{summary.name}")
-
-  for chain_id <- [1284] do
     %{body: body} =
       Req.post!("https://prenet.diode.io:8443",
         json: %{
@@ -39,9 +50,19 @@ for node <- nodes do
       )
 
     with %{"result" => %{"fleets" => fleets}} <- body do
-      for {fleet_id, fleet} <- fleets do
-        IO.puts("\t\tchain: #{chain_id} fleet: #{fleet_id} score: #{fleet["total_score"]}")
-      end
+      {summary, fleets}
+    else
+      _ -> {summary, []}
+    end
+  end,
+  timeout: 120_000
+)
+|> Enum.each(fn {:ok, result} ->
+  with {summary, fleets} <- result do
+    puts.("#{summary.id}\t#{summary.ip}\t#{summary.name}")
+
+    for {fleet_id, fleet} <- fleets do
+      puts.("\t\tchain: #{chain_id} fleet: #{fleet_id} score: #{fleet["total_score"]}")
     end
   end
-end
+end)
