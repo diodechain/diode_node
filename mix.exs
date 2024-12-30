@@ -95,7 +95,7 @@ defmodule Diode.Mixfile do
       {:plug_cowboy, "~> 2.5"},
       {:poison, "~> 6.0"},
       {:profiler, github: "dominicletz/profiler"},
-      {:websockex, github: "Azolo/websockex"},
+      {:websockex, "~> 0.5", hex: :websockex_wt},
 
       # linting
       {:dialyxir, "~> 1.1", only: [:dev], runtime: false},
