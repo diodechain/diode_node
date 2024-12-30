@@ -45,3 +45,18 @@ sudo modprobe tcp_bbr
 sudo sysctl --system
 ```
 
+# Operations
+
+## See last service restart reason
+
+When running the snap installation then it's a two step process to see the last service restart reason:
+
+1. Get the timestamp of the last service restart
+2. Read the logs around that timestamp
+
+```bash
+> systemctl show -p ActiveEnterTimestamp snap.diode-node.service.service
+ActiveEnterTimestamp=Mon 2024-12-30 02:57:06 UTC
+> journalctl -u snap.diode-node.service.service --since "2024-12-30 02:50:00"
+```
+
