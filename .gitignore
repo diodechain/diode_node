@@ -16,7 +16,7 @@
 *.cprof
 *.sq3
 *.csv
-*.log
+/*.log
 *.key
 .erlang.cookie
 fprof.trace
