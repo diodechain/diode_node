@@ -21,7 +21,6 @@ defmodule DiodeClient.Object.Ticket do
   def epoch(tck), do: mod(tck).epoch(tck)
 
   def block_number(tck), do: mod(tck).block_number(tck)
-  def block_hash(tck), do: mod(tck).block_hash(tck)
   def device_signature(tck), do: mod(tck).device_signature(tck)
   def server_signature(tck), do: mod(tck).server_signature(tck)
   def fleet_contract(tck), do: mod(tck).fleet_contract(tck)
