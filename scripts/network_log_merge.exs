@@ -5,7 +5,7 @@ IO.puts("epoch: #{epoch}")
 
 files =
   File.ls!("epoch_#{epoch}")
-  |> Enum.filter(&Regex.match?(~r/network_\d{4}_\d{2}_\d{2}.?.log/, &1))
+  |> Enum.filter(&Regex.match?(~r/network_\d{4}_\d{1,2}_\d{1,2}.?.log/, &1))
   |> Enum.sort()
 
 list =
