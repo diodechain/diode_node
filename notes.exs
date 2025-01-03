@@ -12,6 +12,16 @@ address = "38.148.120.19"
 pid = Network.Server.ensure_node_connection(Network.PeerHandlerV2, node_id, address, port)
 pid = Network.Server.ensure_node_connection(Network.PeerHandlerV2, nil, address, port)
 
+# Jan 1st
+
+anvil --steps-tracing --fork-url https://moonbeam.unitedbloc.com:3000 -p1454
+url = "http://localhost:1454"
+tx_hash = "0x46b73ab082974503b7c8130caba521855e43b77e2f4ee83f36fcca6f34c13ae0"
+{:ok, trace} = RemoteChain.HTTP.rpc(url, "debug_traceTransaction", [tx_hash, %{tracer: "callTracer"}])
+
+url = "https://moonbeam.api.onfinality.io/rpc?apikey=49e8baf7-14c3-4d0f-916a-94abf1c4c14a"
+{:ok, trace} = RemoteChain.HTTP.rpc(url, "debug_traceTransaction", [tx_hash])
+
 # Nov 8th
 
 letz = "0x0530f2dfdab4860f4c0bde8a7bced46b1b76038d"
