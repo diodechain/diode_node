@@ -149,7 +149,8 @@ defmodule Diode.Config do
       Debouncer.apply(
         {__MODULE__, :restart_peer_handler},
         fn ->
-          Process.exit(Process.whereis(Network.PeerHandlerV2), :restart_host_changed)
+          if pid = Process.whereis(Network.PeerHandlerV2),
+            do: Process.exit(pid, :restart_host_changed)
         end,
         10_000
       )
