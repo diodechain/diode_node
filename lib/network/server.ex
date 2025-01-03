@@ -215,41 +215,40 @@ defmodule Network.Server do
 
   defp register_node(node_id, pid, state) do
     # Checking whether pid is already registered and remove for the update
-    clients = Map.delete(state.clients, Map.get(state.clients, pid))
-    key = to_key(node_id)
+    connect_key = Map.get(state.clients, pid)
+    clients = Map.delete(state.clients, connect_key)
+    actual_key = to_key(node_id)
     now = System.os_time(:millisecond)
 
     # Checking whether node_id is already registered
-    case Map.get(clients, key) do
-      nil ->
-        # best case this is a new connection.
-        clients =
-          Map.put(clients, key, {pid, now})
-          |> Map.put(pid, key)
+    clients =
+      case Map.get(clients, actual_key) do
+        nil ->
+          # best case this is a new connection.
+          Map.put(clients, actual_key, {pid, now})
+          |> Map.put(pid, actual_key)
 
-        {:reply, {:ok, hd(state.ports)}, %{state | clients: clients}}
+        {^pid, _timestamp} ->
+          # also ok, this pid is already registered to this node_id
+          Map.put(clients, pid, actual_key)
 
-      {^pid, timestamp} ->
-        # also ok, this pid is already registered to this node_id
-        clients =
-          Map.put(clients, key, {pid, timestamp})
-          |> Map.put(pid, key)
+        {other_pid, _timestamp} ->
+          # hm, another pid is given for the node_id logging this
+          "#{state.protocol} Handshake anomaly(#{inspect(pid)}): #{Wallet.printable(node_id)} is already other_pid=#{inspect(other_pid)} connect_key=#{inspect(Base.encode16(connect_key))}"
+          |> Logger.info()
 
-        {:reply, {:ok, hd(state.ports)}, %{state | clients: clients}}
+          # If the actual key is the same as the "intended" key, then we can update the key
+          # Otherwise we close the new connection as there is an existing connection already
+          if actual_key == connect_key do
+            Map.put(clients, actual_key, {pid, now})
+            |> Map.put(pid, actual_key)
+          else
+            Process.exit(pid, :kill_clone)
+            clients
+          end
+      end
 
-      {other_pid, _timestamp} ->
-        # hm, another pid is given for the node_id logging this
-
-        Logger.info(
-          "#{state.protocol} Handshake anomaly(#{inspect(pid)}): #{Wallet.printable(node_id)} is already connected: #{inspect({other_pid, Process.alive?(other_pid)})}"
-        )
-
-        clients =
-          Map.put(clients, key, {pid, now})
-          |> Map.put(pid, key)
-
-        {:reply, {:ok, hd(state.ports)}, %{state | clients: clients}}
-    end
+    {:reply, {:ok, hd(state.ports)}, %{state | clients: clients}}
   end
 
   @impl true

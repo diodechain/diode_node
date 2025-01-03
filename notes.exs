@@ -1,3 +1,17 @@
+# Jan 3rd
+
+n = <<162, 250, 108, 124, 66, 239, 216, 146, 43, 20, 78, 139, 210, 11, 137, 154, 234, 206, 70, 152>>
+node_id = {:wallet, nil,
+   <<3, 253, 245, 150, 223, 41, 186, 110, 251, 230, 65, 137, 248, 79, 181, 87,
+     173, 238, 56, 121, 216, 68, 174, 50, 154, 221, 174, 252, 211, 56, 0, 227,
+     138>>,
+   <<162, 250, 108, 124, 66, 239, 216, 146, 43, 20, 78, 139, 210, 11, 137, 154,
+     234, 206, 70, 152>>}
+port = 51055
+address = "38.148.120.19"
+pid = Network.Server.ensure_node_connection(Network.PeerHandlerV2, node_id, address, port)
+pid = Network.Server.ensure_node_connection(Network.PeerHandlerV2, nil, address, port)
+
 # Nov 8th
 
 letz = "0x0530f2dfdab4860f4c0bde8a7bced46b1b76038d"
