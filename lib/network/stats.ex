@@ -6,17 +6,27 @@ defmodule Network.Stats do
   Network statistics for bandwidth usage.
   """
   use GenServer
+  require Logger
   @seconds_per_tick 60
   def init(_args) do
     :timer.send_interval(@seconds_per_tick * 1000, :tick)
 
+    opts = [
+      file: Diode.data_dir("network_stats.dets+"),
+      auto_save_memory: 100_000_000,
+      page_cache_memory: 100_000_000,
+      compressed: true
+    ]
+
     {:ok, dets} =
-      DetsPlus.open_file(__MODULE__.LRU,
-        file: Diode.data_dir("network_stats.dets+"),
-        auto_save_memory: 100_000_000,
-        page_cache_memory: 100_000_000,
-        compressed: true
-      )
+      try do
+        DetsPlus.open_file(__MODULE__.LRU, opts)
+      rescue
+        error ->
+          Logger.error("Failed to open DetsPlus: #{inspect(error)}, retrying...")
+          File.rm(Diode.data_dir("network_stats.dets+"))
+          DetsPlus.open_file(__MODULE__.LRU, opts)
+      end
 
     lru = DetsPlus.LRU.new(dets, 1_000_000)
     :persistent_term.put(__MODULE__.LRU, lru)
