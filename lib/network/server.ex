@@ -11,7 +11,7 @@ defmodule Network.Server do
     Then it spawns client connection based on the protocol handler
   """
 
-  alias DiodeClient.{Secp256k1, Wallet}
+  alias DiodeClient.{Base16, Secp256k1, Wallet}
   use GenServer
   require Logger
 
@@ -234,7 +234,7 @@ defmodule Network.Server do
 
         {other_pid, _timestamp} ->
           # hm, another pid is given for the node_id logging this
-          "#{state.protocol} Handshake anomaly(#{inspect(pid)}): #{Wallet.printable(node_id)} is already other_pid=#{inspect(other_pid)} connect_key=#{inspect(Base.encode16(connect_key))}"
+          "#{state.protocol} Handshake anomaly(#{inspect(pid)}): #{Wallet.printable(node_id)} is already other_pid=#{inspect(other_pid)} connect_key=#{inspect(Base16.encode(connect_key))}"
           |> Logger.info()
 
           # If the actual key is the same as the "intended" key, then we can update the key
