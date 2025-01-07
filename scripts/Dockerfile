@@ -28,11 +28,12 @@ ENV MIX_ENV=prod
 
 COPY scripts/install_openssl.sh /app/
 RUN /app/install_openssl.sh
-COPY .tool-versions /root/
 
 WORKDIR /app/
+COPY .tool-versions snap/build_prereq.sh /app/
+RUN /app/build_prereq.sh
+
 COPY . /app/
 ENV HEX_HTTP_TIMEOUT=120
-RUN /app/snap/build_prereq.sh
 RUN /app/snap/build_app.sh
 RUN mv /app/_build/prod/diode_node*.tar.gz /app/_build/prod/diode_node.tar.gz
