@@ -239,12 +239,27 @@ defmodule Network.Server do
 
           # If the actual key is the same as the "intended" key, then we can update the key
           # Otherwise we close the new connection as there is an existing connection already
-          if actual_key == connect_key do
-            Map.put(clients, actual_key, {pid, now})
-            |> Map.put(pid, actual_key)
-          else
-            Process.exit(pid, :kill_clone)
-            clients
+          cond do
+            actual_key == connect_key ->
+              # 'other_pid' might be a just established connection that doesn't have validated the endpoint key yet
+              # e.g. it might be to a different node_id. But 'pid' is validated now, so we keep it.
+              Process.exit(other_pid, :kill_clone)
+
+              Map.put(clients, actual_key, {pid, now})
+              |> Map.put(pid, actual_key)
+
+            state.protocol == Network.EdgeV2 ->
+              # EdgeV2 takes care of duplicate connections. And also has it's own timeout.
+              # Duplicate connections are especially useful on mobile and other roaming devices that might loose tcp connections,
+              # but keep them open for a while.
+              Map.put(clients, actual_key, {pid, now})
+              |> Map.put(pid, actual_key)
+
+            true ->
+              # This connection was made with a different node_id.
+              # We close it.
+              Process.exit(pid, :kill_clone)
+              clients
           end
       end
 
