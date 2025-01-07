@@ -5,7 +5,7 @@ defmodule BinaryLRUTest do
   use ExUnit.Case
 
   test "base" do
-    lru = BinaryLRU.new(10)
+    lru = BinaryLRU.new(:test_base, 10)
     assert BinaryLRU.size(lru) == 0
 
     BinaryLRU.insert(lru, "key", "value")
@@ -18,7 +18,7 @@ defmodule BinaryLRUTest do
   end
 
   test "limit #1" do
-    lru = BinaryLRU.new(3)
+    lru = BinaryLRU.new(:test_limit1, 3)
     assert BinaryLRU.size(lru) == 0
 
     BinaryLRU.insert(lru, "a", "avalue")
@@ -30,7 +30,7 @@ defmodule BinaryLRUTest do
   end
 
   test "limit #2" do
-    lru = BinaryLRU.new(20)
+    lru = BinaryLRU.new(:test_limit2, 20)
     assert BinaryLRU.size(lru) == 0
 
     BinaryLRU.insert(lru, "a", "avalue")
@@ -53,7 +53,7 @@ defmodule BinaryLRUTest do
   end
 
   test "repeat" do
-    lru = BinaryLRU.new(50)
+    lru = BinaryLRU.new(:test_repeat, 50)
     assert BinaryLRU.size(lru) == 0
 
     BinaryLRU.insert(lru, "a", "avalue")

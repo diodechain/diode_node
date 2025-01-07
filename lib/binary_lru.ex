@@ -1,5 +1,5 @@
 defmodule BinaryLRU do
-  defstruct [:max_size, :key_queue, :current_size, :ets_table]
+  defstruct [:max_size, :key_queue, :current_size, :ets_table, :name]
   use GenServer
 
   defmodule Handle do
@@ -10,16 +10,13 @@ defmodule BinaryLRU do
 
   def start_link(opts \\ []) do
     max_memory_size = Keyword.fetch!(opts, :max_memory_size)
-
-    gen_opts =
-      (opts ++ [hibernate_after: 5_000])
-      |> Keyword.take([:name, :hibernate_after])
-
-    GenServer.start_link(__MODULE__, [max_memory_size], gen_opts)
+    name = Keyword.fetch!(opts, :name)
+    gen_opts = [hibernate_after: 5_000, name: name]
+    GenServer.start_link(__MODULE__, [max_memory_size, name], gen_opts)
   end
 
-  def new(max_memory_size) do
-    {:ok, pid} = start_link(max_memory_size: max_memory_size)
+  def new(name, max_memory_size) do
+    {:ok, pid} = start_link(name: name, max_memory_size: max_memory_size)
     handle(pid)
   end
 
@@ -71,16 +68,22 @@ defmodule BinaryLRU do
   end
 
   @impl GenServer
-  def init([max_size]) do
-    table = :ets.new(__MODULE__, [:set, :public])
+  def init([max_size, name]) do
+    table = :ets.new(name, [:set, :public, :named_table])
 
     {:ok,
-     %BinaryLRU{max_size: max_size, key_queue: :queue.new(), current_size: 0, ets_table: table}}
+     %BinaryLRU{
+       max_size: max_size,
+       key_queue: :queue.new(),
+       current_size: 0,
+       ets_table: table,
+       name: name
+     }}
   end
 
   @impl GenServer
   def handle_call(:handle, _from, state) do
-    {:reply, %Handle{pid: self(), ets_table: state.ets_table}, state}
+    {:reply, %Handle{pid: state.name, ets_table: state.ets_table}, state}
   end
 
   def handle_call(:memory_size, _from, state) do

@@ -56,7 +56,7 @@ defmodule Diode do
         Cron,
         supervisor(Channels),
         {PubSub, args},
-        {BinaryLRU, max_memory_size: 100_000_000, name: :memory_cache}
+        {BinaryLRU, [name: :memory_cache, max_memory_size: 100_000_000]}
       ]
 
     with {:ok, pid} <-
