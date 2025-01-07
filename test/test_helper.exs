@@ -4,6 +4,8 @@
 ExUnit.start(seed: 0)
 
 defmodule ChainAgent do
+  alias DiodeClient.{Base16, Wallet}
+
   use GenServer
   defstruct port: nil, out: "", log: nil
 
@@ -111,6 +113,8 @@ defmodule ChainAgent do
 end
 
 defmodule TestHelper do
+  alias DiodeClient.{Base16, Wallet}
+
   @delay_clone 10_000
   @cookie "EXTMP_K66"
   @max_ports 10

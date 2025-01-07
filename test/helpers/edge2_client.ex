@@ -2,7 +2,8 @@
 # Copyright 2021-2024 Diode
 # Licensed under the Diode License, Version 1.1
 defmodule Edge2Client do
-  alias Object.TicketV2, as: Ticket
+  alias DiodeClient.Object.TicketV2, as: Ticket
+  alias DiodeClient.{Certs, Rlp, Rlpx, Wallet}
   require ExUnit.Assertions
   import Ticket
   @chain Chains.Anvil
@@ -27,7 +28,7 @@ defmodule Edge2Client do
   end
 
   def to_bin(num) do
-    Rlpx.num2bin(num)
+    Rlpx.uint2bin(num)
   end
 
   def to_sbin(num) do
@@ -35,7 +36,7 @@ defmodule Edge2Client do
   end
 
   def to_num(bin) do
-    Rlpx.bin2num(bin)
+    Rlpx.bin2uint(bin)
   end
 
   def ensure_client(atom, n) do
