@@ -40,7 +40,8 @@ defmodule Diode.Config do
       "DATA_DIR" => fn ->
         File.cwd!() <> "/nodedata_" <> Atom.to_string(Diode.env())
       end,
-      "NAME" => nil
+      "NAME" => nil,
+      "MEMORY_LIMIT" => nil
     }
   end
 
@@ -162,6 +163,21 @@ defmodule Diode.Config do
   defp get_runtime_fallback("NAME") do
     {:ok, host} = :net.gethostname()
     Words.encode(Diode.address()) <> "@#{host}"
+  end
+
+  defp get_runtime_fallback("MEMORY_LIMIT") do
+    # Snap deployments should work fine with 1gb of memory
+    # There is an issue with ubuntu >22 systemd where memory pressure
+    # can cause the whole server node become unresponsive by killing but
+    # not properly restarting the network service.
+    if System.get_env("SNAP") != nil do
+      case Memory.get_memory_capacity() do
+        {:ok, capacity} -> "#{trunc(capacity * 0.8)}"
+        _ -> "851001001"
+      end
+    else
+      "2051001001"
+    end
   end
 
   defp get_runtime_fallback(_key), do: nil

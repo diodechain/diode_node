@@ -26,7 +26,8 @@ defmodule Cron do
         fun: &TicketStore.maybe_submit_tickets/0,
         startup: false
       },
-      %Job{name: "Memory report", interval: :timer.hours(1), fun: &Memory.report/0}
+      %Job{name: "Memory report", interval: :timer.hours(1), fun: &Memory.report/0},
+      %Job{name: "Memory check", interval: :timer.minutes(10), fun: &Memory.check_rss/0}
     ]
 
     for job <- jobs do
