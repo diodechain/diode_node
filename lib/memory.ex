@@ -18,9 +18,13 @@ defmodule Memory do
     "#{Float.round(num, 2)}MB"
   end
 
+  def limit() do
+    Diode.Config.get_int("MEMORY_LIMIT")
+  end
+
   def check_rss() do
     with {:ok, rss} <- get_rss() do
-      limit = Diode.Config.get_int("MEMORY_LIMIT")
+      limit = limit()
 
       if rss > limit do
         Logger.error(
