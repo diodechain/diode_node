@@ -23,9 +23,33 @@ defmodule Memory do
       limit = Diode.Config.get_int("MEMORY_LIMIT")
 
       if rss > limit do
-        Logger.error("Memory limit exceeded: #{mb(rss)} > #{mb(limit)}")
-        Process.sleep(15_000)
-        System.halt(1)
+        Logger.error(
+          "Memory limit nearly exceeded: #{mb(rss)} > #{mb(limit)}, trying to flush memory"
+        )
+
+        report()
+
+        for pid <- :erlang.processes() do
+          :erlang.garbage_collect(pid)
+        end
+
+        DetsPlus.sync(:remoterpc_cache)
+        BinaryLRU.flush(:memory_cache)
+
+        for pid <- :erlang.processes() do
+          :erlang.garbage_collect(pid)
+        end
+
+        Process.sleep(30_000)
+        {:ok, rss} = get_rss()
+        Logger.info("Memory after flush: #{mb(rss)}")
+        report()
+
+        if rss > limit do
+          Logger.error("Memory limit still exceeded: #{mb(rss)} > #{mb(limit)}, stopping")
+          Process.sleep(10_000)
+          System.halt(1)
+        end
       end
 
       rss

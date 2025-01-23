@@ -67,6 +67,14 @@ defmodule BinaryLRU do
     end
   end
 
+  def flush(%Handle{pid: pid}) do
+    GenServer.call(pid, :reinit)
+  end
+
+  def flush(name) when is_pid(name) or is_atom(name) do
+    GenServer.call(name, :reinit)
+  end
+
   @impl GenServer
   def init([max_size, name]) do
     table = :ets.new(name, [:set, :public, :named_table])
@@ -81,6 +89,18 @@ defmodule BinaryLRU do
      }}
   end
 
+  defp reinit(%BinaryLRU{} = lru) do
+    :ets.delete_all_objects(lru.ets_table)
+
+    %BinaryLRU{
+      max_size: lru.max_size,
+      key_queue: :queue.new(),
+      current_size: 0,
+      ets_table: lru.ets_table,
+      name: lru.name
+    }
+  end
+
   @impl GenServer
   def handle_call(:handle, _from, state) do
     {:reply, %Handle{pid: state.name, ets_table: state.ets_table}, state}
@@ -92,6 +112,10 @@ defmodule BinaryLRU do
 
   def handle_call(:size, _from, state) do
     {:reply, :ets.info(state.ets_table, :size), state}
+  end
+
+  def handle_call(:reinit, _from, state) do
+    {:reply, :ok, reinit(state)}
   end
 
   @impl GenServer
