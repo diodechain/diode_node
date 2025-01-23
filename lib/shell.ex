@@ -164,4 +164,16 @@ defmodule Shell do
   def mwei(x), do: 1000 * kwei(x)
   def kwei(x), do: 1000 * wei(x)
   def wei(x) when is_integer(x), do: x
+
+  def trace_moon_tx(tx_hash) do
+    # _pid = spawn_link(fn ->
+    #   System.cmd("anvil", ["--steps-tracing", "--fork-url", "https://moonbeam.unitedbloc.com:3000", "-p1454"])
+    # end)
+    # url = "http://localhost:1454"
+    # url = "https://eu-d50f8756.dedicated-rpc-nodes.com/api/test123"
+    # url = "https://moonbeam.api.onfinality.io/rpc?apikey=49e8baf7-14c3-4d0f-916a-94abf1c4c14a"
+    url = "https://rpc.api.moonbeam.network"
+    {:ok, trace} = RemoteChain.HTTP.rpc(url, "debug_traceTransaction", [tx_hash])
+    trace
+  end
 end
