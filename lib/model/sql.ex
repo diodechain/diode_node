@@ -2,10 +2,7 @@
 # Copyright 2021-2024 Diode
 # Licensed under the Diode License, Version 1.1
 defmodule Model.Sql do
-  # Automatically defines child_spec/1
   use Supervisor
-  # esqlite doesn't support :infinity
-  # @infinity 300_000_000
 
   defp databases() do
     [
