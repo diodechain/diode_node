@@ -6,7 +6,7 @@ defmodule Memory do
 
     Logger.info(
       "MEM " <>
-        "rss: #{mb(check_rss())} " <>
+        "rss: #{mb(rss())} " <>
         "beam_total: #{mb(m[:total])} procs: #{mb(m[:processes])}/#{mb(m[:processes] - m[:processes_used])} " <>
         "atoms: #{mb(m[:atom])}/#{mb(m[:atom] - m[:atom_used])} system: #{mb(m[:system])} binary: #{mb(m[:binary])} " <>
         "code: #{mb(m[:code])} ets: #{mb(m[:ets])}"
@@ -23,41 +23,40 @@ defmodule Memory do
   end
 
   def check_rss() do
-    with {:ok, rss} <- get_rss() do
-      limit = limit()
+    rss = rss()
+    limit = limit()
 
-      if rss > limit do
-        Logger.error(
-          "Memory limit nearly exceeded: #{mb(rss)} > #{mb(limit)}, trying to flush memory"
-        )
+    if rss > limit do
+      Logger.error(
+        "Memory limit nearly exceeded: #{mb(rss)} > #{mb(limit)}, trying to flush memory"
+      )
 
-        report()
+      report()
 
-        for pid <- :erlang.processes() do
-          :erlang.garbage_collect(pid)
-        end
-
-        DetsPlus.sync(:remoterpc_cache)
-        BinaryLRU.flush(:memory_cache)
-
-        for pid <- :erlang.processes() do
-          :erlang.garbage_collect(pid)
-        end
-
-        Process.sleep(30_000)
-        {:ok, rss} = get_rss()
-        Logger.info("Memory after flush: #{mb(rss)}")
-        report()
-
-        if rss > limit do
-          Logger.error("Memory limit still exceeded: #{mb(rss)} > #{mb(limit)}, stopping")
-          Process.sleep(10_000)
-          System.halt(1)
-        end
+      for pid <- :erlang.processes() do
+        :erlang.garbage_collect(pid)
       end
 
-      rss
+      DetsPlus.sync(:remoterpc_cache)
+      BinaryLRU.flush(:memory_cache)
+
+      for pid <- :erlang.processes() do
+        :erlang.garbage_collect(pid)
+      end
+
+      Process.sleep(30_000)
+      rss = rss()
+      Logger.info("Memory after flush: #{mb(rss)}")
+      report()
+
+      if rss > limit do
+        Logger.error("Memory limit still exceeded: #{mb(rss)} > #{mb(limit)}, stopping")
+        Process.sleep(10_000)
+        System.halt(1)
+      end
     end
+
+    rss
   end
 
   def get_memory_capacity() do
@@ -79,7 +78,7 @@ defmodule Memory do
     end
   end
 
-  def get_rss() do
+  def rss() do
     case File.read("/proc/self/status") do
       {:ok, data} ->
         # Find the position of "VmRSS:"
@@ -96,6 +95,14 @@ defmodule Memory do
 
       {:error, reason} ->
         {:error, reason}
+    end
+    |> case do
+      {:ok, rss} ->
+        rss
+
+      {:error, reason} ->
+        Logger.error("Failed to get RSS: #{inspect(reason)}")
+        :erlang.memory()[:total]
     end
   end
 end
