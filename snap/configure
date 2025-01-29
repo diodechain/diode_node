@@ -1,2 +1,2 @@
 #!/bin/sh
-${SNAP}/bin/diode_node rpc 'Diode.Cmd.configure()' || echo "Configure failed"
+${SNAP}/bin/run rpc 'Diode.Cmd.configure()' || echo "Configure failed"

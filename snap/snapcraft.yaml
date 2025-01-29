@@ -51,7 +51,7 @@ parts:
 
 apps:
   service:
-    command: bin/diode_node start
+    command: bin/run start
     plugs: [network, network-bind]
     daemon: simple
 
