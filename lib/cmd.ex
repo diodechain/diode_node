@@ -46,7 +46,7 @@ defmodule Diode.Cmd do
   end
 
   def env() do
-    for {var, value} <- System.get_env() do
+    for {var, value} <- Enum.sort(System.get_env()) do
       IO.puts("#{String.pad_trailing(var, 20)} = #{value}")
     end
   end
