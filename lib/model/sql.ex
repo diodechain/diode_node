@@ -2,14 +2,8 @@
 # Copyright 2021-2024 Diode
 # Licensed under the Diode License, Version 1.1
 defmodule Model.Sql do
+  require Logger
   use Supervisor
-
-  defp databases() do
-    [
-      {Db.Tickets, "tickets.sq3"},
-      {Db.Creds, "wallet.sq3"}
-    ]
-  end
 
   defp map_mod(ref) when is_reference(ref), do: ref
   defp map_mod(Model.CredSql), do: :persistent_term.get(Db.Creds)
@@ -37,17 +31,15 @@ defmodule Model.Sql do
 
   def init(_args) do
     File.mkdir(Diode.data_dir())
-
-    for {atom, file} <- databases() do
-      start_database(atom, file)
-    end
-
+    start_database(Db.Tickets, "tickets.sq3")
+    start_database(Db.Creds, "wallet.sq3")
     children = [Model.CredSql, Init]
     Supervisor.init(children, strategy: :one_for_one)
   end
 
   def start_database(atom, file) do
     path = Diode.data_dir(file)
+    Logger.info("Opening #{path}")
     {:ok, conn} = Exqlite.Sqlite3.open(path)
     :persistent_term.put(atom, conn)
     query!(conn, "PRAGMA journal_mode = WAL")
