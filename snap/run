@@ -8,14 +8,18 @@ if [[ $1 == "elevated" ]]; then
 	fi
 fi
 
+export ERL_INETRC="$SNAP_USER_DATA/erl_inetrc"
+export RELEASE_DISTRIBUTION=name
+
 if [[ $1 != "start" ]]; then
 	cd $SNAP_REAL_HOME
+else
+	host=$(hostname).diode
+	echo "diode_node@$host" > $SNAP_USER_DATA/node
+	echo "{host, {127,0,0,1}, [\"$host\", \"diode_node@$host\"]}." > $ERL_INETRC
+	echo "{edns,0}." >> $ERL_INETRC
+	echo "{lookup, [file, dns]}." >> $ERL_INETRC
 fi
 
-host=$(hostname)
-export ERL_INETRC="$SNAP_USER_DATA/erl_inetrc"
-echo "{host, {127,0,0,1}, [\"$host\", \"diode_node@$host\"]}." > $ERL_INETRC
-echo "{edns,0}." >> $ERL_INETRC
-echo "{lookup, [file, dns]}." >> $ERL_INETRC
-
+export RELEASE_NODE=`cat $SNAP_USER_DATA/node`
 exec ${SNAP}/bin/diode_node $*
