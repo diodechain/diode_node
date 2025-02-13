@@ -8,6 +8,7 @@ now = DateTime.utc_now()
 chain_id = 1284
 filename = "epoch_#{epoch}/network_#{now.year}_#{now.month}_#{now.day}#{postfix}.log"
 IO.puts("Writing to #{filename}")
+File.rm(filename)
 
 puts = fn line ->
   File.write!(filename, line <> "\n", [:append])
