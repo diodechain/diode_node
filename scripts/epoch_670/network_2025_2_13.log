@@ -1,8 +1,11 @@
 epoch: 670
 0x020e17708597221d24e73b78057490831d9e3e5c	89.116.106.64	slide_jump@Diamond-Ether-Amsterdam
 0x06cebbe684146bfc7379b77a685c31792113a66d	179.108.90.176	soap_excess@diodenode
+		chain: 1284 fleet: 0x8ad50255218a4abf89cae847189a4ba6ff8bb9e2 score: 0x23c155000
+		chain: 1284 fleet: 0x8afe08d333f785c818199a5bdc7a52ac6ffc492a score: 0x5805800
 0x074b49fec5867492de9421852ccfd7fbee919296	45.78.224.15	fan_edge@iv-ydp4qau9z48lu7j3jrnd
 0x09bdd5ee545a5b9425048642cbee7d916e0baeb5	189.4.110.12	stove_concert@flpmtts
+0x11ce7ea609d4e7ee24360311d7f46f0ac949a6bf	107.173.141.130	subject_charge@diamondrackAshburn
 0x131a24483657a0e5746009cd9a4161b125340941	154.38.162.145	choice_south@vmi2053052.contaboserver.net
 		chain: 1284 fleet: 0x8ad50255218a4abf89cae847189a4ba6ff8bb9e2 score: 0x44abc1800
 		chain: 1284 fleet: 0x8afe08d333f785c818199a5bdc7a52ac6ffc492a score: 0x1a017000
@@ -13,6 +16,7 @@ epoch: 670
 0x16fb8695b4d0c41a26993f129406e78830795d38	45.134.48.125	poem_tornado@Diamond-Rarecloud-RO
 		chain: 1284 fleet: 0x8ad50255218a4abf89cae847189a4ba6ff8bb9e2 score: 0x5cb3b4800
 		chain: 1284 fleet: 0x8afe08d333f785c818199a5bdc7a52ac6ffc492a score: 0xf40d800
+0x1a15e3f026f0dfbca96297428eefa888edb804a4	186.220.38.141	nest_theme@fajucar-VirtualBox
 0x203d154fb6b78d9c9ee0b3da73d0b98c040b7a96	211.75.143.219	fan_combine@exosite-linux
 		chain: 1284 fleet: 0x8ad50255218a4abf89cae847189a4ba6ff8bb9e2 score: 0x23a1c6800
 		chain: 1284 fleet: 0x8afe08d333f785c818199a5bdc7a52ac6ffc492a score: 0x1001000
@@ -82,12 +86,14 @@ epoch: 670
 0x68e0bafdda9ef323f692fc080d612718c941d120	172.104.119.67	catch_also@diode-as1
 		chain: 1284 fleet: 0x8ad50255218a4abf89cae847189a4ba6ff8bb9e2 score: 0x7158d07c00
 		chain: 1284 fleet: 0x8afe08d333f785c818199a5bdc7a52ac6ffc492a score: 0x65bc4a400
+0x6fb88e317f43c156d1a3591a9ac4dae06b11e36e	176.96.137.109	horse_elegant@v1735156442
 0x7013c63d43e8a946893948d18e26c92427ba8a9b	172.234.80.176	fat_tuition@localhost
 0x704edeb336f2a05b471037e3745f1e4c19cb74b7	179.108.90.178	notice_column@diodenode
 0x7125fc91a9a8779222db3bd9e6d9827f75960556	67.207.95.11	print_fix@Diode-Node
 		chain: 1284 fleet: 0x8ad50255218a4abf89cae847189a4ba6ff8bb9e2 score: 0x183f072000
 		chain: 1284 fleet: 0x8afe08d333f785c818199a5bdc7a52ac6ffc492a score: 0x70862000
 0x716ee2ccf0444cefabdc88f23ad405d839c1704d	189.27.251.7	answer_alarm@wireguard
+0x71b79a549f4ce4ed2fd1ccf2de03fdc2e4044560	177.142.24.30	project_baby@arch
 0x71c94dd1b9e75e83313e23c67f2112a630b7be1c	147.160.139.55	seminar_ten@diode-node-and-exit-spokane-01
 		chain: 1284 fleet: 0x8ad50255218a4abf89cae847189a4ba6ff8bb9e2 score: 0x925381800
 		chain: 1284 fleet: 0x8afe08d333f785c818199a5bdc7a52ac6ffc492a score: 0x2041e400
@@ -101,6 +107,7 @@ epoch: 670
 		chain: 1284 fleet: 0x8ad50255218a4abf89cae847189a4ba6ff8bb9e2 score: 0x97834f6800
 		chain: 1284 fleet: 0x8afe08d333f785c818199a5bdc7a52ac6ffc492a score: 0x4deefb400
 0x81950b02c7c5153e91f484b41d69d0f2523eafcf	171.22.31.128	wheat_wide@DE-1-1.play2go.cloud
+0x8203711067bdf7c685d637d60b463cd6c29a5707	98.97.40.134	thought_harsh@Geekom1
 0x845b4597c25a60669ef679c27511b0678370d0f7	34.96.153.223	bus_select@dnez-hk-2502.asia-east2-a.c.diode-nodes-2024-q3.internal
 		chain: 1284 fleet: 0x8ad50255218a4abf89cae847189a4ba6ff8bb9e2 score: 0xc108b400
 		chain: 1284 fleet: 0x8afe08d333f785c818199a5bdc7a52ac6ffc492a score: 0x1801000
@@ -114,10 +121,15 @@ epoch: 670
 		chain: 1284 fleet: 0x8ad50255218a4abf89cae847189a4ba6ff8bb9e2 score: 0x46238c000
 		chain: 1284 fleet: 0x8afe08d333f785c818199a5bdc7a52ac6ffc492a score: 0xd40b000
 0x91a1a2707cf412c1d63f32896349c82280067bef	179.220.53.117	law_boring@raspiai
+		chain: 1284 fleet: 0x8ad50255218a4abf89cae847189a4ba6ff8bb9e2 score: 0x49b2bb000
+		chain: 1284 fleet: 0x8afe08d333f785c818199a5bdc7a52ac6ffc492a score: 0xa808800
 0x937c492a77ae90de971986d003ffbc5f8bb2232c	172.105.85.69	grain_silk@diode-eu1
 		chain: 1284 fleet: 0x8ad50255218a4abf89cae847189a4ba6ff8bb9e2 score: 0xa447f48c00
 		chain: 1284 fleet: 0x8afe08d333f785c818199a5bdc7a52ac6ffc492a score: 0x6c6335c00
 0x96a7922b62cc3a955c96bc207674aba641b65283	172.232.175.125	expire_sun@localhost
+0x982039c3aaef4f40896793ec7ed2fc7afb0f6492	94.237.2.168	myself_diesel@nodelite001-1cpu-1gb-sg-sin1
+		chain: 1284 fleet: 0x8ad50255218a4abf89cae847189a4ba6ff8bb9e2 score: 0x2e8a10400
+		chain: 1284 fleet: 0x8afe08d333f785c818199a5bdc7a52ac6ffc492a score: 0x5404400
 0x9e6fd32e129b46b11f26b952461f68d99ee2725f	20.169.211.112	episode_mean@main-sevice-bot54
 		chain: 1284 fleet: 0x8ad50255218a4abf89cae847189a4ba6ff8bb9e2 score: 0x16f8f1400
 		chain: 1284 fleet: 0x8afe08d333f785c818199a5bdc7a52ac6ffc492a score: 0x3c03c00
@@ -185,15 +197,21 @@ epoch: 670
 0xcbd9ae1e7b5d6d63aab2670f48884e3d50ef4c40	46.31.77.32	marine_rule@ubuntu
 		chain: 1284 fleet: 0x8ad50255218a4abf89cae847189a4ba6ff8bb9e2 score: 0x400a6e400
 		chain: 1284 fleet: 0x8afe08d333f785c818199a5bdc7a52ac6ffc492a score: 0x2a424c00
+0xceca2f8cf1983b4cf0c1ba51fd382c2bc37aba58	45.79.115.246	enrich_turtle@diode-us1
+		chain: 1284 fleet: 0x8ad50255218a4abf89cae847189a4ba6ff8bb9e2 score: 0x17fcbab7400
+		chain: 1284 fleet: 0x8afe08d333f785c818199a5bdc7a52ac6ffc492a score: 0x16bc716000
 0xd170058e208ac039b50c8342c45b9ed8e975a371	180.131.145.33	hotel_story@vps38754.regxa.com
 		chain: 1284 fleet: 0x8ad50255218a4abf89cae847189a4ba6ff8bb9e2 score: 0x2b9dd9c00
 		chain: 1284 fleet: 0x8afe08d333f785c818199a5bdc7a52ac6ffc492a score: 0x9007800
+0xd674bb8578d4558c5c7fc614c20089368aaa203c	94.228.163.146	always_possible@vital-hope.aeza.network
 0xd6f728f2251653be6ea44d7398e318bab5452ee2	43.240.64.125	sword_believe@algobot
 0xdaead455b4993c25a90e60c87fb967bcde82d76c	86.48.16.24	unique_area@vmi1671923.contaboserver.net
 0xde9dbf99f9954386f78d0861263577dec0122b8a	45.134.48.106	image_emerge@Diamond-Rarecloud-RO2
 		chain: 1284 fleet: 0x8ad50255218a4abf89cae847189a4ba6ff8bb9e2 score: 0x18d91c800
 		chain: 1284 fleet: 0x8afe08d333f785c818199a5bdc7a52ac6ffc492a score: 0x6405800
 0xe00a0453d8d1f016caa9fd4afa9db191c7c3ace3	194.62.251.114	organ_attitude@Diamond-Ether-Germany
+		chain: 1284 fleet: 0x8ad50255218a4abf89cae847189a4ba6ff8bb9e2 score: 0x1b9cedc00
+		chain: 1284 fleet: 0x8afe08d333f785c818199a5bdc7a52ac6ffc492a score: 0x6c06800
 0xe798d85861a1f21800636ee4dd8f121aec1da303	209.209.10.222	gather_isolate@ubuntu
 		chain: 1284 fleet: 0x8ad50255218a4abf89cae847189a4ba6ff8bb9e2 score: 0x1fdd92800
 		chain: 1284 fleet: 0x8afe08d333f785c818199a5bdc7a52ac6ffc492a score: 0x2c02800
@@ -201,6 +219,7 @@ epoch: 670
 0xe8ef479495815e34818ef5eba681311f5017516c	139.162.191.153	collect_front@litenode4
 		chain: 1284 fleet: 0x8ad50255218a4abf89cae847189a4ba6ff8bb9e2 score: 0xe84264400
 		chain: 1284 fleet: 0x8afe08d333f785c818199a5bdc7a52ac6ffc492a score: 0x1b816800
+0xe951069fe4670284f12ca255bea7cd5d1be5f175	5.189.137.98	concert_oak@vmi1510309.contaboserver.net
 0xe9c56eec9f7b58450965ffa2429e4c78589a4906	185.246.223.70	camp_hard@DE-1-2.play2go.cloud
 		chain: 1284 fleet: 0x8ad50255218a4abf89cae847189a4ba6ff8bb9e2 score: 0x39832000
 		chain: 1284 fleet: 0x8afe08d333f785c818199a5bdc7a52ac6ffc492a score: 0x400400
@@ -211,6 +230,7 @@ epoch: 670
 0xec9b806305f21f8c37a8f5b8b4571585cd5a1e72	66.23.198.198	soft_half@diode-node-and-exit-lehigh-01
 		chain: 1284 fleet: 0x8ad50255218a4abf89cae847189a4ba6ff8bb9e2 score: 0xfcc023800
 		chain: 1284 fleet: 0x8afe08d333f785c818199a5bdc7a52ac6ffc492a score: 0x1b017400
+0xec6d7408d1dd73f3ee33f520e18a3c8e8dc2dd08	34.39.150.146	patient_arena@saopaolo-exitnode1-dantex-001
 0xed336cdb41ac5d36ce689bb66f8de9ca9d1ba05a	13.61.18.26	area_hub@ip-172-31-17-86
 		chain: 1284 fleet: 0x8ad50255218a4abf89cae847189a4ba6ff8bb9e2 score: 0x8c07000
 		chain: 1284 fleet: 0x8afe08d333f785c818199a5bdc7a52ac6ffc492a score: 0x400400
@@ -234,6 +254,7 @@ epoch: 670
 0xf6ac426946841f32ffef5c723de9dd720fb7e5f3	34.174.241.112	salmon_test@dne-2409-dallas
 		chain: 1284 fleet: 0x8ad50255218a4abf89cae847189a4ba6ff8bb9e2 score: 0xc19995800
 		chain: 1284 fleet: 0x8afe08d333f785c818199a5bdc7a52ac6ffc492a score: 0x4203cc00
+0xf91efce5cf679795375936f7be766220a29863ff	34.39.150.146	lend_ghost@saopaolo-exitnode-dantex-001
 0xf933890007f27e24bf480fe6da6ac38defacf3bd	193.24.210.195	jeans_record@layer
 0xfb97303ef727834fdc9b706cf47cc683af448707	187.19.156.143	thought_bamboo@i3-dell-notebook
 0xfc03b0f53ebde7ab13b658d10812286ba0de65a3	34.47.83.190	refuse_kangaroo@dne-20241018-seoul
