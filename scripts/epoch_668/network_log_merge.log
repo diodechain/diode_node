@@ -3,7 +3,9 @@ network_2024_12_27.log: 29 unique entries
 network_2024_12_27b.log: 29 unique entries
 network_2024_12_30.log: 26 unique entries
 network_2024_12_31.log: 25 unique entries
-total unique entries: 38
+network_2025_1_2.log: 27 unique entries
+network_2025_2_13.log: 34 unique entries
+total unique entries: 41
 0x09bdd5ee545a5b9425048642cbee7d916e0baeb5 179.220.53.117  score:21238231040    stove_concert@flpmtts
 0x131a24483657a0e5746009cd9a4161b125340941 154.38.162.145  score:42511943680    choice_south@vmi2053052.contaboserver.net
 0x1350d3b501d6842ed881b59de4b95b27372bfae8 194.233.80.251  score:11623909006336 fringe_quiz@diode-as2b
@@ -29,6 +31,7 @@ total unique entries: 38
 0x7e4cd38d266902444dc9c8f7c0aa716a32497d0b 144.126.157.138 score:4334704108180465 pause_chalk@diode-us2b
 0x84fb273ae6a75c61c1024f8b98db4cbe3e0e4eb3 34.51.20.181    score:10076114944    stool_decrease@diode-node-and-exit-mexico1
 0x8781ed70f6a7191d82827cf006749b0dd20241e2 81.2.137.32     score:11381073920    detail_animal@diode-VB
+0x8b6f8eeefca111cfd1d65660e2f2bd8a97f27a8c 80.229.0.71     score:25912351744    face_size@lite-node-nye001
 0x91a1a2707cf412c1d63f32896349c82280067bef 179.220.53.117  score:21238231040    law_boring@raspiai
 0x937c492a77ae90de971986d003ffbc5f8bb2232c 172.105.85.69   score:26049666452457472 grain_silk@diode-eu1
 0xa0657a3f7ddd511b31f06afab19d3c6c4701f242 35.194.146.37   score:2705698816     embark_amazing@diode-node-and-exit-20241018-taiwan
@@ -38,7 +41,9 @@ total unique entries: 38
 0xb571bc324ee0a3ae40a6fa211cf9ea2ed5605b89 189.27.235.255  score:4232829952     illness_lift@SERLH
 0xbee0a98d162a81218e2e462332949d5c35a3b45a 213.199.33.140  score:39704900608    mercy_mom@vmi2008556.contaboserver.net
 0xc0d26165ba0bb2b536a790e7c233af3875467599 172.233.20.91   score:58795925504    rebel_border@localhost
+0xca31294b5cb18d0106d7255fffe5528b67586ca8 38.242.238.182  score:37952044032    never_giant@vmi2087814.contaboserver.net
 0xceca2f8cf1983b4cf0c1ba51fd382c2bc37aba58 45.79.115.246   score:22697452020800512 enrich_turtle@diode-us1
+0xd170058e208ac039b50c8342c45b9ed8e975a371 180.131.145.33  score:19011816448    hotel_story@vps38754.regxa.com
 0xed5c2d2a45f389f2a07f4410ae511664695c745f 109.199.112.121 score:62970370048    message_impact@vmi2073633.contaboserver.net
 0xf6ac426946841f32ffef5c723de9dd720fb7e5f3 34.174.155.30   score:106694694912   salmon_test@dallas-01-node-and-exit
 0xfc03b0f53ebde7ab13b658d10812286ba0de65a3 34.22.109.85    score:2781279232     refuse_kangaroo@diode-node-and-exit-20241018-seoul

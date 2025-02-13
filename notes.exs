@@ -1,3 +1,15 @@
+# Feb 5th
+
+anvil --steps-tracing --fork-url https://moonbeam.unitedbloc.com:3000 -p1454
+url = "http://localhost:1454"
+tx_hash = "0x792e480e00e4938a5916be01370f4ff36b342eaa41a1ccd27a7aa7a4aead3593"
+tx_hash = "0xb41c37d767f71f66149d34324611869cb6315d18fc775241244efabb913f93e9"
+{:ok, trace} = RemoteChain.HTTP.rpc(url, "debug_traceTransaction", [tx_hash, %{tracer: "callTracer"}])
+
+url = "https://moonbeam.api.onfinality.io/rpc?apikey=49e8baf7-14c3-4d0f-916a-94abf1c4c14a"
+{:ok, trace} = RemoteChain.HTTP.rpc(url, "debug_traceTransaction", [tx_hash])
+
+
 # Jan 13th
 
 tx = "0x9a59b0b9f2dfdcd71af946e607e3f6ea0ccf9a382b89e3806066d91b4b2b406b"
