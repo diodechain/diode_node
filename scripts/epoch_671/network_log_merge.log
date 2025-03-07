@@ -5,7 +5,8 @@ network_2025_2_15.log: 75 unique entries
 network_2025_2_16.log: 78 unique entries
 network_2025_2_17.log: 82 unique entries
 network_2025_2_18.log: 78 unique entries
-total unique entries: 90
+network_2025_3_7.log: 84 unique entries
+total unique entries: 99
 0x020e17708597221d24e73b78057490831d9e3e5c 89.116.106.64   score:562136064      slide_jump@Diamond-Ether-Amsterdam
 0x074b49fec5867492de9421852ccfd7fbee919296 45.78.224.15    score:776085504      fan_edge@iv-ydp4qau9z48lu7j3jrnd
 0x090ad02cebd8fbbe0b411f5d870ab69d1004d6d8 139.162.191.153 score:10588227584    swallow_battle@localhost
@@ -16,12 +17,16 @@ total unique entries: 90
 0x203d154fb6b78d9c9ee0b3da73d0b98c040b7a96 211.75.143.219  score:318829568      fan_combine@exosite-linux
 0x288aa57bcab935f083e0afaafff885f9cf064b00 173.249.196.235 score:708955136      gas_bomb@DiamondGreenCA
 0x2a24806713ded233a5a633212ff2a09d257596fe 94.136.186.167  score:1438869504     thank_stone@vmi2053127.contaboserver.net
+0x2a3cefa1f86185197eb4ceb4b4f603927024ba41 172.93.167.76   score:13914976256    else_napkin@Diamond-Green-Toronto5
 0x2a6c90816e4cb7df77247e4ae939cd7a35c0346f 202.51.82.233   score:608284672      mistake_absorb@node18978-santa-bahadur-basnet.ktm.yetiappcloud.com
 0x2c95cde85e876906392d74a83e4ceb0b82899648 185.232.68.236  score:4362812416     simple_chaos@v2202407224027279628
 0x2f82536416f309708a5d8e0fb5a1faa3289f6415 38.148.120.19   score:1250149376     live_laugh@diode-cos-relay
+0x32a797d99ce5afa4f14f2cb836257d0cf809d21f 80.229.0.71     score:1514414080     dumb_chef@lite-node-nye001
 0x3639517efc80aef03f2b17580a87f10afbe6d2cc 213.199.56.93   score:771909632      flower_opera@vmi1740049.contaboserver.net
 0x3e5c066e31b6a6c82a1635d6770fc4357ac713b8 34.165.74.169   score:276882432      jacket_brisk@dne-2410-telaviv.me-west1-c.c.diode-nodes-2024-q3.internal
 0x43bb747a09b611e685581a28959425b9207c7394 46.212.101.72   score:1220781056     income_vault@radloot-CoreBook-X
+0x467052f9f98ac13fbd96491461a0cd2a05305733 172.93.167.48   score:9833338880     toy_scout@Diamond-Green-Toronto2
+0x47a3e5874a35e64d3f1d1688c4a844e060e61f21 109.94.170.241  score:8457251840     tomorrow_observe@Diamond-Green-DE1
 0x47d9fe54fb57a4ddbda7f448879fa37e865f511f 195.26.224.76   score:1711641600     catalog_later@v181011.hosted-by-vdsina.com
 0x4a6acd16347404a01f646a4d4acd75f1157f31e7 212.68.34.95    score:4446779392     diagram_wolf@ubuntu
 0x4a956e5780461c510fd32f855e14226817b1c19e 34.18.100.82    score:247518208      critic_shove@mena-1.me-central1-c.c.diode-node.internal
@@ -38,6 +43,7 @@ total unique entries: 90
 0x6590804d227810bdaa9c03eeec453e46e1e872ea 92.114.97.226   score:2840080384     front_peace@misc
 0x66ba9ae25e9966373869b95a5852ee3a59674844 77.223.215.43   score:406928384      ancient_outdoor@Diamond-Ether-F1
 0x68e0bafdda9ef323f692fc080d612718c941d120 172.104.119.67  score:38148622336    catch_also@diode-as1
+0x6f2e7b8d714c14d2d40edcb379dc3a795b84e65e 162.213.248.58  score:14011290624    slim_bean@nc-ph-2046-71
 0x7125fc91a9a8779222db3bd9e6d9827f75960556 67.207.95.11    score:4857986048     print_fix@Diode-Node
 0x716ee2ccf0444cefabdc88f23ad405d839c1704d 189.27.251.7    score:8390656        answer_alarm@wireguard
 0x71c94dd1b9e75e83313e23c67f2112a630b7be1c 147.160.139.55  score:331412480      seminar_ten@diode-node-and-exit-spokane-01
@@ -59,6 +65,8 @@ total unique entries: 90
 0xa584cb61e957a4261255172f72fccc90df843bc3 193.32.163.78   score:1829058560     journey_axis@Diamond-Rarecloud-CA
 0xa6ac251f791986a8e1e577d5560a1689d9b9bf9a 188.132.128.45  score:3842700288     viable_tragic@omer
 0xa70d8f9c805bfd2d57632d09f583d8719f07d64a 2.56.177.76     score:373351424      sing_butter@kaz-zee-bee.taibit.com
+0xa7945c71e9ccff71132d7cc94c974e20d57f987c 76.239.36.24    score:1891968000     auto_wrist@Chuwi
+0xa7c63359b2b9ff566a7ba0fd626111ac3c7c59f8 35.198.47.207   score:3850958848     disease_vapor@dne-250301-saopaulo-02
 0xa8218bd393466fe195d9d679071a77b4127098d9 45.134.48.170   score:2001038336     brass_second@Diamond-Rarecloud-RO1
 0xae699211c62156b8f29ce17be47d2f069a27f2a6 157.173.98.132  score:35807610880    feel_panther@diode-eu2b
 0xb3e456bf079ae20566c44a82879b9a7cbca3e7b3 66.23.198.198   score:3637178368     wait_moon@worried-stomach
@@ -70,6 +78,7 @@ total unique entries: 90
 0xbd99d00189f73b600cf30cbd287df30268495af4 91.132.132.121  score:1724157952     future_century@armenia-diode.taibit.com
 0xbee0a98d162a81218e2e462332949d5c35a3b45a 213.199.33.140  score:1405357056     mercy_mom@vmi2008556.contaboserver.net
 0xbf860690dfab029ca463a2df724a58726b53b6a3 212.68.34.227   score:876767232      stamp_excite@ubuntu
+0xc0920f609ca302c353c4ed6151836b7b5e3bf770 46.202.148.150  score:524376064      unlock_used@srv718732
 0xc0d26165ba0bb2b536a790e7c233af3875467599 172.233.20.91   score:2105918464     rebel_border@localhost
 0xc3d446074224c23344fce00cf8c47a1144a0ffc9 45.12.114.83    score:2068131840     weird_loop@vm3644320.stark-industries.solutions
 0xc8172bc741876cbd6733a053ec46db12c3fb5c7f 193.24.210.197  score:2391149568     morning_uniform@Diamond-Layer1-Gelnhausen
@@ -95,4 +104,5 @@ total unique entries: 90
 0xf60771f3cc2e88475538c1185ac15d83340e26c4 138.124.116.254 score:1447256064     sudden_decade@mixedwax.aeza.network
 0xf66bb7b2a8cf611982ea34d531b3500bbf2e27f6 45.13.214.194   score:2596709376     yard_review@Diamond-Rarecloud-tx
 0xf6ac426946841f32ffef5c723de9dd720fb7e5f3 34.174.241.112  score:1875211264     salmon_test@dne-2409-dallas
+0xf98a86ebbef211ff7c491894cdaceff611d1c3e5 172.93.167.47   score:21180773376    lake_either@Diamond-Green-Toronto1
 0xfc03b0f53ebde7ab13b658d10812286ba0de65a3 34.47.83.190    score:675417088      refuse_kangaroo@dne-20241018-seoul

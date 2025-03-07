@@ -1,4 +1,4 @@
 #!/bin/bash
-for epoch in $(seq 668 671); do
+for epoch in $(seq 669 671); do
   ./update_epoch.sh $epoch
 done
