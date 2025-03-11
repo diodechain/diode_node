@@ -39,7 +39,6 @@ defmodule RemoteChain.TxRelay do
   def handle_info(:ping, %TxRelay{txlist: txlist, chain: chain} = state) do
     gas_price = RemoteChain.RPC.gas_price(chain) |> Base16.decode_int()
     nonce = RemoteChain.NonceProvider.fetch_nonce(chain)
-
     txlist = process(txlist, nonce, gas_price, state)
     {:noreply, %TxRelay{state | txlist: txlist}}
   end

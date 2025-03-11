@@ -1,3 +1,8 @@
+# Run for all transactions in a specific block with:
+# `mix run --no-start scripts/trace.exs 9959908`
+# or for a single transaction with:
+# `mix run --no-start scripts/trace.exs 0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef`
+
 alias DiodeClient.{Base16, Contracts.CallPermit, Secp256k1, Wallet}
 
 defmodule Anvil do

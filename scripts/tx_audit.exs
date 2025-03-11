@@ -58,29 +58,31 @@ defmodule TxAudit do
 
         File.write!(
           filename,
-          "#{tx["blockNumber"]},#{tx["timeStamp"]},#{name},#{tx["hash"]},#{tx["isError"]}\n",
+          "\n#{tx["blockNumber"]},#{tx["timeStamp"]},#{name},#{tx["hash"]},#{tx["isError"]}\n",
           [:append]
         )
       end
     end
 
     for file <- File.ls!("scripts/txlog/users") do
-      IO.puts("Processing #{file}")
       filename = "scripts/txlog/users/#{file}"
+      IO.puts("Processing #{filename}")
 
       uniq =
         File.read!(filename)
         |> String.split("\n", trim: true)
         |> Enum.reduce(%{}, fn line, acc ->
-          [block, timestamp, name, hash, is_error] = String.split(String.trim(line), ",")
-          Map.put(acc, hash, [block, timestamp, hash, name, is_error])
+          row =
+            [_block, _timestamp, _name, hash, _is_error] = String.split(String.trim(line), ",")
+
+          Map.put(acc, hash, row)
         end)
         |> Map.values()
         |> Enum.sort()
         |> Enum.map(&Enum.join(&1, ","))
         |> Enum.join("\n")
 
-      File.write!(filename, uniq)
+      File.write!(filename, uniq <> "\n")
     end
   end
 
@@ -99,9 +101,21 @@ defmodule TxAudit do
 
       ret = Req.get!(req)
       File.write!(filename, Jason.encode!(ret.body["result"]))
+      dump_csv(name, ret.body["result"])
       IO.puts("Processed fetch of #{name} => #{length(ret.body["result"])}")
       ret.body["result"]
     end
+  end
+
+  defp dump_csv(name, result) do
+    lines =
+      for tx <- result do
+        "#{tx["blockNumber"]},#{tx["timeStamp"]},#{name},#{tx["hash"]},#{tx["isError"]}"
+      end
+
+    filename = "scripts/txlog/#{name}.csv"
+    File.write!(filename, Enum.join(lines, "\n") <> "\n")
+    result
   end
 end
 

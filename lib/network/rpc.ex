@@ -471,21 +471,13 @@ defmodule Network.Rpc do
         gas_price
       end
 
-    nonce =
-      if nonce == nil do
-        RemoteChain.RPC.get_transaction_count(chain_id, encode16(Wallet.address!(wallet)))
-        |> Base16.decode_int()
-      else
-        nonce
-      end
-
     if map_size(opts) > 0 do
       raise "Unhandled create_transaction(opts): #{inspect(opts)}"
     end
 
     tx = %Transaction{
       to: to,
-      nonce: nonce,
+      nonce: nonce || RemoteChain.NonceProvider.nonce(chain_id),
       gasPrice: gas_price,
       gasLimit: gas,
       init: if(to == nil, do: data),
