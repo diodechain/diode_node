@@ -1,0 +1,177 @@
+alias DiodeClient.{Base16, Contracts.CallPermit, Secp256k1, Wallet}
+
+defmodule Anvil do
+  use GenServer
+  defstruct [:port, :ready, :clients, :stdout]
+
+  def start_link(url) do
+    with {:ok, pid} <- GenServer.start_link(__MODULE__, url, name: __MODULE__) do
+      GenServer.call(pid, :await_port_open)
+      {:ok, pid}
+    end
+  end
+
+  def stop(pid) do
+    GenServer.stop(pid)
+  end
+
+  def init(url) do
+    port =
+      Port.open({:spawn, "anvil --steps-tracing --fork-url #{url} -p1454"}, [
+        :binary,
+        :use_stdio,
+        :exit_status
+      ])
+
+    {:ok, %{port: port, ready: false, clients: [], stdout: ""}}
+  end
+
+  def handle_info({_port, {:data, info}}, state) do
+    stdout = state.stdout <> info
+
+    if String.contains?(stdout, "Listening on ") and not state.ready do
+      for client <- state.clients do
+        GenServer.reply(client, :ok)
+      end
+
+      {:noreply, %{state | ready: true, stdout: stdout, clients: []}}
+    else
+      {:noreply, %{state | stdout: stdout}}
+    end
+  end
+
+  def handle_call(:await_port_open, from, state) do
+    if state.ready do
+      {:reply, :ok, state}
+    else
+      {:noreply, %{state | clients: [from | state.clients]}}
+    end
+  end
+
+  def terminate(reason, state) do
+    Port.close(state.port)
+    IO.inspect(reason, label: "Anvil terminated")
+    {:stop, reason, state}
+  end
+end
+
+defmodule Trace do
+  def trace_block(block_number) do
+    IO.puts("Block number: #{block_number}")
+
+    case rpc!("eth_getBlockByNumber", [block_number, true]) do
+      %{"transactions" => transactions} ->
+        Enum.each(transactions, fn tx ->
+          if tx["to"] == Base16.encode(CallPermit.address()) do
+            trace_tx(tx["hash"])
+          end
+        end)
+    end
+  end
+
+  def trace_tx(tx_hash) do
+    IO.puts("\nTX Hash: #{tx_hash}")
+
+    tx =
+      %{
+        "blockNumber" => block_number,
+        "input" => input,
+        "chainId" => chain_id
+      } = rpc!("eth_getTransactionByHash", [tx_hash])
+
+    IO.puts("\tFound TX in block #{Base16.decode_int(block_number)}")
+
+    if tx["to"] != Base16.encode(CallPermit.address()) do
+      IO.inspect(tx, label: "tx")
+      raise "Not a CallPermit"
+    end
+
+    IO.puts("\tDispatch Relayer: #{tx["from"]}")
+    IO.puts("\tDispatch Nonce: #{Base16.decode_int(tx["nonce"])}")
+
+    %{"structLogs" => trace} = rpc!("debug_traceTransaction", [tx_hash])
+
+    if length(trace) == 0 do
+      IO.puts("\tTransaction reverted without any TRACE")
+    else
+      IO.puts("\tTransaction executed with TRACE length #{length(trace)}")
+    end
+
+    # trace = rpc!("debug_traceTransaction", [tx_hash, %{tracer: "callTracer"}])
+    # IO.inspect(trace, label: "callTracer")
+
+    args = CallPermit.decode_dispatch(Base16.decode(input))
+    IO.puts("\tDispatch from: #{Base16.encode(args.from)}")
+
+    nonce =
+      rpc!("eth_call", [
+        %{
+          to: Base16.encode(CallPermit.address()),
+          data: Base16.encode(CallPermit.nonces(args.from))
+        },
+        block_number
+      ])
+      |> Base16.decode_int()
+      |> Kernel.-(1)
+
+    IO.puts("\tBlock start nonce: #{nonce}")
+    candidates = [nonce | Enum.to_list((nonce - 5)..(nonce + 5))]
+    signature = Secp256k1.rlp_to_bitcoin(<<args.v>>, args.r, args.s)
+    chain_id = Base16.decode_int(chain_id)
+
+    Enum.find(candidates, fn nonce ->
+      msg =
+        CallPermit.call_permit(
+          chain_id,
+          args.from,
+          args.to,
+          args.value,
+          args.data,
+          args.gaslimit,
+          args.deadline,
+          nonce
+        )
+
+      from = Secp256k1.recover!(signature, msg, :none) |> Wallet.from_pubkey()
+      recovered_address = Wallet.address!(from)
+
+      if recovered_address == args.from do
+        true
+      else
+        false
+      end
+    end)
+    |> case do
+      nil ->
+        IO.puts("No valid nonce found")
+
+      valid_nonce ->
+        if valid_nonce == nonce do
+          IO.puts("\tSigned nonce #{valid_nonce} == expected nonce #{nonce}")
+        else
+          IO.puts("\t🤬 Error: Signed nonce #{valid_nonce} != expected nonce #{nonce}")
+        end
+    end
+  end
+
+  def rpc!(cmd, args) do
+    "https://moonbeam.api.onfinality.io/rpc?apikey=49e8baf7-14c3-4d0f-916a-94abf1c4c14a"
+    |> RemoteChain.HTTP.rpc!(cmd, args)
+  end
+end
+
+Application.ensure_all_started(:hackney)
+
+case System.argv() do
+  ["0x" <> _ = tx_hash] -> Trace.trace_tx(tx_hash)
+  [block_number] -> Trace.trace_block(String.to_integer(block_number))
+  _ -> raise "Usage: trace <tx_hash>"
+end
+
+# base_url = "https://rpc.api.moonbeam.network"
+# base_url = "https://moonbeam.unitedbloc.com:3000"
+# base_url = "https://moonbeam.api.onfinality.io/rpc?apikey=49e8baf7-14c3-4d0f-916a-94abf1c4c14a"
+# {:ok, anvil} = Anvil.start_link(base_url)
+# url = "http://localhost:1454"
+
+# Anvil.stop(anvil)

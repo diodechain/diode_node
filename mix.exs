@@ -94,7 +94,7 @@ defmodule Diode.Mixfile do
       {:oncrash, "~> 0.0"},
       {:plug_cowboy, "~> 2.5"},
       {:poison, "~> 6.0"},
-      {:profiler, github: "dominicletz/profiler"},
+      {:profiler, github: "dominicletz/profiler", override: true},
       {:websockex, "~> 0.5", hex: :websockex_wt},
 
       # linting
