@@ -503,9 +503,9 @@ defmodule Network.Rpc do
 
   defp remote_rpc_result(result) do
     case result do
-      %{"result" => result} -> result(result)
-      %{"error" => error, "code" => code} -> result(nil, code, error)
       %{"message" => "Not found"} -> throw(:notfound)
+      %{"result" => result} -> result(result)
+      %{"error" => error} -> result(nil, 400, error)
     end
   end
 
