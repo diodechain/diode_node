@@ -50,10 +50,7 @@ defmodule TxAudit do
         |> Enum.filter(fn tx -> String.starts_with?(tx["functionName"], "dispatch(") end)
 
       for tx <- ret do
-        <<"0x", _code::binary-size(8), rest::binary>> = tx["input"]
-        chunks = for <<chunk::size(64)-binary <- rest>>, do: chunk
-
-        from = hd(chunks)
+        from = tx_user(tx)
         filename = "scripts/txlog/users/#{from}.csv"
 
         File.write!(
@@ -86,12 +83,31 @@ defmodule TxAudit do
     end
   end
 
+  defp tx_user(tx) do
+    case tx["input"] do
+      <<"0x", _code::binary-size(8), rest::binary>> ->
+        chunks = for <<chunk::size(64)-binary <- rest>>, do: chunk
+
+        from = hd(chunks)
+        "0x#{binary_part(from, 24, 40)}"
+
+      _ ->
+        "none"
+    end
+  end
+
   defp fetch(name, address) do
     filename = "scripts/txlog/#{name}.json"
 
     if File.exists?(filename) do
       IO.puts("Skipping fetch of #{name} because it already exists")
-      Jason.decode!(File.read!(filename))
+      ret = Jason.decode!(File.read!(filename))
+
+      if !File.exists?("scripts/txlog/#{name}.csv") do
+        dump_csv(name, ret)
+      end
+
+      ret
     else
       IO.puts("Processing fetch of #{name}")
       Process.sleep(1000)
@@ -110,7 +126,7 @@ defmodule TxAudit do
   defp dump_csv(name, result) do
     lines =
       for tx <- result do
-        "#{tx["blockNumber"]},#{tx["timeStamp"]},#{name},#{tx["hash"]},#{tx["isError"]}"
+        "#{tx["blockNumber"]},#{tx["timeStamp"]},#{name},#{tx_user(tx)},#{tx["hash"]},#{tx["isError"]}"
       end
 
     filename = "scripts/txlog/#{name}.csv"

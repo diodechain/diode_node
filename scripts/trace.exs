@@ -74,7 +74,7 @@ defmodule Trace do
     end
   end
 
-  def trace_tx(tx_hash) do
+  def trace_tx(tx_hash, block \\ nil) do
     IO.puts("\nTX Hash: #{tx_hash}")
 
     tx =
@@ -84,17 +84,31 @@ defmodule Trace do
         "chainId" => chain_id
       } = rpc!("eth_getTransactionByHash", [tx_hash])
 
-    IO.puts("\tFound TX in block #{Base16.decode_int(block_number)}")
+    %{"status" => status} = rpc!("eth_getTransactionReceipt", [tx_hash])
+
+    %{"timestamp" => block_timestamp} =
+      block || rpc!("eth_getBlockByNumber", [block_number, true])
+
+    IO.puts("\tBlock Number #{Base16.decode_int(block_number)}")
+    IO.puts("\tBlock Timestamp #{Base16.decode_int(block_timestamp)}")
 
     if tx["to"] != Base16.encode(CallPermit.address()) do
       IO.inspect(tx, label: "tx")
       raise "Not a CallPermit"
     end
 
+    if status != "0x1" do
+      IO.puts("\t❌ Transaction reverted")
+    else
+      IO.puts("\t✅ Transaction executed")
+    end
+
     IO.puts("\tDispatch Relayer: #{tx["from"]}")
     IO.puts("\tDispatch Nonce: #{Base16.decode_int(tx["nonce"])}")
 
     %{"structLogs" => trace} = rpc!("debug_traceTransaction", [tx_hash])
+
+    # %{"structLogs" => trace} = rpc!("debug_traceTransaction", [tx_hash, %{tracer: "callTracer"}])
 
     if length(trace) == 0 do
       IO.puts("\tTransaction reverted without any TRACE")
@@ -106,7 +120,40 @@ defmodule Trace do
     # IO.inspect(trace, label: "callTracer")
 
     args = CallPermit.decode_dispatch(Base16.decode(input))
-    IO.puts("\tDispatch from: #{Base16.encode(args.from)}")
+
+    sigs =
+      File.read!("scripts/sigs.txt")
+      |> String.split("\n", trim: true)
+      |> Enum.map(fn row -> String.split(row, " ") end)
+
+    case Enum.find(sigs, fn [sig, _name] ->
+           sig == binary_part(Base16.encode(args.data), 0, 10)
+         end) do
+      [_sig, name] -> IO.puts("\tDispatch Name: #{name}")
+      nil -> IO.puts("\tDispatch Name: unknown")
+    end
+
+    IO.puts("\tDispatch From: #{Base16.encode(args.from)}")
+    IO.puts("\tDispatch Deadline: #{args.deadline}")
+    IO.puts("\tDispatch To: #{Base16.encode(args.to)}")
+
+    if length(trace) == 0 do
+      code =
+        rpc!("eth_getCode", [
+          Base16.encode(args.to),
+          Base16.encode(Base16.decode_int(block_number) - 1, false)
+        ])
+
+      if code == "0x" do
+        IO.puts("\t🤬 Error: To address #{Base16.encode(args.to)} has no code")
+      end
+    end
+
+    if args.deadline < Base16.decode_int(block_timestamp) do
+      IO.puts(
+        "\t🤬 Error: Dispatch deadline #{args.deadline} is before block timestamp #{Base16.decode_int(block_timestamp)}"
+      )
+    end
 
     nonce =
       rpc!("eth_call", [
@@ -114,10 +161,9 @@ defmodule Trace do
           to: Base16.encode(CallPermit.address()),
           data: Base16.encode(CallPermit.nonces(args.from))
         },
-        block_number
+        Base16.encode(Base16.decode_int(block_number) - 1, false)
       ])
       |> Base16.decode_int()
-      |> Kernel.-(1)
 
     IO.puts("\tBlock start nonce: #{nonce}")
     candidates = [nonce | Enum.to_list((nonce - 5)..(nonce + 5))]
@@ -154,29 +200,34 @@ defmodule Trace do
         if valid_nonce == nonce do
           IO.puts("\tSigned nonce #{valid_nonce} == expected nonce #{nonce}")
         else
-          IO.puts("\t🤬 Error: Signed nonce #{valid_nonce} != expected nonce #{nonce}")
+          IO.puts(
+            "\t🤬 Error: Signed nonce #{valid_nonce} != expected nonce #{nonce} (was there another transaction in this block?)"
+          )
         end
     end
   end
 
   def rpc!(cmd, args) do
-    "https://moonbeam.api.onfinality.io/rpc?apikey=49e8baf7-14c3-4d0f-916a-94abf1c4c14a"
+    System.get_env(
+      "RPC_URL",
+      "https://moonbeam.api.onfinality.io/rpc?apikey=49e8baf7-14c3-4d0f-916a-94abf1c4c14a"
+    )
     |> RemoteChain.HTTP.rpc!(cmd, args)
   end
 end
 
 Application.ensure_all_started(:hackney)
 
+# base_url = "https://rpc.api.moonbeam.network"
+# base_url = "https://moonbeam.unitedbloc.com:3000"
+# base_url = "https://moonbeam.api.onfinality.io/rpc?apikey=49e8baf7-14c3-4d0f-916a-94abf1c4c14a"
+# {:ok, anvil} = Anvil.start_link(base_url)
+# System.put_env("RPC_URL", "http://localhost:1454")
+
 case System.argv() do
   ["0x" <> _ = tx_hash] -> Trace.trace_tx(tx_hash)
   [block_number] -> Trace.trace_block(String.to_integer(block_number))
   _ -> raise "Usage: trace <tx_hash>"
 end
-
-# base_url = "https://rpc.api.moonbeam.network"
-# base_url = "https://moonbeam.unitedbloc.com:3000"
-# base_url = "https://moonbeam.api.onfinality.io/rpc?apikey=49e8baf7-14c3-4d0f-916a-94abf1c4c14a"
-# {:ok, anvil} = Anvil.start_link(base_url)
-# url = "http://localhost:1454"
 
 # Anvil.stop(anvil)
