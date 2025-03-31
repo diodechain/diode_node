@@ -123,8 +123,10 @@ defmodule Network.Rpc do
 
   def execute_std(method, params)
       when method in [
+             "dio_accounts",
              "dio_codeGroups",
              "dio_supply",
+             "dio_getPool",
              "eth_call",
              "eth_chainId",
              "eth_estimateGas",
@@ -140,6 +142,7 @@ defmodule Network.Rpc do
              "eth_getTransactionReceipt",
              "eth_sendRawTransaction",
              "net_version",
+             "eth_pendingTransactions",
              "parity_pendingTransactions",
              "trace_block",
              "trace_replayBlockTransactions"
