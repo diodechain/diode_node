@@ -222,7 +222,6 @@ defmodule Network.EdgeV2 do
         [cmd | _rest]
         when cmd in [
                "getblock",
-               "getblockheader",
                "getblockheader2",
                "getblockquick",
                "getblockquick2",
@@ -240,8 +239,8 @@ defmodule Network.EdgeV2 do
           |> Base16.decode()
           |> Rlp.decode!()
 
-        ["getblockpeak"] ->
-          response(RemoteChain.RPCCache.block_number(RemoteChain.diode_l1_fallback()))
+        [cmd | _] when cmd in ["getblockheader", "getblockpeak"] ->
+          RemoteChain.Edge.handle_async_msg(RemoteChain.diode_l1_fallback(), msg, state)
 
         ["ping"] ->
           response("pong")
