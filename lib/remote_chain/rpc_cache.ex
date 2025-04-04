@@ -252,7 +252,14 @@ defmodule RemoteChain.RPCCache do
 
     case Cache.get(cache, {chain, method, params}) do
       nil ->
-        GenServer.call(name(chain), {:rpc, method, params}, @default_timeout)
+        with {:error, :disconnect} <-
+               GenServer.call(name(chain), {:rpc, method, params}, @default_timeout) do
+          Logger.warning(
+            "RPC disconnect in #{inspect(chain)}.#{method}(#{inspect(params)}) retrying..."
+          )
+
+          GenServer.call(name(chain), {:rpc, method, params}, @default_timeout)
+        end
 
       result ->
         if :rand.uniform() < 0.1 do
