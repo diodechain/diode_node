@@ -23,13 +23,13 @@ defmodule CallPermitAdapter do
     )
   end
 
-  def should_submit_metatransaction?(chain) do
+  def should_forward_metatransaction?(chain) do
     chain in [Chains.Moonbeam, Chains.Moonriver, Chains.MoonbeamTestnet] and
       Shell.get_balance(chain, Diode.address()) / Shell.ether(1) < 1
   end
 
   # RLP encoded MetaTransaction
-  def submit_metatransaction(chain, meta_transaction) when is_binary(meta_transaction) do
+  def forward_metatransaction(chain, meta_transaction) when is_binary(meta_transaction) do
     msg =
       Rlp.encode!([chain.chain_prefix() <> ":sendmetatransaction", meta_transaction])
       |> Base16.encode()

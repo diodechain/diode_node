@@ -25,7 +25,15 @@ defmodule RemoteChain.NonceProvider do
     GenServer.call(name(chain), :nonce)
   end
 
+  def has_next_nonce?(chain) do
+    GenServer.call(name(chain), :has_next_nonce?)
+  end
+
   @impl true
+  def handle_call(:has_next_nonce?, _from, state = %NonceProvider{next_nonce: next_nonce}) do
+    {:reply, next_nonce != nil, state}
+  end
+
   def handle_call(:nonce, _from, state = %NonceProvider{next_nonce: nil, chain: chain}) do
     # We keep track of the next nonce in case there are multiple transactions which can
     # be sent in the same block.

@@ -113,7 +113,7 @@ defmodule TicketStore do
         chain = RemoteChain.chainimpl(chain_id)
 
         txhash =
-          if CallPermitAdapter.should_submit_metatransaction?(chain) do
+          if CallPermitAdapter.should_forward_metatransaction?(chain) do
             tx =
               MetaTransaction.sign(
                 %MetaTransaction{
@@ -131,7 +131,7 @@ defmodule TicketStore do
               |> MetaTransaction.to_rlp()
               |> Rlp.encode!()
 
-            case CallPermitAdapter.submit_metatransaction(chain, tx) do
+            case CallPermitAdapter.forward_metatransaction(chain, tx) do
               ["ok", txhash] -> txhash
               other -> {:error, other}
             end
