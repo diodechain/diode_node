@@ -74,6 +74,22 @@ defmodule Trace do
     end
   end
 
+  def decode_signature(function_signature) do
+    if String.contains?(function_signature, "(") do
+      [name, args] = String.split(function_signature, "(", parts: 2)
+      args = String.trim_trailing(args, ")")
+      args = String.split(args, ",") |> Enum.map(&String.trim/1)
+      %{name: name, args: args}
+    else
+      %{name: function_signature, args: []}
+    end
+  end
+
+  def decode_call(function_signature, encoded_call) do
+    %{name: name, args: args} = decode_signature(function_signature)
+    DiodeClient.ABI.decode_call(name, args, encoded_call)
+  end
+
   def trace_tx(tx_hash, block \\ nil) do
     IO.puts("\nTX Hash: #{tx_hash}")
 
@@ -129,8 +145,21 @@ defmodule Trace do
     case Enum.find(sigs, fn [sig, _name] ->
            sig == binary_part(Base16.encode(args.data), 0, 10)
          end) do
-      [_sig, name] -> IO.puts("\tDispatch Name: #{name}")
-      nil -> IO.puts("\tDispatch Name: unknown")
+      [_sig, name] ->
+        IO.puts("\tDispatch Name: #{name}")
+
+        with {:ok, params} <- decode_call(name, args.data) do
+          for {param, i} <- Enum.with_index(params) do
+            if is_binary(param) do
+              IO.puts("\t\t#{i}: #{Base16.encode(param)}")
+            else
+              IO.puts("\t\t#{i}: #{param}")
+            end
+          end
+        end
+
+      nil ->
+        IO.puts("\tDispatch Name: unknown")
     end
 
     IO.puts("\tDispatch From: #{Base16.encode(args.from)}")

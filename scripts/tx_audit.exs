@@ -98,8 +98,13 @@ defmodule TxAudit do
 
   defp fetch(name, address) do
     filename = "scripts/txlog/#{name}.json"
+    max_age = {5, 0}
 
-    if File.exists?(filename) do
+    if File.exists?(filename) and
+         :calendar.time_difference(
+           File.stat!(filename).mtime,
+           :calendar.now_to_datetime(:erlang.now())
+         ) < max_age do
       IO.puts("Skipping fetch of #{name} because it already exists")
       ret = Jason.decode!(File.read!(filename))
 
