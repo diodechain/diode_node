@@ -205,6 +205,14 @@ defmodule RemoteChain.Edge do
           end
         end
 
+      ["rpc", method, params] ->
+        with {:ok, params} <- Jason.decode(params),
+             result when is_map(result) <- RemoteChain.RPCCache.rpc(chain, method, params) do
+          response(Jason.encode!(result))
+        else
+          {:error, error} -> error(error)
+        end
+
       _ ->
         default(msg, state)
     end
