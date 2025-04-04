@@ -73,6 +73,9 @@ defmodule RemoteChain.NonceProvider do
     state = %NonceProvider{state | fetched_nonce: fetched_nonce, fetched_at: fetched_at}
 
     cond do
+      next_nonce == nil ->
+        {:noreply, state}
+
       fetched_nonce > next_nonce ->
         Logger.warning(
           "RTX next_nonce (#{next_nonce}) is smaller than fetched_nonce (#{fetched_nonce}), probably extern TX - resetting"
