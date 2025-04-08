@@ -87,7 +87,10 @@ defmodule Trace do
 
   def decode_call(function_signature, encoded_call) do
     %{name: name, args: args} = decode_signature(function_signature)
-    DiodeClient.ABI.decode_call(name, args, encoded_call)
+
+    with {:ok, params} <- DiodeClient.ABI.decode_call(name, args, encoded_call) do
+      {:ok, Enum.zip(args, params)}
+    end
   end
 
   def trace_tx(tx_hash, block \\ nil) do
@@ -150,11 +153,14 @@ defmodule Trace do
 
         with {:ok, params} <- decode_call(name, args.data) do
           for {param, i} <- Enum.with_index(params) do
-            if is_binary(param) do
-              IO.puts("\t\t#{i}: #{Base16.encode(param)}")
-            else
-              IO.puts("\t\t#{i}: #{param}")
-            end
+            printable =
+              case param do
+                {"string", value} -> value
+                {_, value} when is_binary(value) -> Base16.encode(value)
+                {_, value} -> value
+              end
+
+            IO.puts("\t\t#{i}: #{printable}")
           end
         end
 
