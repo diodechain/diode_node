@@ -1,6 +1,30 @@
 # Diode Server
 # Copyright 2021-2024 Diode
 # Licensed under the Diode License, Version 1.1
+defmodule Chains do
+  def epoch(chain, block_height) do
+    div(RemoteChain.blocktime(chain, block_height), chain.epoch_duration())
+  end
+
+  def epoch_progress(chain, block_height) do
+    rem(RemoteChain.blocktime(chain, block_height), chain.epoch_duration()) /
+      chain.epoch_duration()
+  end
+
+  def epoch_block(chain, epoch) do
+    # last block with 12s: 6593037 Jul-15-2024 01:01:12 PM +UTC => 1721048472
+    base_height = RemoteChain.peaknumber(chain)
+    base_timestamp = RemoteChain.blocktime(chain, base_height)
+    epoch_time = epoch * chain.epoch_duration()
+
+    timestamp_block(base_height, base_timestamp, epoch_time, chain.expected_block_intervall())
+  end
+
+  def timestamp_block(base_height, base_timestamp, search_timestamp, block_intervall) do
+    base_height - floor((base_timestamp - search_timestamp) / block_intervall)
+  end
+end
+
 defmodule Chains.Diode do
   alias DiodeClient.{Base16, Hash}
 
@@ -53,23 +77,19 @@ defmodule Chains.Moonbeam do
   alias DiodeClient.{Base16, Hash}
 
   def chain_id(), do: 1284
-  def expected_block_intervall(), do: 15
-  def epoch(n), do: div(RemoteChain.blocktime(__MODULE__, n), epoch_length())
+  def expected_block_intervall(), do: 6
+  def epoch(n), do: Chains.epoch(__MODULE__, n)
+  def epoch_progress(n), do: Chains.epoch_progress(__MODULE__, n)
 
-  def epoch_progress(n),
-    do: rem(RemoteChain.blocktime(__MODULE__, n), epoch_length()) / epoch_length()
-
-  def epoch_block(epoch), do: epoch_block(epoch, __MODULE__)
-
-  def epoch_block(epoch, chain) do
-    n = RemoteChain.peaknumber(chain)
-    n_time = RemoteChain.blocktime(chain, n)
-    n_epoch = div(n_time, epoch_length())
-    block_number = n - (n_epoch - epoch) * epoch_length() / expected_block_intervall()
-    floor(block_number)
+  def epoch_block(epoch) do
+    epoch_time = epoch * epoch_duration()
+    # last block with 12s: 6593037 Jul-15-2024 01:01:12 PM +UTC => 1721048472
+    # after that all blocks have 6s
+    expected_block_intervall = if epoch_time > 1_721_048_472, do: 12, else: 6
+    Chains.timestamp_block(6_593_037, 1_721_048_472, epoch_time, expected_block_intervall)
   end
 
-  def epoch_length(), do: 2_592_000
+  def epoch_duration(), do: 2_592_000
   def chain_prefix(), do: "glmr"
 
   def rpc_endpoints(),
@@ -103,11 +123,11 @@ defmodule Chains.MoonbaseAlpha do
   alias DiodeClient.{Base16, Hash}
 
   def chain_id(), do: 1287
-  def expected_block_intervall(), do: 15
-  defdelegate epoch(n), to: Chains.Moonbeam
-  defdelegate epoch_progress(n), to: Chains.Moonbeam
-  def epoch_block(block), do: Chains.Moonbeam.epoch_block(block, Chains.MoonbaseAlpha)
-  def epoch_length(), do: 2_592_000
+  def expected_block_intervall(), do: 6
+  def epoch(n), do: Chains.epoch(__MODULE__, n)
+  def epoch_progress(n), do: Chains.epoch_progress(__MODULE__, n)
+  def epoch_block(block), do: Chains.epoch_block(__MODULE__, block)
+  def epoch_duration(), do: 2_592_000
   def chain_prefix(), do: "m1"
 
   def rpc_endpoints(),
@@ -135,11 +155,11 @@ defmodule Chains.Moonriver do
   alias DiodeClient.{Base16, Hash}
 
   def chain_id(), do: 1285
-  def expected_block_intervall(), do: 15
-  defdelegate epoch(n), to: Chains.Moonbeam
-  defdelegate epoch_progress(n), to: Chains.Moonbeam
-  def epoch_block(block), do: Chains.Moonbeam.epoch_block(block, Chains.MoonbaseAlpha)
-  def epoch_length(), do: 2_592_000
+  def expected_block_intervall(), do: 6
+  def epoch(n), do: Chains.epoch(__MODULE__, n)
+  def epoch_progress(n), do: Chains.epoch_progress(__MODULE__, n)
+  def epoch_block(block), do: Chains.epoch_block(__MODULE__, block)
+  def epoch_duration(), do: 2_592_000
   def chain_prefix(), do: "movr"
 
   def rpc_endpoints(),
@@ -165,5 +185,31 @@ defmodule Chains.Moonriver do
 
   def registry_address(), do: Base16.decode("0xEb0aDCd736Ae9341DFb635759C5D7D6c2D51B673")
   def developer_fleet_address(), do: Base16.decode("0x6000000000000000000000000000000000000000")
+  def transaction_hash(), do: &Hash.keccak_256/1
+end
+
+defmodule Chains.OasisSapphire do
+  alias DiodeClient.{Base16, Hash}
+
+  def chain_id(), do: 23294
+  def expected_block_intervall(), do: 6
+  def epoch(n), do: Chains.epoch(__MODULE__, n)
+  def epoch_progress(n), do: Chains.epoch_progress(__MODULE__, n)
+  def epoch_block(epoch), do: Chains.epoch_block(__MODULE__, epoch)
+  def epoch_duration(), do: 2_592_000
+  def chain_prefix(), do: "sapphire"
+
+  def rpc_endpoints(),
+    do: [
+      "https://sapphire.oasis.io"
+    ]
+
+  def ws_endpoints(),
+    do: [
+      "wss://sapphire.oasis.io/ws"
+    ]
+
+  def registry_address(), do: raise("not implemented")
+  def developer_fleet_address(), do: raise("not implemented")
   def transaction_hash(), do: &Hash.keccak_256/1
 end

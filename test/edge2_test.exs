@@ -276,7 +276,7 @@ defmodule Edge2Test do
     assert [_tck2] = TicketStore.tickets(epoch())
 
     while epoch == epoch() do
-      RemoteChain.RPC.rpc!(chain(), "evm_increaseTime", [div(chain().epoch_length(), 3)])
+      RemoteChain.RPC.rpc!(chain(), "evm_increaseTime", [div(chain().epoch_duration(), 3)])
       RemoteChain.RPC.rpc!(chain(), "evm_mine")
     end
 
@@ -303,7 +303,7 @@ defmodule Edge2Test do
     epoch = epoch()
 
     while epoch == epoch() do
-      RemoteChain.RPC.rpc!(chain(), "evm_increaseTime", [div(chain().epoch_length(), 3)])
+      RemoteChain.RPC.rpc!(chain(), "evm_increaseTime", [div(chain().epoch_duration(), 3)])
       RemoteChain.RPC.rpc!(chain(), "evm_mine")
     end
 

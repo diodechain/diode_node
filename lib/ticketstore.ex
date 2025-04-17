@@ -32,7 +32,7 @@ defmodule TicketStore do
   end
 
   def epoch() do
-    div(System.os_time(:second), Chains.Moonbeam.epoch_length())
+    div(System.os_time(:second), Chains.Moonbeam.epoch_duration())
   end
 
   def tickets(chainmod, epoch) when is_atom(chainmod) do

@@ -5,12 +5,12 @@ defmodule Chains.Anvil do
   alias DiodeClient.{Base16, Wallet, Hash}
   def chain_id(), do: 31337
   def expected_block_intervall(), do: 15
-  def epoch(n), do: div(RemoteChain.blocktime(__MODULE__, n), epoch_length())
+  def epoch(n), do: div(RemoteChain.blocktime(__MODULE__, n), epoch_duration())
 
   def epoch_progress(n),
-    do: rem(RemoteChain.blocktime(__MODULE__, n), epoch_length()) / epoch_length()
+    do: rem(RemoteChain.blocktime(__MODULE__, n), epoch_duration()) / epoch_duration()
 
-  def epoch_length(), do: 2_592_000
+  def epoch_duration(), do: 2_592_000
   def chain_prefix(), do: "av"
 
   def rpc_endpoints(),

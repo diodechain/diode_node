@@ -52,7 +52,7 @@ defmodule RemoteChain.RPCCache do
 
   def get_block_by_number(chain, block \\ "latest", with_transactions \\ false) do
     block = resolve_block(chain, block)
-    rpc!(chain, "eth_getBlockByNumber", [block, with_transactions])
+    rpc!(chain, "eth_getBlockByNumber", [Base16.encode(block), with_transactions])
   end
 
   # Retrieves all storage slots for an address, only available on Diode
@@ -63,7 +63,7 @@ defmodule RemoteChain.RPCCache do
     # for storage requests we use the last change block as the base
     # any contract not using change tracking will suffer 240 blocks (one hour) of caching
     block = get_last_change(chain, address, block)
-    rpc!(chain, "eth_getStorage", [address, Base16.encode(block, false)])
+    rpc!(chain, "eth_getStorage", [address, Base16.encode(block)])
   end
 
   def get_storage_at(chain, address, slot, block \\ "latest") do
@@ -188,7 +188,7 @@ defmodule RemoteChain.RPCCache do
       end
     else
       # Assuming 12s block time for moonbeam
-      blocks_per_hour = div(3600, 12)
+      blocks_per_hour = div(3600, 6)
 
       # `ChangeTracker.sol` slot for signaling: 0x1e4717b2dc5dfd7f487f2043bfe9999372d693bf4d9c51b5b84f1377939cd487
       rpc!(chain, "eth_getStorageAt", [
@@ -221,8 +221,7 @@ defmodule RemoteChain.RPCCache do
     |> Map.get("storage_root") || throw("No storage_root in account")
   end
 
-  def get_account_root(chain, address, block)
-      when chain in [Chains.MoonbaseAlpha, Chains.Moonbeam, Chains.Moonriver] do
+  def get_account_root(chain, address, block) do
     if Base16.decode(get_code(chain, address, block)) == "" do
       "0x"
     else

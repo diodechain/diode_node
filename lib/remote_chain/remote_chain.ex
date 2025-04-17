@@ -29,7 +29,8 @@ defmodule RemoteChain do
     @chains [
       Chains.Diode,
       Chains.Moonbeam,
-      Chains.MoonbaseAlpha
+      Chains.MoonbaseAlpha,
+      Chains.OasisSapphire
     ]
   end
 

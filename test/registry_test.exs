@@ -16,7 +16,7 @@ defmodule RegistryTest do
     epoch = epoch()
 
     while epoch == epoch() do
-      RemoteChain.RPC.rpc!(chain(), "evm_increaseTime", [div(chain().epoch_length(), 3)])
+      RemoteChain.RPC.rpc!(chain(), "evm_increaseTime", [div(chain().epoch_duration(), 3)])
       RemoteChain.RPC.rpc!(chain(), "evm_mine")
     end
 
