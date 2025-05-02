@@ -39,8 +39,8 @@ defmodule Network.RpcHttp do
     signature = DiodeClient.Wallet.sign(Diode.wallet(), "DiodeNodeReply" <> body)
 
     conn
-    |> put_resp_header("X-Diode-Signature", DiodeClient.Base16.encode(signature))
-    |> put_resp_header("X-Diode-Sender", DiodeClient.Wallet.base16(Diode.wallet()))
+    |> put_resp_header("x-diode-signature", DiodeClient.Base16.encode(signature))
+    |> put_resp_header("x-diode-sender", DiodeClient.Wallet.base16(Diode.wallet()))
     |> send_resp(status, body)
   end
 

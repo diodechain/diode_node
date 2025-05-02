@@ -401,61 +401,94 @@ defmodule Network.Rpc do
         |> result()
 
       "dio_proxy|" <> method ->
-        [node | params] = params
-        node = Base16.decode(node)
+        handle_proxy(method, params, [])
 
-        if method not in [
-             "dio_checkConnectivity",
-             "dio_getObject",
-             "dio_getNode",
-             "dio_traffic",
-             "dio_usage",
-             "dio_usageHistory"
-           ] do
-          result(nil, 400)
-        else
-          case KademliaLight.find_node_object(node) do
-            nil ->
-              result(nil, 404)
-
-            server ->
-              host = Object.Server.host(server)
-
-              request = %{
-                "jsonrpc" => "2.0",
-                "method" => method,
-                "params" => params,
-                "id" => 1
-              }
-
-              HTTPoison.post("http://#{host}:8545", Poison.encode!(request), [
-                {"Content-Type", "application/json"},
-                {"Accept-Encoding", "gzip"}
-              ])
-              |> case do
-                {:ok, %{body: ""}} ->
-                  result("")
-
-                {:ok, %{body: body, headers: headers}} ->
-                  if List.keyfind(headers, "content-encoding", 0) ==
-                       {"content-encoding", "gzip"} do
-                    :zlib.gunzip(body)
-                  else
-                    body
-                  end
-                  |> Poison.decode!()
-                  |> Map.get("result")
-                  |> raw_result()
-
-                error = {:error, _reason} ->
-                  Logger.error("Error fetching #{method} from #{host}: #{inspect(error)}")
-                  result(nil, 502)
-              end
-          end
-        end
+      "dio_proxy2|" <> method ->
+        handle_proxy(method, params, validate: true)
 
       _ ->
         nil
+    end
+  end
+
+  defp handle_proxy(method, params, opts) do
+    [node | params] = params
+    node = Base16.decode(node)
+    server = if node == Diode.address(), do: :self, else: KademliaLight.find_node_object(node)
+
+    cond do
+      method not in [
+        "dio_checkConnectivity",
+        "dio_getObject",
+        "dio_getNode",
+        "dio_traffic",
+        "dio_tickets",
+        "dio_usage",
+        "dio_usageHistory"
+      ] ->
+        result(nil, 400)
+
+      server == nil ->
+        result(nil, 404)
+
+      true ->
+        execute_proxy_request(server, method, params, opts)
+    end
+  end
+
+  defp execute_proxy_request(server, method, params, opts) do
+    host = if server == :self, do: "localhost", else: Object.Server.host(server)
+
+    request = %{
+      "jsonrpc" => "2.0",
+      "method" => method,
+      "params" => params,
+      "id" => 1
+    }
+
+    HTTPoison.post("http://#{host}:8545", Poison.encode!(request), [
+      {"Content-Type", "application/json"},
+      {"Accept-Encoding", "gzip"}
+    ])
+    |> case do
+      {:ok, %{body: ""}} ->
+        result("")
+
+      {:ok, %{body: body, headers: headers}} ->
+        body =
+          if List.keyfind(headers, "content-encoding", 0) ==
+               {"content-encoding", "gzip"} do
+            :zlib.gunzip(body)
+          else
+            body
+          end
+
+        if opts[:validate] != true or validate_signature(body, headers) do
+          body
+          |> Poison.decode!()
+          |> Map.get("result")
+          |> raw_result()
+        else
+          result(nil, 400)
+        end
+
+      error = {:error, _reason} ->
+        Logger.error("Error fetching #{method} from #{host}: #{inspect(error)}")
+        result(nil, 502)
+    end
+  end
+
+  defp validate_signature(body, headers) do
+    IO.inspect(headers, label: "headers")
+
+    with {"x-diode-sender", sender} <- List.keyfind(headers, "x-diode-sender", 0),
+         {"x-diode-signature", signature} <- List.keyfind(headers, "x-diode-signature", 0) do
+      sender = Wallet.from_address(Base16.decode(sender))
+      IO.inspect(sender, label: "sender")
+      Wallet.verify(sender, "DiodeNodeReply" <> body, Base16.decode(signature))
+    else
+      _ ->
+        false
     end
   end
 
