@@ -153,7 +153,8 @@ defmodule RemoteChain.Edge do
              result when is_map(result) <- RemoteChain.RPCCache.rpc(chain, method, params) do
           response(Jason.encode!(result))
         else
-          {:error, error} -> error(error)
+          {:error, %Jason.DecodeError{}} -> error("invalid json params")
+          {:error, error} -> error(inspect(error))
         end
 
       _ ->

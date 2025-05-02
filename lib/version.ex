@@ -1,7 +1,7 @@
 defmodule Diode.Version do
-  @patches elem(System.cmd("git", ["log", "-100", "--oneline"]), 0) |> String.split("\n")
-  @description elem(System.cmd("git", ["describe", "--tags"]), 0)
-  @version Regex.run(~r/v([0-9]+\.[0-9]+\.[0-9]+)/, @description) |> Enum.at(1)
+  @patches Mix.Project.config()[:version_patches]
+  @description Mix.Project.config()[:version_description]
+  @version Mix.Project.config()[:version]
   def patches() do
     @patches
   end

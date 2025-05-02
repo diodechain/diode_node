@@ -10,10 +10,13 @@ end
 defmodule Diode.Mixfile do
   use Mix.Project
 
-  @vsn "1.6.0"
   @url "https://github.com/diodechain/diode_node"
 
   def project do
+    patches = elem(System.cmd("git", ["log", "-100", "--oneline"]), 0) |> String.split("\n")
+    description = elem(System.cmd("git", ["describe", "--tags"]), 0)
+    vsn = Regex.run(~r/v([0-9]+\.[0-9]+\.[0-9]+)/, description) |> Enum.at(1)
+
     [
       aliases: aliases(),
       app: :diode,
@@ -21,7 +24,7 @@ defmodule Diode.Mixfile do
       deps: deps(),
       description: "Diode Network Relay Node",
       dialyzer: [plt_add_apps: [:mix]],
-      docs: docs(),
+      docs: docs(vsn),
       elixir: "~> 1.15",
       elixirc_options: [warnings_as_errors: Mix.target() == :host],
       elixirc_paths: elixirc_paths(Mix.env()),
@@ -30,12 +33,14 @@ defmodule Diode.Mixfile do
         diode_node: [
           applications: [runtime_tools: :permanent, ssl: :permanent],
           steps: [:assemble, :tar],
-          version: @vsn
+          version: vsn
         ]
       ],
       source_url: @url,
       start_permanent: Mix.env() == :prod,
-      version: @vsn
+      version: vsn,
+      version_description: description,
+      version_patches: patches
     ]
   end
 
@@ -57,9 +62,9 @@ defmodule Diode.Mixfile do
     ]
   end
 
-  defp docs do
+  defp docs(vsn) do
     [
-      source_ref: "v#{@vsn}",
+      source_ref: "v#{vsn}",
       source_url: @url,
       formatters: ["html"],
       main: "readme",

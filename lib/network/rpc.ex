@@ -414,7 +414,7 @@ defmodule Network.Rpc do
   defp handle_proxy(method, params, opts) do
     [node | params] = params
     node = Base16.decode(node)
-    server = if node == Diode.address(), do: :self, else: KademliaLight.find_node_object(node)
+    server = KademliaLight.find_node_object(node)
 
     cond do
       method not in [
@@ -432,12 +432,12 @@ defmodule Network.Rpc do
         result(nil, 404)
 
       true ->
-        execute_proxy_request(server, method, params, opts)
+        execute_proxy_request(node, server, method, params, opts)
     end
   end
 
-  defp execute_proxy_request(server, method, params, opts) do
-    host = if server == :self, do: "localhost", else: Object.Server.host(server)
+  defp execute_proxy_request(node_id, server, method, params, opts) do
+    host = if node_id == Diode.address(), do: "localhost", else: Object.Server.host(server)
 
     request = %{
       "jsonrpc" => "2.0",
@@ -463,7 +463,7 @@ defmodule Network.Rpc do
             body
           end
 
-        if opts[:validate] != true or validate_signature(body, headers) do
+        if opts[:validate] != true or validate_signature(node_id, body, headers) do
           body
           |> Poison.decode!()
           |> Map.get("result")
@@ -478,11 +478,15 @@ defmodule Network.Rpc do
     end
   end
 
-  defp validate_signature(body, headers) do
+  defp validate_signature(node_id, body, headers) do
+    node_id = Wallet.from_address(node_id)
+
     with {"x-diode-sender", sender} <- List.keyfind(headers, "x-diode-sender", 0),
          {"x-diode-signature", signature} <- List.keyfind(headers, "x-diode-signature", 0) do
-      sender = Wallet.from_address(Base16.decode(sender))
-      Wallet.verify(sender, "DiodeNodeReply" <> body, Base16.decode(signature))
+      sender = Base16.decode(sender)
+
+      Wallet.address!(node_id) == sender and
+        Wallet.verify(node_id, "DiodeNodeReply" <> body, Base16.decode(signature))
     else
       _ ->
         false

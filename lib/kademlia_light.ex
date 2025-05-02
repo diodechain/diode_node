@@ -112,16 +112,16 @@ defmodule KademliaLight do
     if address == Diode.address() do
       Diode.self()
     end ||
-    case find_nodes(address) do
-      [] ->
-        nil
+      case find_nodes(address) do
+        [] ->
+          nil
 
-      [first | _] ->
-        case Wallet.address!(first.node_id) do
-          ^address -> KBuckets.object(first)
-          _ -> nil
-        end
-    end ||
+        [first | _] ->
+          case Wallet.address!(first.node_id) do
+            ^address -> KBuckets.object(first)
+            _ -> nil
+          end
+      end ||
       with binary when is_binary(binary) <- find_value(address) do
         Object.decode!(binary)
       end
