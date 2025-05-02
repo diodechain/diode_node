@@ -35,8 +35,13 @@ defmodule Network.RpcHttp do
     conn = cors(conn)
     local = is_local(conn.remote_ip)
     {status, body} = Network.Rpc.handle_jsonrpc(conn.body_params, private: local)
+    body = Poison.encode!(body)
+    signature = DiodeClient.Wallet.sign(Diode.wallet(), "DiodeNodeReply" <> body)
 
-    send_resp(conn, status, Poison.encode!(body))
+    conn
+    |> put_resp_header("X-Diode-Signature", signature)
+    |> put_resp_header("X-Diode-Sender", DiodeClient.Wallet.base16(Diode.wallet()))
+    |> send_resp(status, body)
   end
 
   match _ do
