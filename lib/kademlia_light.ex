@@ -109,6 +109,9 @@ defmodule KademliaLight do
     and then secondly visits the value store
   """
   def find_node_object(address) do
+    if address == Diode.address() do
+      Diode.self()
+    end ||
     case find_nodes(address) do
       [] ->
         nil
