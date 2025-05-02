@@ -130,7 +130,7 @@ defmodule RemoteChain.Edge do
         end
 
       ["getmetanonce", block, address] ->
-        RemoteChain.RPC.call(
+        RemoteChain.RPC.call!(
           chain,
           Base16.encode(CallPermit.address()),
           nil,

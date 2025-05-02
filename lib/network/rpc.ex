@@ -479,12 +479,9 @@ defmodule Network.Rpc do
   end
 
   defp validate_signature(body, headers) do
-    IO.inspect(headers, label: "headers")
-
     with {"x-diode-sender", sender} <- List.keyfind(headers, "x-diode-sender", 0),
          {"x-diode-signature", signature} <- List.keyfind(headers, "x-diode-signature", 0) do
       sender = Wallet.from_address(Base16.decode(sender))
-      IO.inspect(sender, label: "sender")
       Wallet.verify(sender, "DiodeNodeReply" <> body, Base16.decode(signature))
     else
       _ ->
