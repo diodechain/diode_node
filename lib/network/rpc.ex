@@ -288,6 +288,30 @@ defmodule Network.Rpc do
           fleets: fleets
         })
 
+      "dio_tickets" ->
+        chain_id = Base16.decode_int(hd(params))
+        peak = RemoteChain.peaknumber(chain_id)
+        peak_epoch = RemoteChain.epoch(chain_id, peak)
+
+        epoch =
+          case params do
+            [_chain_id, epoch] -> Base16.decode_int(epoch)
+            [_chain_id] -> peak_epoch
+          end
+
+        tickets =
+          TicketStore.tickets(chain_id, epoch)
+          |> Enum.map(&Ticket.raw/1)
+          |> Enum.map(&Base16.encode/1)
+
+        result(%{
+          chain_id: chain_id,
+          epoch: epoch,
+          epoch_time:
+            RemoteChain.blocktime(chain_id, RemoteChain.chainimpl(chain_id).epoch_block(epoch)),
+          tickets: tickets
+        })
+
       "dio_usage" ->
         incoming = Network.Stats.get(:edge_traffic_in)
         outgoing = Network.Stats.get(:edge_traffic_out)
