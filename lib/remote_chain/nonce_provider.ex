@@ -111,7 +111,7 @@ defmodule RemoteChain.NonceProvider do
     nonce =
       RemoteChain.RPCCache.get_transaction_count(
         chain,
-        Wallet.base16(CallPermitAdapter.wallet()),
+        Wallet.base16(Diode.wallet()),
         "latest"
       )
       |> Base16.decode_int()
