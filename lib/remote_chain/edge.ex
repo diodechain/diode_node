@@ -27,17 +27,24 @@ defmodule RemoteChain.Edge do
           "transactionsRoot" => transaction_hash
         } = RemoteChain.RPCCache.get_block_by_number(chain, hex_blockref(index))
 
-        response(%{
+        %{
           "block_hash" => Base16.decode(hash),
           "miner" => Base16.decode(miner),
           "miner_signature" => nil,
           "nonce" => Base16.decode(nonce),
           "number" => Base16.decode(number),
-          "previous_block" => Base16.decode(previous_block),
           "state_hash" => Base16.decode(state_hash),
           "timestamp" => Base16.decode(timestamp),
           "transaction_hash" => Base16.decode(transaction_hash)
-        })
+        }
+        |> then(fn block ->
+          if previous_block == "0Z0Z0Z0Z0Z0Z0Z0Z0Z0Z0Z0Z0Z0Z0Z0Z" do
+            Map.put(block, "previous_block", "0x0")
+          else
+            Map.put(block, "previous_block", Base16.decode(previous_block))
+          end
+        end)
+        |> response()
 
       ["getblockheader2", index] when is_binary(index) ->
         error("not implemented")
