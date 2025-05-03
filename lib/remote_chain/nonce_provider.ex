@@ -26,7 +26,7 @@ defmodule RemoteChain.NonceProvider do
   @impl true
   def init(chain) do
     RemoteChain.NodeProxy.subscribe_block(chain)
-    {:ok, %__MODULE__{chain: chain}}
+    {:ok, %__MODULE__{chain: chain, waiting_nonce_requests: []}}
   end
 
   def nonce(chain) do
