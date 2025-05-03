@@ -3,7 +3,7 @@
 # Licensed under the Diode License, Version 1.1
 defmodule Shell do
   @moduledoc false
-  alias DiodeClient.{ABI, Base16, Rlp, Transaction}
+  alias DiodeClient.{ABI, Base16, Rlp, Transaction, Wallet}
   alias RemoteChain.NodeProxy
 
   def call(chain_id, address, name, types \\ [], values \\ [], opts \\ [])
@@ -135,7 +135,52 @@ defmodule Shell do
       |> Enum.map(fn {key, value} -> {Atom.to_string(key), value} end)
       |> Map.new()
 
-    Network.Rpc.create_transaction(wallet, callcode, opts, sign)
+    create_transaction(wallet, callcode, opts, sign)
+  end
+
+  def create_transaction(wallet, data, opts \\ %{}, sign \\ true) do
+    # from = Wallet.address!(wallet)
+
+    {gas, opts} = Map.pop(opts, "gas", 0x15F90)
+    {value, opts} = Map.pop(opts, "value", 0x0)
+    # blockRef = Map.get(opts, "blockRef", "latest")
+    {chain_id, opts} = Map.pop(opts, "chainId")
+    {nonce, opts} = Map.pop(opts, "nonce")
+    {to, opts} = Map.pop(opts, "to")
+    {gas_price, opts} = Map.pop(opts, "gasPrice", nil)
+
+    if chain_id == nil do
+      raise "Missing chainId"
+    end
+
+    gas_price =
+      if gas_price == nil do
+        RemoteChain.RPC.gas_price(chain_id)
+        |> Base16.decode_int()
+      else
+        gas_price
+      end
+
+    if map_size(opts) > 0 do
+      raise "Unhandled create_transaction(opts): #{inspect(opts)}"
+    end
+
+    tx = %Transaction{
+      to: to,
+      nonce: nonce || RemoteChain.NonceProvider.fetch_nonce(chain_id),
+      gasPrice: gas_price,
+      gasLimit: gas,
+      init: if(to == nil, do: data),
+      data: if(to != nil, do: data),
+      value: value,
+      chain_id: chain_id
+    }
+
+    if sign do
+      Transaction.sign(tx, Wallet.privkey!(wallet))
+    else
+      %{tx | signature: {:fake, Wallet.address!(wallet)}}
+    end
   end
 
   def get_balance(chain_id, address = <<_::binary-size(20)>>) do

@@ -111,6 +111,8 @@ defmodule TicketStore do
     case Shell.call_tx!(tx, "latest") do
       "0x" ->
         chain = RemoteChain.chainimpl(chain_id)
+        nonce = RemoteChain.NonceProvider.nonce(chain_id)
+        tx = %DiodeClient.Transaction{tx | nonce: nonce}
 
         txhash =
           if CallPermitAdapter.should_forward_metatransaction?(chain) do
@@ -150,9 +152,12 @@ defmodule TicketStore do
             :timer.minutes(5)
           )
 
+          RemoteChain.NonceProvider.confirm_nonce(chain_id, tx.nonce)
           Logger.info("Submitted ticket tx #{inspect(txhash)} for #{length(tickets)} tickets")
           {:ok, txhash}
         else
+          RemoteChain.NonceProvider.cancel_nonce(chain_id, tx.nonce)
+
           Logger.info(
             "Failed to submit ticket tx #{inspect(txhash)} for #{length(tickets)} tickets"
           )

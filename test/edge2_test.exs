@@ -622,7 +622,7 @@ defmodule Edge2Test do
     to = Wallet.address!(to)
 
     tx =
-      Network.Rpc.create_transaction(from, <<"">>, %{
+      Shell.create_transaction(from, <<"">>, %{
         "value" => 0,
         "to" => to,
         "chainId" => chain().chain_id()

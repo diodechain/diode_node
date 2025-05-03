@@ -251,6 +251,7 @@ defmodule RemoteChain.Edge do
         # is broadcasted even if the RPC connection goes down in the next call.
         # This is so to preserve the nonce ordering if at all possible
         RemoteChain.TxRelay.keep_alive(chain, tx, payload)
+        RemoteChain.NonceProvider.confirm_nonce(chain, nonce)
 
         # In order to ensure delivery we're broadcasting to all known endpoints of this chain
         spawn(fn ->

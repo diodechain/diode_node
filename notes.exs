@@ -1,3 +1,18 @@
+# April 7th
+
+# Debugging updater issues
+
+gateway = DiodeClient.Base16.decode("0x84c485c62cdd878ce795aa90f269f84b5ae4fa0e")
+updater = DiodeClient.Base16.decode("0x35480f4de422827d4fd80c47a5cf5f2f4622f2aa")
+
+updater_pid = Network.Server.get_connections(Network.EdgeV2)[updater]
+gateway_pid = Network.Server.get_connections(Network.EdgeV2)[gateway]
+:sys.get_state(updater_pid)
+:sys.get_state(gateway_pid)
+
+ports = :sys.get_state(updater_pid).ports.pid
+:sys.get_state(ports)
+
 # Feb 5th
 
 anvil --steps-tracing --fork-url https://moonbeam.unitedbloc.com:3000 -p1454

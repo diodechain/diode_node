@@ -81,7 +81,7 @@ defmodule RpcTest do
       |> Base16.decode_int()
 
     tx =
-      Rpc.create_transaction(from, <<"">>, %{
+      Shell.create_transaction(from, <<"">>, %{
         "value" => 1000,
         "to" => Wallet.address!(to),
         "gasPrice" => price,

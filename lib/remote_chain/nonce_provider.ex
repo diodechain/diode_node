@@ -4,7 +4,15 @@ defmodule RemoteChain.NonceProvider do
   alias DiodeClient.{Base16, Wallet}
   alias RemoteChain.NonceProvider
 
-  defstruct [:next_nonce, :fetched_nonce, :fetched_at, :chain]
+  defstruct [
+    :next_nonce,
+    :fetched_nonce,
+    :fetched_at,
+    :chain,
+    :pending_nonce,
+    :waiting_nonce_requests,
+    :pending_nonce_ref
+  ]
 
   def start_link(chain) do
     GenServer.start_link(__MODULE__, chain, name: name(chain), hibernate_after: 5_000)
@@ -25,6 +33,14 @@ defmodule RemoteChain.NonceProvider do
     GenServer.call(name(chain), :nonce)
   end
 
+  def confirm_nonce(chain, nonce) do
+    GenServer.cast(name(chain), {:confirm_nonce, nonce})
+  end
+
+  def cancel_nonce(chain, nonce) do
+    GenServer.cast(name(chain), {:cancel_nonce, nonce})
+  end
+
   def has_next_nonce?(chain) do
     GenServer.call(name(chain), :has_next_nonce?)
   end
@@ -34,23 +50,10 @@ defmodule RemoteChain.NonceProvider do
     {:reply, next_nonce != nil, state}
   end
 
-  def handle_call(:nonce, _from, state = %NonceProvider{next_nonce: nil, chain: chain}) do
-    # We keep track of the next nonce in case there are multiple transactions which can
-    # be sent in the same block.
-    nonce = fetch_nonce(chain)
-
-    {:reply, nonce,
-     %NonceProvider{
-       state
-       | next_nonce: nonce + 1,
-         fetched_nonce: nonce,
-         fetched_at: System.system_time(:second)
-     }}
-  end
-
-  def handle_call(:nonce, _from, state = %NonceProvider{next_nonce: next_nonce}) do
-    # This is the case where we already have a next nonce, so we just return it and increment it.
-    {:reply, next_nonce, %NonceProvider{state | next_nonce: next_nonce + 1}}
+  def handle_call(:nonce, from, state = %NonceProvider{waiting_nonce_requests: reqs}) do
+    reqs = reqs ++ [from]
+    GenServer.cast(self(), :update_request)
+    {:noreply, %NonceProvider{state | waiting_nonce_requests: reqs}}
   end
 
   @impl true
@@ -65,6 +68,13 @@ defmodule RemoteChain.NonceProvider do
     end
 
     {:noreply, state}
+  end
+
+  def handle_info(
+        {:DOWN, ref, :process, _pid, _reason},
+        state = %NonceProvider{pending_nonce_ref: ref}
+      ) do
+    {:noreply, %NonceProvider{state | pending_nonce: nil, pending_nonce_ref: nil}}
   end
 
   @impl true
@@ -105,6 +115,75 @@ defmodule RemoteChain.NonceProvider do
       true ->
         {:noreply, state}
     end
+  end
+
+  def handle_cast(:update_request, state = %NonceProvider{waiting_nonce_requests: []}) do
+    {:noreply, state}
+  end
+
+  def handle_cast(
+        :update_request,
+        state = %NonceProvider{waiting_nonce_requests: [{pid, _tag} = next | reqs]}
+      ) do
+    {nonce, state} = do_get_nonce(state)
+    GenServer.reply(next, nonce)
+    ref = Process.monitor(pid)
+
+    {:noreply,
+     %NonceProvider{
+       state
+       | waiting_nonce_requests: reqs,
+         pending_nonce: nonce,
+         pending_nonce_ref: ref
+     }}
+  end
+
+  def handle_cast(
+        {:confirm_nonce, pending_nonce},
+        state = %NonceProvider{pending_nonce: pending_nonce, pending_nonce_ref: ref}
+      ) do
+    Process.demonitor(ref, [:flush])
+    GenServer.cast(self(), :update_request)
+    {:noreply, %NonceProvider{state | pending_nonce: nil, pending_nonce_ref: nil}}
+  end
+
+  def handle_cast(
+        {:cancel_nonce, pending_nonce},
+        state = %NonceProvider{
+          pending_nonce: pending_nonce,
+          pending_nonce_ref: ref,
+          next_nonce: next_nonce
+        }
+      ) do
+    Process.demonitor(ref, [:flush])
+    GenServer.cast(self(), :update_request)
+
+    {:noreply,
+     %NonceProvider{
+       state
+       | pending_nonce: nil,
+         pending_nonce_ref: nil,
+         next_nonce: next_nonce - 1
+     }}
+  end
+
+  defp do_get_nonce(state = %NonceProvider{next_nonce: nil, chain: chain}) do
+    # We keep track of the next nonce in case there are multiple transactions which can
+    # be sent in the same block.
+    nonce = fetch_nonce(chain)
+
+    {nonce,
+     %NonceProvider{
+       state
+       | next_nonce: nonce + 1,
+         fetched_nonce: nonce,
+         fetched_at: System.system_time(:second)
+     }}
+  end
+
+  defp do_get_nonce(state = %NonceProvider{next_nonce: next_nonce}) do
+    # This is the case where we already have a next nonce, so we just return it and increment it.
+    {next_nonce, %NonceProvider{state | next_nonce: next_nonce + 1}}
   end
 
   def fetch_nonce(chain) do

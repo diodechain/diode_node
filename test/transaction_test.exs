@@ -13,7 +13,7 @@ defmodule TransactionTest do
     to = Wallet.address!(to)
 
     tx =
-      Network.Rpc.create_transaction(from, <<"">>, %{
+      Shell.create_transaction(from, <<"">>, %{
         "value" => 1000,
         "nonce" => nonce,
         "to" => to,
@@ -40,7 +40,7 @@ defmodule TransactionTest do
     from = Wallet.from_privkey(key)
 
     tx =
-      Network.Rpc.create_transaction(from, <<"0xff">>, %{
+      Shell.create_transaction(from, <<"0xff">>, %{
         "nonce" => 0,
         "chainId" => chain().chain_id()
       })
