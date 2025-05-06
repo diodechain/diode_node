@@ -2,7 +2,7 @@ defmodule CallPermitAdapter do
   alias DiodeClient.{Base16, Rlp}
 
   def should_forward_metatransaction?(chain) do
-    chain in [Chains.Moonbeam, Chains.Moonriver, Chains.MoonbeamTestnet] and
+    chain not in [Chains.Diode, Chains.DiodeStaging, Chains.DiodeDev] and
       Shell.get_balance(chain, Diode.address()) / Shell.ether(1) < 1
   end
 

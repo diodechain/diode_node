@@ -2,7 +2,7 @@
 # Copyright 2021-2024 Diode
 # Licensed under the Diode License, Version 1.1
 defmodule RemoteChain.Edge do
-  alias DiodeClient.{ABI, Base16, Contracts.CallPermit, Hash, Rlp, Rlpx}
+  alias DiodeClient.{ABI, Base16, Contracts.CallPermit, Hash, Rlp, Rlpx, Wallet}
   import Network.EdgeV2, only: [response: 1, response: 2, error: 1]
   require Logger
 
@@ -151,7 +151,7 @@ defmodule RemoteChain.Edge do
         if CallPermitAdapter.should_forward_metatransaction?(chain) do
           CallPermitAdapter.forward_metatransaction(chain, tx)
         else
-          {to, call} = prepare_metatransaction(Rlp.decode!(tx))
+          {to, call} = prepare_metatransaction(state.node_id, Rlp.decode!(tx))
           send_metatransaction(chain, to, call)
         end
 
@@ -195,12 +195,38 @@ defmodule RemoteChain.Edge do
     Base16.encode(Rlpx.bin2uint(key), false)
   end
 
-  defp prepare_metatransaction(["dm1", id, dst, data]) do
-    call = ABI.encode_call("SubmitTransaction", ["address", "bytes"], [dst, data])
+  defp prepare_metatransaction(node_id, ["dm0", salt, impl]) do
+    owner = Wallet.address!(node_id)
+    target = impl
+
+    call =
+      ABI.encode_call(
+        "Create",
+        ["address", "bytes32", "address"],
+        [owner, salt, target]
+      )
+
+    {Base16.decode("0x355DdBCf0e9fD70D78829eEcb443389290Ee53E1"), call}
+  end
+
+  defp prepare_metatransaction(_node_id, ["dm1", id, nonce, deadline, dst, data, v, r, s]) do
+    nonce = Rlpx.bin2uint(nonce)
+    deadline = Rlpx.bin2uint(deadline)
+    v = Rlpx.bin2uint(v)
+    r = Rlpx.bin2uint(r)
+    s = Rlpx.bin2uint(s)
+
+    call =
+      ABI.encode_call(
+        "SubmitMetaTransaction",
+        ["uint256", "uint256", "address", "bytes", "uint8", "bytes32", "bytes32"],
+        [nonce, deadline, dst, data, v, r, s]
+      )
+
     {id, call}
   end
 
-  defp prepare_metatransaction([from, to, value, call, gaslimit, deadline, v, r, s]) do
+  defp prepare_metatransaction(_node_id, [from, to, value, call, gaslimit, deadline, v, r, s]) do
     # These are CallPermit metatransactions
     # Testing transaction
     value = Rlpx.bin2uint(value)

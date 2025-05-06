@@ -3,9 +3,21 @@ defmodule RemoteChain.HTTP do
 
   def send_raw_transaction(url, tx) do
     case rpc(url, "eth_sendRawTransaction", [tx]) do
-      {:ok, tx_hash} -> tx_hash
-      {:error, %{"code" => -32603, "message" => "already known"}} -> :already_known
-      {:error, error} -> raise "RPC error: #{inspect(error)}"
+      {:ok, tx_hash} ->
+        tx_hash
+
+      {:error, %{"code" => -32603, "message" => "already known"}} ->
+        :already_known
+
+      {:error, error = %{"code" => -32000, "message" => message}} ->
+        if String.contains?(message, "duplicate transaction") do
+          :already_known
+        else
+          {:error, error}
+        end
+
+      {:error, error} ->
+        raise "RPC error: #{inspect(error)}"
     end
   end
 

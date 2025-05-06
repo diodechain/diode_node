@@ -344,7 +344,7 @@ defmodule Network.EdgeV2 do
   end
 
   def error(message) do
-    ["error", message]
+    ["error", inspect(message)]
   end
 
   defp handle_packet(raw_msg, state) do
