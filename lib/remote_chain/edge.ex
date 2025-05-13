@@ -6,6 +6,8 @@ defmodule RemoteChain.Edge do
   import Network.EdgeV2, only: [response: 1, response: 2, error: 1]
   require Logger
 
+  def wallet_factory_address(), do: Base16.decode("0x355DdBCf0e9fD70D78829eEcb443389290Ee53E1")
+
   def handle_async_msg(chain, msg, state) do
     case msg do
       ["getblockpeak"] ->
@@ -206,7 +208,7 @@ defmodule RemoteChain.Edge do
         [owner, salt, target]
       )
 
-    {Base16.decode("0x355DdBCf0e9fD70D78829eEcb443389290Ee53E1"), call}
+    {wallet_factory_address(), call}
   end
 
   defp prepare_metatransaction(_node_id, ["dm1", id, nonce, deadline, dst, data, v, r, s]) do
