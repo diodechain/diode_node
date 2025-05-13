@@ -295,13 +295,14 @@ defmodule Network.Rpc do
 
         epoch =
           case params do
-            [_chain_id, epoch] -> Base16.decode_int(epoch)
+            [_chain_id, epoch] when is_integer(epoch) -> epoch
+            [_chain_id, epoch] when is_binary(epoch) -> Base16.decode_int(epoch)
             [_chain_id] -> peak_epoch
           end
 
         tickets =
           TicketStore.tickets(chain_id, epoch)
-          |> Enum.map(&Ticket.raw/1)
+          |> Enum.map(&Object.encode!/1)
           |> Enum.map(&Base16.encode/1)
 
         result(%{
