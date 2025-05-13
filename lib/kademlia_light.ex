@@ -271,7 +271,7 @@ defmodule KademliaLight do
 
       %KBuckets.Item{} = node ->
         network = KBuckets.update_item(state.network, %KBuckets.Item{node | retries: 0})
-        if node.retries > 0, do: spawn(fn -> redistribute(network, node) end)
+        if node.retries > 0, do: queue_redistribute(network, node)
         {:noreply, %{state | network: network}}
     end
   end
@@ -294,7 +294,7 @@ defmodule KademliaLight do
 
     # Because of bucket size limit, the new node might not get stored
     if KBuckets.member?(network, node_id) do
-      redistribute(network, node)
+      queue_redistribute(network, node)
     end
 
     %{state | network: network}
@@ -358,12 +358,18 @@ defmodule KademliaLight do
     GenServer.cast(ensure_node_connection(node), {:rpc, call})
   end
 
-  @doc """
-    redistribute resends all key/values that are nearer to the given node to
-    that node
-  """
+  defp queue_redistribute(network, node) do
+    Debouncer.immediate(
+      {:redistribute, node.node_id},
+      fn -> redistribute(network, node) end,
+      10_000
+    )
+  end
+
+  #  redistribute resends all key/values that are nearer to the given node to
+  #  that node
   @max_key 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF
-  def redistribute(network, node) do
+  defp redistribute(network, node) do
     online = Network.Server.get_connections(PeerHandlerV2)
     node = %KBuckets.Item{} = KBuckets.item(network, node)
 

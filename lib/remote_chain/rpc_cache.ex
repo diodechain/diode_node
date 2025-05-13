@@ -44,6 +44,13 @@ defmodule RemoteChain.RPCCache do
     :persistent_term.put({__MODULE__, :optimistic_caching}, bool)
   end
 
+  def whereis(chain) do
+    case :global.whereis_name({__MODULE__, RemoteChain.chainimpl(chain)}) do
+      :undefined -> nil
+      pid when is_pid(pid) -> pid
+    end
+  end
+
   def block_number(chain) do
     case GenServer.call(name(chain), :block_number) do
       number when number != nil -> number

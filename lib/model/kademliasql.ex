@@ -2,8 +2,11 @@
 # Copyright 2021-2024 Diode
 # Licensed under the Diode License, Version 1.1
 defmodule Model.KademliaSql do
+  alias RemoteChain.RPCCache
   alias Model.Sql
   alias DiodeClient.{Object}
+  import DiodeClient.Object.TicketV2
+  require Logger
 
   def query!(sql, params \\ []) do
     Sql.query!(__MODULE__, sql, params)
@@ -98,19 +101,47 @@ defmodule Model.KademliaSql do
       )
     end
     |> Enum.map(fn [key, obj] -> {key, BertInt.decode!(obj)} end)
-    |> Enum.filter(fn {key, value} ->
-      # After a chain fork some signatures might have become invalid
-      hash =
-        Object.decode!(value)
-        |> Object.key()
-        |> KademliaLight.hash()
+  end
 
-      if key != hash do
-        query!("DELETE FROM p2p_objects WHERE key = ?1", [key])
-        false
-      else
-        true
-      end
-    end)
+  defp await(chain) do
+    case RPCCache.whereis(chain) do
+      nil ->
+        Logger.warning("Waiting for RPC cache to start for #{chain}")
+        Process.sleep(5000)
+        await(chain)
+
+      _ ->
+        :ok
+    end
+  end
+
+  def clear_invalid_objects() do
+    await(Chains.Diode)
+    await(Chains.Moonbeam)
+    epoch = TicketStore.epoch() - 1
+
+    count =
+      scan()
+      |> Enum.filter(fn {_key, obj} ->
+        case obj do
+          ticketv2(epoch: tepoch) -> tepoch >= epoch
+          _ -> false
+        end
+      end)
+      |> Enum.map(fn {key, obj} ->
+        # After a chain fork some signatures might have become invalid
+        hash = obj |> Object.key() |> KademliaLight.hash()
+
+        if key != hash do
+          Logger.warning(
+            "Clearing invalid object #{Base.encode16(key)} != #{Base.encode16(hash)}"
+          )
+
+          query!("DELETE FROM p2p_objects WHERE key = ?1", [key])
+        end
+      end)
+      |> Enum.count()
+
+    Logger.info("Consolidated #{count} objects")
   end
 end

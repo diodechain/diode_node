@@ -1,3 +1,11 @@
+# May 7th
+
+call = DiodeClient.ABI.encode_call("__proxy_set_target", ["address"], [0x44F5BE42c3943e37e05012616A278466cbB03565]) |> DiodeClient.Base16.encode()
+"0x7841980f00000000000000000000000044f5be42c3943e37e05012616a278466cbb03565"
+
+export RPC=https://sapphire.oasis.io
+cast send --legacy --rpc-url $RPC --private-key $(cat diode_glmr.key) 0xDA92764BB12E91010D132BcDd8e4a0270EE25fc9 "submitTransaction(address destination, uint256 value, bytes memory data)" 0xBC7a66a80E760dD0D84f6e39Df6cfD937C6c94F6 0 0x7841980f00000000000000000000000044f5be42c3943e37e05012616a278466cbb03565
+
 # April 7th
 
 # Debugging updater issues

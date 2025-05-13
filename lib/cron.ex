@@ -27,7 +27,12 @@ defmodule Cron do
         startup: false
       },
       %Job{name: "Memory report", interval: :timer.hours(1), fun: &Memory.report/0},
-      %Job{name: "Memory check", interval: :timer.minutes(10), fun: &Memory.check_rss/0}
+      %Job{name: "Memory check", interval: :timer.minutes(10), fun: &Memory.check_rss/0},
+      %Job{
+        name: "Clear invalid objects",
+        interval: :timer.hours(24),
+        fun: &Model.KademliaSql.clear_invalid_objects/0
+      }
     ]
 
     for job <- jobs do
@@ -45,6 +50,14 @@ defmodule Cron do
   def handle_info({:execute, name, fun}, state) do
     Debouncer.immediate({__MODULE__, name}, fn ->
       Logger.info("Cron: Executing #{name}...")
+
+      OnCrash.call(fn reason ->
+        if reason != :normal do
+          Logger.error("Cron: #{name} crashed: #{inspect(reason)}")
+        end
+      end)
+
+      Process.register(self(), String.to_atom("#{name}"))
       fun.()
     end)
 
