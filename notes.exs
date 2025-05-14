@@ -1,3 +1,7 @@
+# May 14th
+
+cache = GenServer.call({:global, {RemoteChain.RPCCache, Chains.Diode}}, :cache)
+
 # May 7th
 
 call = DiodeClient.ABI.encode_call("__proxy_set_target", ["address"], [0x44F5BE42c3943e37e05012616A278466cbB03565]) |> DiodeClient.Base16.encode()

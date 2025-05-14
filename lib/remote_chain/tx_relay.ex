@@ -12,6 +12,10 @@ defmodule RemoteChain.TxRelay do
 
   defstruct [:chain, :txlist]
 
+  defmodule Tx do
+    defstruct [:metatx, :payload, :sender]
+  end
+
   def start_link(chain) do
     GenServer.start_link(__MODULE__, %TxRelay{chain: chain, txlist: []}, name: name(chain))
   end
@@ -22,13 +26,22 @@ defmodule RemoteChain.TxRelay do
     {:ok, state}
   end
 
-  def keep_alive(chain, metatx, payload) do
-    GenServer.cast(name(chain), {:tx, metatx, payload})
+  def pending_sender_tx?(chain, sender) do
+    GenServer.call(name(chain), {:pending_sender_tx?, sender})
+  end
+
+  def keep_alive(chain, metatx, payload, sender) do
+    GenServer.cast(name(chain), %Tx{metatx: metatx, payload: payload, sender: sender})
   end
 
   @impl true
-  def handle_cast({:tx, metatx, payload}, %TxRelay{txlist: txlist} = state) do
-    {:noreply, %TxRelay{state | txlist: [{metatx, payload} | txlist]}}
+  def handle_call({:pending_sender_tx?, sender}, _from, %TxRelay{txlist: txlist} = state) do
+    {:reply, Enum.any?(txlist, fn tx -> tx.sender == sender end), state}
+  end
+
+  @impl true
+  def handle_cast(tx = %Tx{}, %TxRelay{txlist: txlist} = state) do
+    {:noreply, %TxRelay{state | txlist: [tx | txlist]}}
   end
 
   @impl true
@@ -48,7 +61,13 @@ defmodule RemoteChain.TxRelay do
   end
 
   def process(
-        [{metatx = %Transaction{nonce: tx_nonce, gasPrice: tx_gas_price}, payload} | rest],
+        [
+          %Tx{
+            metatx: metatx = %Transaction{nonce: tx_nonce, gasPrice: tx_gas_price},
+            payload: payload
+          }
+          | rest
+        ],
         nonce,
         gas_price,
         state

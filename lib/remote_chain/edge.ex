@@ -2,7 +2,7 @@
 # Copyright 2021-2024 Diode
 # Licensed under the Diode License, Version 1.1
 defmodule RemoteChain.Edge do
-  alias DiodeClient.{ABI, Base16, Contracts.CallPermit, Hash, Rlp, Rlpx, Wallet}
+  alias DiodeClient.{ABI, Base16, Contracts.CallPermit, Hash, Rlp, Rlpx}
   import Network.EdgeV2, only: [response: 1, response: 2, error: 1]
   require Logger
 
@@ -153,8 +153,8 @@ defmodule RemoteChain.Edge do
         if CallPermitAdapter.should_forward_metatransaction?(chain) do
           CallPermitAdapter.forward_metatransaction(chain, tx)
         else
-          {to, call} = prepare_metatransaction(state.node_id, Rlp.decode!(tx))
-          send_metatransaction(chain, to, call)
+          {to, call, sender} = prepare_metatransaction(Rlp.decode!(tx))
+          send_metatransaction(chain, to, call, sender)
         end
 
       ["rpc", method, params] ->
@@ -197,8 +197,7 @@ defmodule RemoteChain.Edge do
     Base16.encode(Rlpx.bin2uint(key), false)
   end
 
-  defp prepare_metatransaction(node_id, ["dm0", salt, impl]) do
-    owner = Wallet.address!(node_id)
+  defp prepare_metatransaction(["dm0", owner, salt, impl]) do
     target = impl
 
     call =
@@ -208,10 +207,10 @@ defmodule RemoteChain.Edge do
         [owner, salt, target]
       )
 
-    {wallet_factory_address(), call}
+    {wallet_factory_address(), call, owner}
   end
 
-  defp prepare_metatransaction(_node_id, ["dm1", id, nonce, deadline, dst, data, v, r, s]) do
+  defp prepare_metatransaction(["dm1", sender, id, nonce, deadline, dst, data, v, r, s]) do
     nonce = Rlpx.bin2uint(nonce)
     deadline = Rlpx.bin2uint(deadline)
     v = Rlpx.bin2uint(v)
@@ -225,10 +224,10 @@ defmodule RemoteChain.Edge do
         [nonce, deadline, dst, data, v, r, s]
       )
 
-    {id, call}
+    {id, call, sender}
   end
 
-  defp prepare_metatransaction(_node_id, [from, to, value, call, gaslimit, deadline, v, r, s]) do
+  defp prepare_metatransaction([from, to, value, call, gaslimit, deadline, v, r, s]) do
     # These are CallPermit metatransactions
     # Testing transaction
     value = Rlpx.bin2uint(value)
@@ -238,14 +237,15 @@ defmodule RemoteChain.Edge do
     r = Rlpx.bin2uint(r)
     s = Rlpx.bin2uint(s)
     call = CallPermit.dispatch(from, to, value, call, gaslimit, deadline, {v, r, s})
-    {CallPermit.address(), call}
+    {CallPermit.address(), call, from}
   end
 
-  defp send_metatransaction(chain, to, call) do
+  defp send_metatransaction(chain, to, call, sender) do
     # Can't do this pre-check always because we will be receiving batches of future nonces
     # those are not yet valid but will be valid in the future, after the other txs have
     # been processed...
-    with false <- RemoteChain.NonceProvider.has_next_nonce?(chain),
+
+    with false <- RemoteChain.TxRelay.pending_sender_tx?(chain, sender),
          {:error, reason} <-
            RemoteChain.RPC.call(
              chain,
@@ -265,7 +265,7 @@ defmodule RemoteChain.Edge do
           Shell.raw(Diode.wallet(), call,
             to: to,
             chainId: chain.chain_id(),
-            gas: 12_000_000,
+            gas: 1_000_000,
             gasPrice: gas_price + div(gas_price, 10),
             value: 0,
             nonce: nonce
@@ -285,7 +285,7 @@ defmodule RemoteChain.Edge do
         # We're pushing to the TxRelay keep alive server to ensure the TX
         # is broadcasted even if the RPC connection goes down in the next call.
         # This is so to preserve the nonce ordering if at all possible
-        RemoteChain.TxRelay.keep_alive(chain, tx, payload)
+        RemoteChain.TxRelay.keep_alive(chain, tx, payload, sender)
         RemoteChain.NonceProvider.confirm_nonce(chain, nonce)
 
         # In order to ensure delivery we're broadcasting to all known endpoints of this chain
