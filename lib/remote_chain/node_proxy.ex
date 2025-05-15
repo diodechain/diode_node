@@ -18,7 +18,8 @@ defmodule RemoteChain.NodeProxy do
     req: 100,
     requests: %{},
     lastblocks: %{},
-    subscriptions: %{}
+    subscriptions: %{},
+    log: nil
   ]
 
   def start_link(chain) do
@@ -29,6 +30,9 @@ defmodule RemoteChain.NodeProxy do
 
   @impl true
   def init(state) do
+    File.mkdir_p!("logs")
+    {:ok, log} = RotatingFile.start_link(file: "logs/#{state.chain}.log", name: nil)
+    state = %NodeProxy{state | log: log}
     {:ok, ensure_connections(state)}
   end
 
@@ -60,6 +64,7 @@ defmodule RemoteChain.NodeProxy do
       |> Poison.encode!()
 
     WebSockex.cast(conn, {:send_request, request})
+    RotatingFile.write(state.log, request <> "\n")
 
     {:noreply,
      %{

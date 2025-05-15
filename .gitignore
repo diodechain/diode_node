@@ -6,7 +6,8 @@
 /doc
 /out
 /cache
-
+/logs
+/scripts/moon_cache
 *.snap
 *.json
 *.pem
