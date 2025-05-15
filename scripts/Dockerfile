@@ -33,6 +33,9 @@ WORKDIR /app/
 COPY .tool-versions snap/build_prereq.sh /app/
 RUN /app/build_prereq.sh
 
+COPY mix.lock mix.exs snap/build_deps.sh /app/
+RUN /app/build_deps.sh
+
 COPY . /app/
 ENV HEX_HTTP_TIMEOUT=120
 RUN /app/snap/build_app.sh

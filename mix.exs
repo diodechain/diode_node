@@ -13,8 +13,15 @@ defmodule Diode.Mixfile do
   @url "https://github.com/diodechain/diode_node"
 
   def project do
-    patches = elem(System.cmd("git", ["log", "-100", "--oneline"]), 0) |> String.split("\n")
-    description = elem(System.cmd("git", ["describe", "--tags"]), 0)
+    {patches, description} =
+      if File.exists?(".git") do
+        patches = elem(System.cmd("git", ["log", "-100", "--oneline"]), 0) |> String.split("\n")
+        description = elem(System.cmd("git", ["describe", "--tags"]), 0)
+        {patches, description}
+      else
+        {[], "v0.0.0"}
+      end
+
     vsn = Regex.run(~r/v([0-9]+\.[0-9]+\.[0-9]+)/, description) |> Enum.at(1)
 
     [
