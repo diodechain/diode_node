@@ -456,6 +456,8 @@ defmodule Network.Rpc do
         result("")
 
       {:ok, %{body: body, headers: headers}} ->
+        headers = Enum.map(headers, fn {k, v} -> {String.downcase(k), v} end)
+
         body =
           if List.keyfind(headers, "content-encoding", 0) ==
                {"content-encoding", "gzip"} do

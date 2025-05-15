@@ -40,11 +40,26 @@ defmodule RemoteChain.HTTP do
   # @dialyzer {:nowarn_function, post: 2}
   defp post(url, request) do
     case HTTPoison.post(url, Poison.encode!(request), [
-           {"Content-Type", "application/json"}
+           {"Content-Type", "application/json"},
+           {"Accept-Encoding", "gzip"}
          ]) do
-      {:ok, %{body: body}} ->
+      {:ok, %{body: body, headers: headers}} ->
+        headers = Enum.map(headers, fn {k, v} -> {String.downcase(k), v} end)
+
+        body =
+          if List.keyfind(headers, "content-encoding", 0) ==
+               {"content-encoding", "gzip"} do
+            :zlib.gunzip(body)
+          else
+            body
+          end
+
         with {:ok, json} <- Poison.decode(body) do
           json
+        else
+          _err ->
+            {:error,
+             "Failed to decode response. headers: #{inspect(headers)} body: #{inspect(body)}"}
         end
 
       error = {:error, _reason} ->
