@@ -29,6 +29,10 @@ defmodule RemoteChain.NonceProvider do
     {:ok, %__MODULE__{chain: chain, waiting_nonce_requests: []}}
   end
 
+  def peek_nonce(chain) do
+    GenServer.call(name(chain), :peek_nonce) || fetch_nonce(chain)
+  end
+
   def nonce(chain) do
     GenServer.call(name(chain), :nonce)
   end
@@ -48,6 +52,10 @@ defmodule RemoteChain.NonceProvider do
   @impl true
   def handle_call(:has_next_nonce?, _from, state = %NonceProvider{next_nonce: next_nonce}) do
     {:reply, next_nonce != nil, state}
+  end
+
+  def handle_call(:peek_nonce, _from, state = %NonceProvider{next_nonce: next_nonce}) do
+    {:reply, next_nonce, state}
   end
 
   def handle_call(:nonce, from, state = %NonceProvider{waiting_nonce_requests: reqs}) do

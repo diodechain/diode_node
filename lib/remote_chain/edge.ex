@@ -141,10 +141,9 @@ defmodule RemoteChain.Edge do
       ["getmetanonce", block, address] ->
         RemoteChain.RPC.call!(
           chain,
-          Base16.encode(CallPermit.address()),
-          nil,
-          Base16.encode(CallPermit.nonces(address)),
-          hex_blockref(block)
+          to: Base16.encode(CallPermit.address()),
+          data: Base16.encode(CallPermit.nonces(address)),
+          block: hex_blockref(block)
         )
         |> Base16.decode_int()
         |> response()
@@ -153,8 +152,8 @@ defmodule RemoteChain.Edge do
         if CallPermitAdapter.should_forward_metatransaction?(chain) do
           CallPermitAdapter.forward_metatransaction(chain, tx)
         else
-          {to, call, sender} = prepare_metatransaction(Rlp.decode!(tx))
-          send_metatransaction(chain, to, call, sender)
+          {to, call, sender, min_gas_limit} = prepare_metatransaction(Rlp.decode!(tx))
+          send_metatransaction(chain, to, call, sender, min_gas_limit)
         end
 
       ["rpc", method, params] ->
@@ -197,6 +196,7 @@ defmodule RemoteChain.Edge do
     Base16.encode(Rlpx.bin2uint(key), false)
   end
 
+  @default_gas_limit 1_000_000
   defp prepare_metatransaction(["dm0", owner, salt, impl]) do
     target = impl
 
@@ -207,7 +207,7 @@ defmodule RemoteChain.Edge do
         [owner, salt, target]
       )
 
-    {wallet_factory_address(), call, owner}
+    {wallet_factory_address(), call, owner, @default_gas_limit}
   end
 
   defp prepare_metatransaction(["dm1", sender, id, nonce, deadline, dst, data, v, r, s]) do
@@ -224,7 +224,7 @@ defmodule RemoteChain.Edge do
         [nonce, deadline, dst, data, v, r, s]
       )
 
-    {id, call, sender}
+    {id, call, sender, @default_gas_limit}
   end
 
   defp prepare_metatransaction([from, to, value, call, gaslimit, deadline, v, r, s]) do
@@ -237,24 +237,32 @@ defmodule RemoteChain.Edge do
     r = Rlpx.bin2uint(r)
     s = Rlpx.bin2uint(s)
     call = CallPermit.dispatch(from, to, value, call, gaslimit, deadline, {v, r, s})
-    {CallPermit.address(), call, from}
+    {CallPermit.address(), call, from, gaslimit}
   end
 
-  defp send_metatransaction(chain, to, call, sender) do
+  defp send_metatransaction(chain, to, call, sender, min_gas_limit) do
     # Can't do this pre-check always because we will be receiving batches of future nonces
     # those are not yet valid but will be valid in the future, after the other txs have
     # been processed...
+    # 100k is for the wrapped metatransaction
+    gas_limit = min_gas_limit + 100_000
+    chain_id = chain.chain_id()
 
     with false <- RemoteChain.TxRelay.pending_sender_tx?(chain, sender),
          {:error, reason} <-
            RemoteChain.RPC.call(
              chain,
-             Base16.encode(to),
-             Base16.encode(Diode.address()),
-             Base16.encode(call),
-             "latest"
+             to: Base16.encode(to),
+             from: Base16.encode(Diode.address()),
+             data: Base16.encode(call),
+             gas: gas_limit
            ) do
-      Logger.error("RTX rpc_call failed: #{inspect(reason)}")
+      maybe_nonce = RemoteChain.NonceProvider.peek_nonce(chain)
+
+      Logger.error(
+        "RTX #{chain_id}/#{maybe_nonce} from #{Base16.encode(sender)} call failed: #{inspect(reason)}"
+      )
+
       error("transaction_rejected")
     else
       _ ->
@@ -264,8 +272,8 @@ defmodule RemoteChain.Edge do
         tx =
           Shell.raw(Diode.wallet(), call,
             to: to,
-            chainId: chain.chain_id(),
-            gas: 1_000_000,
+            chainId: chain_id,
+            gas: gas_limit,
             gasPrice: gas_price + div(gas_price, 10),
             value: 0,
             nonce: nonce
@@ -281,7 +289,10 @@ defmodule RemoteChain.Edge do
           DiodeClient.Transaction.hash(tx)
           |> Base16.encode()
 
-        Logger.info("Submitting RTX: #{tx_hash} (#{inspect(tx)})")
+        Logger.info(
+          "RTX #{chain_id}/#{nonce} from #{Base16.encode(sender)} => #{tx_hash} (#{inspect(tx)})"
+        )
+
         # We're pushing to the TxRelay keep alive server to ensure the TX
         # is broadcasted even if the RPC connection goes down in the next call.
         # This is so to preserve the nonce ordering if at all possible

@@ -2,6 +2,7 @@
 # Copyright 2021-2024 Diode
 # Licensed under the Diode License, Version 1.1
 defmodule RemoteChain.RPC do
+  alias DiodeClient.Base16
   require Logger
 
   def get_proof(chain, address, keys, block \\ "latest") do
@@ -63,8 +64,21 @@ defmodule RemoteChain.RPC do
     end
   end
 
-  def call(chain, to, from, data, block \\ "latest") do
-    rpc(chain, "eth_call", [%{to: to, data: data, from: from}, block])
+  def call(chain, opts \\ []) do
+    to = Keyword.fetch!(opts, :to)
+    data = Keyword.fetch!(opts, :data)
+    block = Keyword.get(opts, :block, "latest")
+
+    params =
+      Enum.reduce([:gas, :gasPrice, :value], %{to: to, data: data}, fn key, params ->
+        case opts[key] do
+          nil -> params
+          value when is_binary(value) -> Map.put(params, key, value)
+          value -> Map.put(params, key, Base16.encode(value))
+        end
+      end)
+
+    rpc(chain, "eth_call", [params, block])
   end
 
   def debug_trace_call(chain, to, from, data, block \\ "latest") do
@@ -75,8 +89,8 @@ defmodule RemoteChain.RPC do
     rpc(chain, "debug_traceTransaction", [tx_hash])
   end
 
-  def call!(chain, to, from, data, block \\ "latest") do
-    {:ok, ret} = call(chain, to, from, data, block)
+  def call!(chain, opts \\ []) do
+    {:ok, ret} = call(chain, opts)
     ret
   end
 

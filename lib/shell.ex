@@ -71,20 +71,20 @@ defmodule Shell do
   def call_tx!(tx, blockRef) do
     RemoteChain.RPC.call!(
       Transaction.chain_id(tx),
-      Transaction.to(tx) |> Base16.encode(),
-      Transaction.from(tx) |> Base16.encode(),
-      Transaction.payload(tx) |> Base16.encode(),
-      blockRef
+      to: Transaction.to(tx) |> Base16.encode(),
+      from: Transaction.from(tx) |> Base16.encode(),
+      data: Transaction.payload(tx) |> Base16.encode(),
+      block: blockRef
     )
   end
 
   def call_tx(tx, blockRef) do
     RemoteChain.RPC.call(
       Transaction.chain_id(tx),
-      Transaction.to(tx) |> Base16.encode(),
-      Transaction.from(tx) |> Base16.encode(),
-      Transaction.payload(tx) |> Base16.encode(),
-      blockRef
+      to: Transaction.to(tx) |> Base16.encode(),
+      from: Transaction.from(tx) |> Base16.encode(),
+      data: Transaction.payload(tx) |> Base16.encode(),
+      block: blockRef
     )
   end
 

@@ -62,42 +62,42 @@ defmodule RemoteChain.TxRelay do
 
   def process(
         [
-          %Tx{
-            metatx: metatx = %Transaction{nonce: tx_nonce, gasPrice: tx_gas_price},
-            payload: payload
-          }
+          tx = %Tx{metatx: metatx = %Transaction{nonce: tx_nonce, gasPrice: tx_gas_price}}
           | rest
         ],
         nonce,
         gas_price,
         state
       ) do
-    tx_hash =
-      Transaction.hash(metatx)
-      |> Base16.encode()
-
     cond do
-      tx_nonce <= nonce ->
-        Logger.info("RTX done: #{tx_hash}")
+      tx_nonce < nonce ->
+        tx_hash = Transaction.hash(metatx) |> Base16.encode()
+        chain_id = Transaction.chain_id(metatx)
+        nonce = Transaction.nonce(metatx)
+        Logger.info("RTX done: #{chain_id}/#{nonce} => #{tx_hash}")
         process(rest, nonce, gas_price, state)
 
       tx_gas_price < gas_price ->
-        Logger.warning(
-          "RTX gas price lower than reference #{tx_gas_price / gas_price} #{tx_hash}"
-        )
+        tx_hash = Transaction.hash(metatx) |> Base16.encode()
 
-        resubmit(tx_hash, payload, state)
-        [{metatx, payload} | process(rest, nonce, gas_price, state)]
+        "RTX gas price lower than reference #{tx_gas_price}, #{gas_price} #{tx_hash}"
+        |> Logger.warning()
+
+        resubmit(tx, state)
+        [tx | process(rest, nonce, gas_price, state)]
 
       true ->
-        resubmit(tx_hash, payload, state)
-        [{metatx, payload} | process(rest, nonce, gas_price, state)]
+        resubmit(tx, state)
+        [tx | process(rest, nonce, gas_price, state)]
     end
   end
 
-  defp resubmit(tx_hash, payload, %TxRelay{chain: chain}) do
+  defp resubmit(%Tx{metatx: metatx, payload: payload}, %TxRelay{chain: chain}) do
+    tx_hash = Transaction.hash(metatx) |> Base16.encode()
     ret = RemoteChain.RPC.send_raw_transaction(chain, payload)
-    Logger.info("Resubmit RTX: #{tx_hash}: #{inspect(ret)}")
+    chain_id = Transaction.chain_id(metatx)
+    nonce = Transaction.nonce(metatx)
+    Logger.info("Resubmit RTX: #{chain_id}/#{nonce} => #{tx_hash}: #{inspect(ret)}")
   end
 
   defp name(chain) do
