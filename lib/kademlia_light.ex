@@ -340,9 +340,16 @@ defmodule KademliaLight do
         []
     catch
       :exit, {:timeout, _} ->
-        Logger.info("Timeout while getting a result from #{Wallet.printable(node_id)}")
-        # TODO: This *always* happens when a node is still syncing. How to handle this better?
-        # Process.exit(pid, :timeout)
+        Debouncer.immediate(
+          {:timeout, node_id},
+          fn ->
+            Logger.info("Timeout while getting a result from #{Wallet.printable(node_id)}")
+            # TODO: This *always* happens when a node is still syncing. How to handle this better?
+            # Process.exit(pid, :timeout)
+          end,
+          60_000
+        )
+
         []
 
       any, what ->

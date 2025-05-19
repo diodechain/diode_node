@@ -175,8 +175,14 @@ defmodule Trace do
       if System.get_env("CHAIN") == "oasis" do
         []
       else
-        %{"structLogs" => trace} = rpc!("debug_traceTransaction", [tx_hash])
-        trace
+        case rpc("debug_traceTransaction", [tx_hash]) do
+          {:ok, %{"structLogs" => trace}} ->
+            trace
+
+          {:error, error} ->
+            IO.inspect(error, label: "debug_traceTransaction error")
+            []
+        end
       end
 
     if length(trace) == 0 do
@@ -302,6 +308,11 @@ defmodule Trace do
   def rpc!(cmd, args) do
     System.get_env("RPC_URL")
     |> RemoteChain.HTTP.rpc!(cmd, args)
+  end
+
+  def rpc(cmd, args) do
+    System.get_env("RPC_URL")
+    |> RemoteChain.HTTP.rpc(cmd, args)
   end
 end
 

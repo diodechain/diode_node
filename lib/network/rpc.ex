@@ -104,7 +104,7 @@ defmodule Network.Rpc do
 
   defp execute([], [method, params]) do
     Logger.info("Unhandled RPC: #{inspect({method, params})}")
-    result("what method?", 422)
+    result(nil, 422, "Unsupported method")
   end
 
   def execute_rpc("", _params, _opts) do
@@ -119,6 +119,14 @@ defmodule Network.Rpc do
     ]
 
     execute(apis, [method, params])
+  end
+
+  def execute_std("eth_accounts", _params) do
+    result([])
+  end
+
+  def execute_std("eth_getBalance", [address | _block]) when address in ["what", "method?"] do
+    result(nil, 400, "Bad request")
   end
 
   def execute_std(method, params)
