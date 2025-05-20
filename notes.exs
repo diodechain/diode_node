@@ -1,3 +1,45 @@
+# May 20th
+key = Diode.hash(<<1>>)
+IO.puts(DiodeClient.Base16.encode(key))
+KademliaLight.nearest_n(Diode.hash(<<1>>)) |> Enum.take(1) |> Enum.map(fn n ->
+  {DiodeClient.Wallet.printable(n.node_id), DiodeClient.Base16.encode(Diode.hash(DiodeClient.Wallet.address!(n.node_id)), false)}
+end)
+nodes = KademliaLight.nearest_n(Diode.hash(<<1>>)) |> Enum.take(1)
+n = hd(nodes)
+
+ret = KademliaSearch.find_nodes(KademliaLight, key, nodes, KBuckets.k(), Network.PeerHandlerV2.find_node())
+
+KademliaLight.rpc(n, [Network.PeerHandlerV2.find_node(), key])
+
+Enum.map(ret, fn n ->
+  {DiodeClient.Wallet.printable(n.node_id), DiodeClient.Base16.encode(Diode.hash(DiodeClient.Wallet.address!(n.node_id)), false)}
+end)
+
+Enum.map(resp, fn n ->
+  {DiodeClient.Wallet.printable(n.node_id), DiodeClient.Base16.encode(Diode.hash(DiodeClient.Wallet.address!(n.node_id)), false)}
+end)
+
+# Local info
+Diode.address() |> Diode.hash() |> DiodeClient.Base16.encode()
+KademliaLight.network() |> KBuckets.to_list() |> Enum.map(fn n ->
+  IO.puts(DiodeClient.Base16.encode(Diode.hash(DiodeClient.Wallet.address!(n.node_id))))
+end)
+
+# May 19th
+
+0xdca3f52a3aecce20326d5422532f05e1f31408dd drzarkov.glmr
+0x1a2323d9 AddMember(address)
+tx = "0xae300056ccb8e08c33f7be418349184ea879dd228f3989aeff4afad69b73e8aa"
+
+[0x11fc4bd8b65c27e8985c700cec0309131cfdc316]
+[0x21d2f92d6dc2d886086dbc1b54065335f5af9a97]
+[0x32e871b1f7124ba43889551d3eff4f636b25ecf2]
+[0x51910aa1cbd5eb924b380715c6027b0de2a1e4ec]
+[0x623299542c4afe8cd39da33f80bf698d57d9cb5c]
+[0x6dc6862089d3332061dfd0c8914e1858d62085c2]
+[0xbb66b66dbf7b290f927d3253e5dc53667dd84656]
+[0xe274554c679081f46bdd6f6f639a85e8f3ab42b5]
+
 # May 14th
 
 cache = GenServer.call({:global, {RemoteChain.RPCCache, Chains.Diode}}, :cache)

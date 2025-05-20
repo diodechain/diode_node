@@ -34,6 +34,7 @@ COPY .tool-versions snap/build_prereq.sh /app/
 RUN /app/build_prereq.sh
 
 COPY mix.lock mix.exs snap/build_deps.sh /app/
+ENV ERL_FLAGS="+JPperf true"
 RUN /app/build_deps.sh
 
 COPY . /app/

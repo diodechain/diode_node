@@ -118,7 +118,7 @@ defmodule KBuckets do
   """
   def nearest(kb, item) do
     to_list(kb)
-    |> Enum.sort(fn a, b -> distance(item, a) < distance(item, b) end)
+    |> Enum.sort_by(fn a -> distance(item, a) end)
   end
 
   @doc """
@@ -126,7 +126,7 @@ defmodule KBuckets do
   """
   def nearest_n(kb, item, n) do
     to_list(kb)
-    |> Enum.sort(fn a, b -> distance(item, a) < distance(item, b) end)
+    |> Enum.sort_by(fn a -> distance(item, a) end)
     |> Enum.take(n)
   end
 

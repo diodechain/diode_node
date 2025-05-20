@@ -18,7 +18,6 @@ defmodule KademliaSearch do
             tasks: [],
             from: nil,
             key: nil,
-            min_distance: @max_oid,
             queryable: nil,
             k: nil,
             visited: [],
@@ -57,9 +56,12 @@ defmodule KademliaSearch do
         queried: queried,
         from: from,
         best: value,
-        tasks: tasks
+        tasks: tasks,
+        key: key
       }) do
-    ret = KBuckets.unique(visited ++ queried)
+    ret =
+      KBuckets.unique(visited ++ queried)
+      |> Enum.sort_by(fn node -> KBuckets.distance(key, node) end)
 
     if value != nil do
       GenServer.reply(from, {:value, value, ret})
@@ -101,7 +103,6 @@ defmodule KademliaSearch do
   def handle_info(
         {:kadret, nodes, node, task},
         state = %KademliaSearch{
-          min_distance: min_distance,
           visited: visited,
           waiting: waiting,
           key: key,
@@ -119,8 +120,16 @@ defmodule KademliaSearch do
         KBuckets.unique(visited ++ [node])
       end
 
-    distance = if node == nil, do: @max_oid, else: KBuckets.distance(node, key)
-    min_distance = min(distance, min_distance)
+    # Visit at least k nodes, and ensure those are the nearest
+    # k nodes to the key
+    min_distance =
+      if length(visited) < state.k do
+        @max_oid
+      else
+        Enum.sort_by(visited, fn node -> KBuckets.distance(key, node) end)
+        |> Enum.at(state.k - 1)
+        |> KBuckets.distance(key)
+      end
 
     # only those that are nearer
     queryable =
@@ -139,8 +148,7 @@ defmodule KademliaSearch do
 
     state = %KademliaSearch{
       state
-      | min_distance: min_distance,
-        queryable: queryable,
+      | queryable: queryable,
         visited: visited,
         waiting: waiting,
         queried: queried

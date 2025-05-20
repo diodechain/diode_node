@@ -35,14 +35,10 @@ defmodule Network.PeerHandlerV2 do
   def do_init(state) do
     send_hello(
       Map.merge(state, %{
-        blocks: nil,
         calls: :queue.new(),
-        job: nil,
-        last_publish: nil,
         last_send: nil,
         msg_count: 0,
         ports: %PortCollection{pid: self()},
-        random_blocks: 0,
         server: nil,
         stable: false,
         start_time: System.os_time(:second)

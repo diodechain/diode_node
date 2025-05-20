@@ -104,7 +104,7 @@ defmodule KademliaLight do
   end
 
   @doc """
-    find_node_object() is an power-up version of find_value()
+    find_node_object() is a buffed version of find_value()
     in that it first search in it's own kbuckets network
     and then secondly visits the value store
   """
@@ -135,22 +135,24 @@ defmodule KademliaLight do
     key = hash(key)
     visited = do_find_nodes(key, KBuckets.k(), PeerHandlerV2.find_node())
     insert_nodes(visited)
-    nearest_n(key, visited)
+    Enum.take(visited, KBuckets.k())
   end
 
   defp insert_nodes(visited) do
-    call(fn _from, state ->
-      network =
-        Enum.reduce(visited, state.network, fn item, network ->
-          if not KBuckets.member?(network, item) do
-            KBuckets.insert_items(network, visited)
-          else
-            network
-          end
-        end)
+    before = network()
 
-      {:reply, :ok, %KademliaLight{state | network: network}}
-    end)
+    network =
+      Enum.reduce(visited, before, fn item, network ->
+        if not KBuckets.member?(network, item) do
+          KBuckets.insert_items(network, visited)
+        else
+          network
+        end
+      end)
+
+    if before != network do
+      GenServer.cast(__MODULE__, {:update_network, before, network})
+    end
 
     visited
   end
@@ -281,6 +283,18 @@ defmodule KademliaLight do
     case KBuckets.item(state.network, node) do
       nil -> {:noreply, state}
       item -> {:noreply, %{state | network: do_failed_node(item, state.network)}}
+    end
+  end
+
+  def handle_cast(
+        {:update_network, before, new_network},
+        state = %KademliaLight{network: network}
+      ) do
+    if before != network do
+      Logger.warning("Race in KademliaLight.update_network()")
+      {:noreply, state}
+    else
+      {:noreply, %{state | network: new_network}}
     end
   end
 
@@ -525,13 +539,19 @@ defmodule KademliaLight do
     )
   end
 
-  def nearest_n(key, network \\ network()) do
-    KBuckets.nearest(network, key)
+  def nearest_n(key) do
+    KBuckets.nearest(network(), key)
     |> filter_online()
     |> Enum.take(KBuckets.k())
   end
 
-  defp filter_online(list, online \\ Network.Server.get_connections(PeerHandlerV2)) do
+  # If the list is external, we don't filter online because there is likely no connection
+  def nearest_n(key, network) do
+    KBuckets.nearest(network, key)
+    |> Enum.take(KBuckets.k())
+  end
+
+  def filter_online(list, online \\ Network.Server.get_connections(PeerHandlerV2)) do
     Enum.filter(list, fn %KBuckets.Item{node_id: wallet} = item ->
       KBuckets.is_self(item) or Map.has_key?(online, Wallet.address!(wallet))
     end)

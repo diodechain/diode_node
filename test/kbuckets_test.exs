@@ -5,6 +5,7 @@ defmodule KBucketsTest do
   use ExUnit.Case
 
   alias KBuckets.Item
+  alias DiodeClient.Wallet
 
   setup do
     # Setting
