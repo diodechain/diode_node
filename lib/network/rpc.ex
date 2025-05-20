@@ -80,7 +80,12 @@ defmodule Network.Rpc do
         end
       else
         code = if code == 200, do: 400, else: code
-        {error, code}
+
+        if not is_map(error) do
+          {%{"error" => error}, code}
+        else
+          {error, code}
+        end
       end
 
     envelope =
