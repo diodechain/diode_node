@@ -44,7 +44,7 @@
   "plug_cowboy": {:hex, :plug_cowboy, "2.7.2", "fdadb973799ae691bf9ecad99125b16625b1c6039999da5fe544d99218e662e4", [:mix], [{:cowboy, "~> 2.7", [hex: :cowboy, repo: "hexpm", optional: false]}, {:cowboy_telemetry, "~> 0.3", [hex: :cowboy_telemetry, repo: "hexpm", optional: false]}, {:plug, "~> 1.14", [hex: :plug, repo: "hexpm", optional: false]}], "hexpm", "245d8a11ee2306094840c000e8816f0cbed69a23fc0ac2bcf8d7835ae019bb2f"},
   "plug_crypto": {:hex, :plug_crypto, "2.1.0", "f44309c2b06d249c27c8d3f65cfe08158ade08418cf540fd4f72d4d6863abb7b", [:mix], [], "hexpm", "131216a4b030b8f8ce0f26038bc4421ae60e4bb95c5cf5395e1421437824c4fa"},
   "poison": {:hex, :poison, "6.0.0", "9bbe86722355e36ffb62c51a552719534257ba53f3271dacd20fbbd6621a583a", [:mix], [{:decimal, "~> 2.1", [hex: :decimal, repo: "hexpm", optional: true]}], "hexpm", "bb9064632b94775a3964642d6a78281c07b7be1319e0016e1643790704e739a2"},
-  "profiler": {:git, "https://github.com/dominicletz/profiler.git", "b9a0176a16acece7b9d0812bf9f4b175506ae2c2", []},
+  "profiler": {:git, "https://github.com/dominicletz/profiler.git", "6a2e498427eac8d024958438d4c0b7d322d31dc0", []},
   "pure_erlsha2": {:hex, :pure_erlsha2, "2.2.2", "02497ab4b53fec762b4317d9ad59aa05f1ad4158cb5eec48d5499b068aeaa199", [:rebar3], [], "hexpm", "5e546ed9b69b67148005d431e9e049902fe5fd6db283153526ac599762983e0a"},
   "ranch": {:hex, :ranch, "1.8.0", "8c7a100a139fd57f17327b6413e4167ac559fbc04ca7448e9be9057311597a1d", [:make, :rebar3], [], "hexpm", "49fbcfd3682fab1f5d109351b61257676da1a2fdbe295904176d5e521a2ddfe5"},
   "rotating_file": {:hex, :rotating_file, "0.1.2", "0a16c53ce63cee16eae03bd23db4cf488f13ad0a3916431cf895598f907ef3af", [:mix], [], "hexpm", "22636ada9ff27b5fa2d4a2cd41aaaa581e2fdeaaae2fb426b791012aa54d0f42"},
