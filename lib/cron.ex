@@ -32,6 +32,11 @@ defmodule Cron do
         name: "Clear invalid objects",
         interval: :timer.hours(24),
         fun: &Model.KademliaSql.clear_invalid_objects/0
+      },
+      %Job{
+        name: "Clear LRU cache",
+        interval: :timer.hours(1),
+        fun: &Exqlite.LRU.cleanup_lru/0
       }
     ]
 

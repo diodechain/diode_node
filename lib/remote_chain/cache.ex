@@ -55,6 +55,17 @@ defimpl RemoteChain.Cache, for: BinaryLRU.Handle do
   end
 end
 
+defimpl RemoteChain.Cache, for: Exqlite.LRU do
+  def get(_cache, key) do
+    Exqlite.LRU.get(key)
+  end
+
+  def put(cache, key, value) do
+    Exqlite.LRU.set(key, value)
+    cache
+  end
+end
+
 defimpl RemoteChain.Cache, for: CacheChain do
   def get(cache, key) do
     CacheChain.get(cache, key)

@@ -56,33 +56,14 @@ defmodule Diode do
         Cron,
         supervisor(Channels),
         {PubSub, args},
-        {BinaryLRU, [name: :memory_cache, max_memory_size: 100_000_000]}
+        {BinaryLRU, [name: :memory_cache, max_memory_size: 100_000_000]},
+        {Exqlite.LRU, [file_path: Diode.data_dir("lru.sq3")]}
       ]
 
     with {:ok, pid} <-
            Supervisor.start_link(children, strategy: :rest_for_one, name: Diode.Supervisor) do
-      dets_child =
-        {DetsPlus,
-         name: :remoterpc_cache,
-         auto_save_memory: 100_000_000,
-         page_cache_memory: 100_000_000,
-         file: data_dir("remoterpc.cache"),
-         compressed: true}
-
-      case Supervisor.start_child(pid, dets_child) do
-        {:ok, _} ->
-          :ok
-
-        {:error, {:already_started, _}} ->
-          :ok
-
-        error ->
-          Logger.error("Failed to start DetsPlus: #{inspect(error)}, retrying...")
-          File.rm(data_dir("remoterpc.cache"))
-          {:ok, _} = Supervisor.start_child(pid, dets_child)
-      end
-
-      cache = DetsPlus.HashLRU.new(:remoterpc_cache, 1_000_000, fn obj -> obj != nil end)
+      File.rm(data_dir("remoterpc.cache"))
+      cache = %Exqlite.LRU{}
       cache = CacheChain.new(BinaryLRU.handle(:memory_cache), cache)
 
       [

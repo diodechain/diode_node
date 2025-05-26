@@ -6,10 +6,7 @@ defmodule CacheChain do
   end
 
   def put(cache, key, value) do
-    %CacheChain{
-      a: RemoteChain.Cache.put(cache.a, key, value),
-      b: RemoteChain.Cache.put(cache.b, key, value)
-    }
+    %CacheChain{cache | a: RemoteChain.Cache.put(cache.a, key, value)}
   end
 
   def get(cache, key) do
@@ -24,6 +21,8 @@ defmodule CacheChain do
         value
 
       value ->
+        # We only put something into the second cache if it's queried a second time
+        RemoteChain.Cache.put(cache.b, key, value)
         value
     end
   end
