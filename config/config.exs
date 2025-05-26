@@ -13,6 +13,8 @@ config :logger,
 
 config :logger, :console, format: "$time $metadata[$level] $message\n"
 
+config :diode_client, :keccak_256, {:keccakf1600, :sha3_256}
+
 if Mix.env() == :test do
   {_, _} = System.cmd("killall", ["anvil", "-w"])
   File.rm_rf("data_test")
