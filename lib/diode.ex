@@ -83,7 +83,7 @@ defmodule Diode do
       end
 
       cache = DetsPlus.HashLRU.new(:remoterpc_cache, 1_000_000, fn obj -> obj != nil end)
-      cache = CacheChain.new(cache, BinaryLRU.handle(:memory_cache))
+      cache = CacheChain.new(BinaryLRU.handle(:memory_cache), cache)
 
       [
         Enum.map(RemoteChain.chains(), fn chain ->
