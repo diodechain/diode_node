@@ -29,6 +29,7 @@ defmodule TicketStore do
 
   def clear() do
     TicketSql.delete_all()
+    Ets.clear(__MODULE__)
   end
 
   def epoch() do
@@ -40,16 +41,21 @@ defmodule TicketStore do
   end
 
   def tickets(chain_id, epoch) do
-    Ets.all(__MODULE__)
-    |> Enum.filter(fn tck -> Ticket.epoch(tck) == epoch end)
-    |> Enum.concat(TicketSql.tickets(epoch))
-    |> Enum.filter(fn tck -> Ticket.chain_id(tck) == chain_id end)
-  end
+    if epoch in recent_epochs(chain_id) do
+      if not Ets.member?(__MODULE__, {:meta, epoch, chain_id}) do
+        for tck <- TicketSql.tickets(epoch) do
+          Ets.put(__MODULE__, {epoch, chain_id}, tck)
+        end
 
-  def tickets(epoch) do
-    Ets.all(__MODULE__)
-    |> Enum.filter(fn tck -> Ticket.epoch(tck) == epoch end)
-    |> Enum.concat(TicketSql.tickets(epoch))
+        Ets.put(__MODULE__, {:meta, epoch, chain_id}, true)
+      end
+
+      Ets.all(__MODULE__)
+      |> Enum.filter(fn tck -> is_tuple(tck) && Ticket.epoch(tck) == epoch end)
+    else
+      TicketSql.tickets(epoch)
+    end
+    |> Enum.filter(fn tck -> Ticket.chain_id(tck) == chain_id end)
   end
 
   # Should be called on each new block
@@ -72,7 +78,7 @@ defmodule TicketStore do
   end
 
   def submit_tickets(chain_id, epoch) do
-    update_fleet_scores(epoch)
+    update_fleet_scores(chain_id, epoch)
 
     tickets(chain_id, epoch)
     |> submit_tickets()
@@ -193,6 +199,11 @@ defmodule TicketStore do
     end
   end
 
+  def recent_epochs(chain_id) do
+    epoch = RemoteChain.epoch(chain_id)
+    [epoch, epoch - 1]
+  end
+
   @doc """
     Handling a ConnectionTicket
   """
@@ -205,7 +216,7 @@ defmodule TicketStore do
     last = find(address, fleet, tepoch)
 
     cond do
-      tepoch not in [epoch, epoch - 1] ->
+      tepoch not in recent_epochs(chain_id) ->
         {:too_old, epoch - 1}
 
       last == nil or Ticket.too_many_bytes?(last) ->
@@ -240,7 +251,7 @@ defmodule TicketStore do
       epoch = Ticket.epoch(tck)
       Logger.info("Storing device ticket #{addr} #{bytes} bytes #{conns} conns @ #{epoch}")
       TicketSql.put_ticket(tck)
-      Ets.remove(__MODULE__, key)
+      update_epoch_score(Ticket.chain_id(tck), epoch)
     end)
 
     Ets.put(__MODULE__, key, tck)
@@ -299,20 +310,20 @@ defmodule TicketStore do
   end
 
   def fleet_score(tck) when is_tuple(tck) do
-    fleet_score(Ticket.fleet_contract(tck), Ticket.epoch(tck))
+    fleet = Ticket.fleet_contract(tck)
+    chain_id = Ticket.chain_id(tck)
+    epoch = Ticket.epoch(tck)
+
+    ETSLru.get(@ticket_value_cache, {:fleet_score, fleet, chain_id, epoch}) ||
+      update_fleet_scores(chain_id, epoch)[fleet] || 0
   end
 
-  def fleet_score(fleet, epoch) do
-    ETSLru.get(@ticket_value_cache, {:fleet_score, fleet, epoch}) ||
-      update_fleet_scores(epoch)[fleet]
-  end
-
-  def update_fleet_scores(epoch) do
-    tickets(epoch)
+  def update_fleet_scores(chain_id, epoch) do
+    tickets(chain_id, epoch)
     |> Enum.group_by(fn tck -> Ticket.fleet_contract(tck) end)
     |> Enum.map(fn {fleet, tcks} ->
       total_score = Enum.map(tcks, fn tck -> ticket_score(tck) end) |> Enum.sum()
-      ETSLru.put(@ticket_value_cache, {:fleet_score, fleet, epoch}, total_score)
+      ETSLru.put(@ticket_value_cache, {:fleet_score, fleet, chain_id, epoch}, total_score)
       {fleet, total_score}
     end)
     |> Map.new()
@@ -337,6 +348,17 @@ defmodule TicketStore do
   end
 
   def epoch_score(epoch \\ epoch()) when is_integer(epoch) do
-    Enum.reduce(tickets(epoch), 0, fn tck, acc -> ticket_score(tck) + acc end)
+    Ets.lookup(__MODULE__, {:meta, :score, epoch, Chains.Moonbeam.chain_id()}, fn ->
+      Enum.reduce(tickets(Chains.Moonbeam.chain_id(), epoch), 0, fn tck, acc ->
+        ticket_score(tck) + acc
+      end)
+    end)
+  end
+
+  def update_epoch_score(chain_id, epoch) do
+    Debouncer.immediate({__MODULE__, :update_epoch_score}, fn ->
+      score = Enum.reduce(tickets(chain_id, epoch), 0, fn tck, acc -> ticket_score(tck) + acc end)
+      Ets.put(__MODULE__, {:meta, :score, epoch, chain_id}, score)
+    end)
   end
 end

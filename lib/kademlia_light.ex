@@ -358,8 +358,19 @@ defmodule KademliaLight do
           {:timeout, node_id},
           fn ->
             Logger.info("Timeout while getting a result from #{Wallet.printable(node_id)}")
-            # TODO: This *always* happens when a node is still syncing. How to handle this better?
-            # Process.exit(pid, :timeout)
+          end,
+          60_000
+        )
+
+        []
+
+      :exit, {:normal, _} ->
+        Debouncer.immediate(
+          {:down, node_id},
+          fn ->
+            Logger.info(
+              "Connection down while getting a result from #{Wallet.printable(node_id)}"
+            )
           end,
           60_000
         )
