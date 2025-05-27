@@ -42,14 +42,15 @@ defmodule Exqlite.LRU do
     key = :erlang.term_to_binary(key)
 
     case query_prepared(:get, [now(), key]) do
-      {:ok, [[value]]} -> :erlang.binary_to_term(value)
-      _ -> nil
+      [[value]] -> :erlang.binary_to_term(value)
+      [] -> nil
     end
   end
 
   def set(key, value) do
     key = :erlang.term_to_binary(key)
     query_prepared(:set, [key, :erlang.term_to_binary(value, [:compressed]), now()])
+    value
   end
 
   def delete(key) do
@@ -87,7 +88,7 @@ defmodule Exqlite.LRU do
         stmt
       end
 
-    :ok = Exqlite.Sqlite3.bind(stmt, params)
+    :ok = apply(Exqlite.Sqlite3, :bind, [stmt, params])
     ret = collect(conn, stmt, []) |> Enum.reverse()
     :ok = GenServer.cast(__MODULE__, {:release, method, stmt})
     ret
