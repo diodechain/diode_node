@@ -204,16 +204,21 @@ defmodule Network.Server do
     end
   end
 
-  def handle_call({:register, node_id}, {pid, _}, state) do
+  # compatibility with old code during live update
+  def handle_call({:register, node_id}, from, state) do
+    handle_call({:register, node_id, nil, nil}, from, state)
+  end
+
+  def handle_call({:register, node_id, address, port}, {pid, _}, state) do
     if Wallet.equal?(Diode.wallet(), node_id) do
       state = %{state | self_conns: [pid | state.self_conns]}
       {:reply, {:ok, hd(state.ports)}, state}
     else
-      register_node(node_id, pid, state)
+      register_node(node_id, address, port, pid, state)
     end
   end
 
-  defp register_node(node_id, pid, state) do
+  defp register_node(node_id, address, port, pid, state) do
     # Checking whether pid is already registered and remove for the update
     connect_key = Map.get(state.clients, pid)
     clients = Map.delete(state.clients, connect_key)
@@ -234,7 +239,7 @@ defmodule Network.Server do
 
         {other_pid, _timestamp} ->
           # hm, another pid is given for the node_id logging this
-          "#{state.protocol} Handshake anomaly(#{inspect(pid)}): #{Wallet.printable(node_id)} is already other_pid=#{inspect(other_pid)} connect_key=#{inspect(connect_key && Base16.encode(connect_key))}"
+          "#{inspect(state.protocol)} Handshake anomaly(#{inspect(pid)}): #{Wallet.printable(node_id)}, address=#{inspect(address)}, port=#{inspect(port)} is already connected to other_pid=#{inspect(other_pid)} connect_key=#{Base16.encode(connect_key)}"
           |> Logger.info()
 
           # If the actual key is the same as the "intended" key, then we can update the key
@@ -277,7 +282,7 @@ defmodule Network.Server do
   end
 
   defp do_accept(state, port) do
-    case :ssl.transport_accept(state.sockets[port], 1000) do
+    case :ssl.transport_accept(state.sockets[port], 5000) do
       {:error, :timeout} ->
         :ok
 

@@ -43,13 +43,10 @@ defmodule Network.Handler do
               {:stop, :normal, state}
           end
 
-        on_nodeid(Wallet.from_pubkey(Certs.extract(socket)))
         enter_loop(Map.put(state, :socket, socket))
       end
 
       def handle_continue([:connect, node_id, address, port], state) do
-        on_nodeid(node_id)
-
         address =
           case address do
             bin when is_binary(bin) -> :erlang.binary_to_list(address)
@@ -58,22 +55,11 @@ defmodule Network.Handler do
 
         case :ssl.connect(address, port, ssl_options(role: :client), 5000) do
           {:ok, socket} ->
-            remote_id = Wallet.from_pubkey(Certs.extract(socket))
-
-            if node_id != nil and not Wallet.equal?(node_id, remote_id) do
-              log(
-                {node_id, address, port},
-                "Expected #{Wallet.printable(node_id)} different from found #{Wallet.printable(remote_id)}"
-              )
-            end
-
-            if not Wallet.equal?(node_id, remote_id) do
-              on_nodeid(remote_id)
-            end
-
-            enter_loop(Map.merge(state, %{socket: socket, address: address}))
+            enter_loop(Map.merge(state, %{socket: socket, address: address, node_id: node_id}))
 
           other ->
+            on_nodeid(node_id)
+
             log(
               {node_id, address, port},
               "Connection failed in ssl.connect(): #{inspect(other)}"
@@ -88,28 +74,41 @@ defmodule Network.Handler do
              {:ok, {address, port}} <- :ssl.peername(socket),
              {:ok, cert} <- :ssl.peercert(socket),
              remote_id <- Wallet.from_pubkey(Certs.id_from_der(cert)),
-             state <-
-               Map.merge(state, %{
-                 socket: socket,
-                 node_id: remote_id,
-                 node_address: address,
-                 node_port: port,
-                 server_port: nil
-               }),
 
              # register ensure this process is stored under the correct remote_id
              # and also ensure setops(active:true) is not sent before server.ex
              # finished the handshake
-             {:ok, server_port} <- GenServer.call(server, {:register, remote_id}),
+             {:ok, server_port} <- GenServer.call(server, {:register, remote_id, address, port}),
              :ok <- set_keepalive(:os.type(), socket),
              :ok <- :ssl.setopts(socket, active: true) do
-          state = Map.put(state, :server_port, server_port)
+          expected_id = state[:node_id]
+
+          if expected_id != nil and not Wallet.equal?(expected_id, remote_id) do
+            log(
+              state,
+              "Expected #{Wallet.printable(expected_id)} different from found #{Wallet.printable(remote_id)}"
+            )
+
+            on_nodeid(expected_id)
+          end
+
+          on_nodeid(remote_id)
+
+          state =
+            Map.merge(state, %{
+              socket: socket,
+              node_id: remote_id,
+              node_address: address,
+              node_port: port,
+              server_port: server_port
+            })
+
           do_init(state)
         else
           {:deny, _server_port} ->
             delay = Random.random(2500, 7500)
-            log(state, "Server: Rejecting double-connection (delay #{delay})")
             Process.sleep(delay)
+            log(state, "Server: Rejecting double-connection (delay #{delay})")
             {:stop, :normal, state}
 
           {:error, reason} ->
