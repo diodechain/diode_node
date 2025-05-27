@@ -58,6 +58,7 @@ defmodule Exqlite.LRU do
 
   def clear() do
     query_prepared(:clear, [])
+    query_prepared(:vacuum, [])
   end
 
   def cleanup_lru(max_items \\ nil) do
@@ -142,6 +143,9 @@ defmodule Exqlite.LRU do
       """,
       clear: """
       DELETE FROM cache
+      """,
+      vacuum: """
+      VACUUM
       """,
       cleanupLru: """
       WITH lru AS (SELECT key FROM cache ORDER BY lastAccess DESC LIMIT -1 OFFSET ?1)

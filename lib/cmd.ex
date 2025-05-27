@@ -10,10 +10,9 @@ defmodule Diode.Cmd do
   end
 
   def flush_cache() do
-    DetsPlus.delete_all_objects(:remoterpc_cache)
-    DetsPlus.sync(:remoterpc_cache)
     DetsPlus.delete_all_objects(Network.Stats.LRU)
     DetsPlus.sync(Network.Stats.LRU)
+    Exqlite.LRU.clear()
   end
 
   def status() do
