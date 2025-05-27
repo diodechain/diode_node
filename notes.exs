@@ -1,3 +1,16 @@
+# May 27th
+KademliaLight.find_nodes(<<1>>)
+
+# May 27th
+key = Diode.hash(<<100>>)
+nodes = KademliaLight.find_node_lookup(key)
+
+{:ok, pid} = GenServer.start_link(KademliaSearch, KademliaLight)
+spawn(fn -> Profiler.fprof(pid) end)
+GenServer.call(pid, {:find_nodes, key, nodes, KBuckets.k(), Network.PeerHandlerV2.find_node()}, 20_000)
+
+
+
 # May 20th
 key = Diode.hash(<<1>>)
 IO.puts(DiodeClient.Base16.encode(key))

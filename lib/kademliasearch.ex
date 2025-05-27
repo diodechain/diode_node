@@ -20,9 +20,9 @@ defmodule KademliaSearch do
             key: nil,
             queryable: nil,
             k: nil,
-            visited: [],
+            visited: %{},
             waiting: [],
-            queried: [],
+            queried: %{},
             cmd: nil,
             best: nil,
             finisher: nil
@@ -38,7 +38,14 @@ defmodule KademliaSearch do
   end
 
   def handle_call({:find_nodes, key, nearest, k, cmd}, from, state) do
-    state = %KademliaSearch{state | from: from, key: key, queryable: nearest, k: k, cmd: cmd}
+    state = %KademliaSearch{
+      state
+      | from: from,
+        key: key,
+        queryable: KBuckets.to_map(nearest),
+        k: k,
+        cmd: cmd
+    }
 
     tasks = for _ <- 1..@alpha, do: start_worker(state)
     {:noreply, %{state | tasks: tasks}}
@@ -60,8 +67,9 @@ defmodule KademliaSearch do
         key: key
       }) do
     ret =
-      KBuckets.unique(visited ++ queried)
-      |> Enum.sort_by(fn node -> KBuckets.distance(key, node) end)
+      Map.merge(visited, queried)
+      |> Enum.sort_by(fn {node_key, _node} -> KBuckets.distance(key, node_key) end)
+      |> Enum.map(fn {_node_key, node} -> node end)
 
     if value != nil do
       GenServer.reply(from, {:value, value, ret})
@@ -117,44 +125,49 @@ defmodule KademliaSearch do
       if node == nil do
         visited
       else
-        KBuckets.unique(visited ++ [node])
+        Map.put(visited, KBuckets.key(node), node)
       end
 
     # Visit at least k nodes, and ensure those are the nearest
     # k nodes to the key
     min_distance =
-      if length(visited) < state.k do
+      if map_size(visited) < state.k do
         @max_oid
       else
-        Enum.sort_by(visited, fn node -> KBuckets.distance(key, node) end)
+        Enum.map(visited, fn {node_key, _node} -> KBuckets.distance(key, node_key) end)
+        |> Enum.sort()
         |> Enum.at(state.k - 1)
-        |> KBuckets.distance(key)
       end
 
     # only those that are nearer
     queryable =
-      KBuckets.unique(queryable ++ nodes)
-      |> Enum.filter(fn node ->
-        KBuckets.distance(key, node) < min_distance and
-          KBuckets.member?(queried, node) == false
+      Map.merge(queryable, KBuckets.to_map(nodes))
+      |> Enum.map(fn {node_key, node} -> {KBuckets.distance(key, node_key), node_key, node} end)
+      |> Enum.filter(fn {distance, node_key, _node} ->
+        Map.has_key?(queried, node_key) == false and distance < min_distance
       end)
-      |> KBuckets.nearest_n(state.key, state.k)
+      |> Enum.sort()
+      |> Enum.take(state.k)
+      |> Enum.map(fn {_distance, node_key, node} -> {node_key, node} end)
 
     sends = min(length(queryable), length(waiting))
     {nexts, queryable} = Enum.split(queryable, sends)
+    {nexts, queryable} = {Map.new(nexts), Map.new(queryable)}
     {pids, waiting} = Enum.split(waiting, sends)
-    Enum.zip(nexts, pids) |> Enum.each(fn {next, pid} -> send(pid, {:next, next}) end)
-    queried = queried ++ nexts
+
+    for {next, pid} <- Enum.zip(Map.values(nexts), pids) do
+      send(pid, {:next, next})
+    end
 
     state = %KademliaSearch{
       state
       | queryable: queryable,
         visited: visited,
         waiting: waiting,
-        queried: queried
+        queried: Map.merge(queried, nexts)
     }
 
-    if queryable == [] and length(waiting) == @alpha and finisher == nil do
+    if map_size(queryable) == 0 and length(waiting) == @alpha and finisher == nil do
       handle_info(:finish, state)
     else
       {:noreply, state}

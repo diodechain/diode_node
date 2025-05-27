@@ -182,10 +182,14 @@ defmodule KBuckets do
     |> Enum.take(n)
   end
 
-  def unique(list) when is_list(list) do
+  def to_map(list) when is_list(list) do
     Enum.reduce(list, %{}, fn node, acc ->
       Map.put(acc, key(node), node)
     end)
+  end
+
+  def unique(list) when is_list(list) do
+    to_map(list)
     |> Map.values()
   end
 
