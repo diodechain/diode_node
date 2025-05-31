@@ -44,7 +44,8 @@ defmodule TicketStore do
     if epoch in recent_epochs(chain_id) do
       if not Ets.member?(__MODULE__, {:meta, epoch, chain_id}) do
         for tck <- TicketSql.tickets(epoch) do
-          Ets.put(__MODULE__, {epoch, chain_id}, tck)
+          key = {Ticket.device_address(tck), Ticket.fleet_contract(tck), epoch}
+          Ets.put(__MODULE__, key, tck)
         end
 
         Ets.put(__MODULE__, {:meta, epoch, chain_id}, true)
