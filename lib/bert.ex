@@ -42,13 +42,24 @@ defmodule BertInt do
   @doc """
     decode! variant for decoding locally created files, can decode atoms.
   """
-  def decode_unsafe!(term) do
+  def decode_unsafe(term) do
+    term =
+      try do
+        :zlib.unzip(term)
+      rescue
+        ErlangError -> term
+      end
+
     try do
-      :zlib.unzip(term)
+      {:ok, :erlang.binary_to_term(term)}
     rescue
-      ErlangError -> term
+      e in ErlangError -> {:error, e}
     end
-    |> :erlang.binary_to_term()
+  end
+
+  def decode_unsafe!(term) do
+    {:ok, term} = decode_unsafe(term)
+    term
   end
 end
 

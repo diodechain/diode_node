@@ -1,9 +1,9 @@
 defmodule Model.File do
   def load(filename, default \\ nil) do
-    case File.read(filename) do
-      {:ok, content} ->
-        BertInt.decode_unsafe!(content)
-
+    with {:ok, content} <- File.read(filename),
+         {:ok, term} <- BertInt.decode_unsafe(content) do
+      term
+    else
       {:error, _} ->
         case default do
           fun when is_function(fun) -> fun.()
