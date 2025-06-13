@@ -1,3 +1,17 @@
+# June 13th
+alias DiodeClient.Base16
+
+address = "0xca1102b4e9b504e78de5ee008541b0b47f5c22e0"
+block = 11287000
+RemoteChain.RPCCache.get_account_root(Chains.Moonbeam, address, 11287000)
+num = RemoteChain.RPCCache.rpc!(Chains.Moonbeam, "eth_getStorageAt", [
+  address,
+  "0x1e4717b2dc5dfd7f487f2043bfe9999372d693bf4d9c51b5b84f1377939cd487",
+  Base16.encode(11287000, false)
+]) |> Base16.decode_int()
+
+max(min(num, block), block - blocks_per_hour)
+
 # May 27th
 KademliaLight.find_nodes(<<1>>)
 

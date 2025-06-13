@@ -206,7 +206,7 @@ defmodule RemoteChain.RPCCache do
       |> Base16.decode_int()
       |> case do
         0 -> block - rem(block, blocks_per_hour)
-        num -> max(min(num, block), block - blocks_per_hour)
+        num -> max(min(num, block), block - rem(block, blocks_per_hour))
       end
     end
   end
