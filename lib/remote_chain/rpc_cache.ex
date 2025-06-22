@@ -274,6 +274,43 @@ defmodule RemoteChain.RPCCache do
 
         result
     end
+    |> maybe_validate_parent_block_cache(method, chain)
+  end
+
+  def maybe_validate_parent_block_cache(
+        ret = %{"result" => %{"parentHash" => parent_hash, "number" => block_number}},
+        "eth_getBlockByNumber",
+        chain
+      ) do
+    parent_block_number = Base16.decode_int(block_number) - 1
+
+    Debouncer.immediate(
+      {__MODULE__, :validate_parent_block_cache, parent_block_number, chain},
+      fn ->
+        validate_parent_block_cache(parent_block_number, parent_hash, chain)
+      end,
+      :timer.minutes(5)
+    )
+
+    ret
+  end
+
+  def maybe_validate_parent_block_cache(other, _method, _chain), do: other
+
+  def validate_parent_block_cache(parent_block_number, parent_hash, chain) do
+    cache = GenServer.call(name(chain), :cache, @default_timeout)
+    method = "eth_getBlockByNumber"
+    params = [Base16.encode(parent_block_number), false]
+
+    with %{"result" => %{"hash" => block_hash}} <- Cache.get(cache, {chain, method, params}) do
+      if block_hash != parent_hash do
+        Logger.warning(
+          "Parent block cache mismatch for block #{parent_block_number}: #{parent_hash} != #{block_hash}"
+        )
+
+        Cache.put(cache, {chain, method, params}, nil)
+      end
+    end
   end
 
   @impl true
