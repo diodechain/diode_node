@@ -1,4 +1,10 @@
+# June 23rd
+RemoteChain.RPCCache.get_block_by_number(Chains.Diode, 9262330)
+
 # June 13th
+
+
+
 alias DiodeClient.Base16
 
 address = "0xca1102b4e9b504e78de5ee008541b0b47f5c22e0"

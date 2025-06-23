@@ -58,8 +58,7 @@ defmodule RemoteChain.RPCCache do
   end
 
   def get_block_by_number(chain, block \\ "latest", with_transactions \\ false) do
-    block = resolve_block(chain, block)
-    rpc!(chain, "eth_getBlockByNumber", [Base16.encode(block), with_transactions])
+    rpc!(chain, "eth_getBlockByNumber", [block, with_transactions])
   end
 
   # Retrieves all storage slots for an address, only available on Diode
@@ -134,8 +133,7 @@ defmodule RemoteChain.RPCCache do
   end
 
   def call(chain, to, from, data, block \\ "latest") do
-    block = resolve_block(chain, block)
-    rpc!(chain, "eth_call", [%{to: to, data: data, from: from}, Base16.encode(block, false)])
+    rpc!(chain, "eth_call", [%{to: to, data: data, from: from}, block])
   end
 
   def get_code(chain, address, block \\ "latest") do
@@ -144,8 +142,7 @@ defmodule RemoteChain.RPCCache do
     # Optimization since code once set can never change
     case Cache.get(cache, {chain, {:code, address}}) do
       nil ->
-        block = resolve_block(chain, block)
-        code = rpc!(chain, "eth_getCode", [address, Base16.encode(block, false)])
+        code = rpc!(chain, "eth_getCode", [address, block])
 
         if Base16.decode(code) != "" do
           Cache.put(cache, {chain, {:code, address}}, code)
@@ -158,21 +155,49 @@ defmodule RemoteChain.RPCCache do
     end
   end
 
-  def get_transaction_count(chain, address, block \\ "latest") do
-    block = resolve_block(chain, block)
-    rpc!(chain, "eth_getTransactionCount", [address, Base16.encode(block, false)])
+  def get_transaction_count(chain, address, block \\ "latest"),
+    do: rpc!(chain, "eth_getTransactionCount", [address, block])
+
+  def get_balance(chain, address, block \\ "latest"),
+    do: rpc!(chain, "eth_getBalance", [address, block])
+
+  defp normalize_args(chain, "eth_getBalance", [address, block]) do
+    [address, normalize_block(chain, block)]
   end
 
-  def get_balance(chain, address, block \\ "latest") do
-    block = resolve_block(chain, block)
-    rpc!(chain, "eth_getBalance", [address, Base16.encode(block, false)])
+  defp normalize_args(chain, "eth_getTransactionCount", [address, block]) do
+    [address, normalize_block(chain, block)]
+  end
+
+  defp normalize_args(chain, "eth_getBlockByNumber", [block, with_transactions]) do
+    [normalize_block(chain, block), with_transactions]
+  end
+
+  defp normalize_args(chain, "eth_call", [opts, block]) do
+    [opts, normalize_block(chain, block)]
+  end
+
+  defp normalize_args(chain, "eth_getCode", [address, block]) do
+    [address, normalize_block(chain, block)]
+  end
+
+  defp normalize_args(chain, "eth_getStorageAt", [address, slot, block]) do
+    [address, slot, normalize_block(chain, block)]
+  end
+
+  defp normalize_args(_chain, _method, args) do
+    args
+  end
+
+  defp normalize_block(chain, block) do
+    Base16.encode(resolve_block(chain, block), false)
   end
 
   def get_last_change(chain, address, block \\ "latest") do
     block = resolve_block(chain, block)
     cache = GenServer.call(name(chain), :cache, @default_timeout)
 
-    if chain in [Chains.Diode, Chains.DiodeDev, Chains.DiodeStaging] do
+    if diode?(chain) do
       case Cache.get(cache, {chain, {:last_change_block, block}}) do
         nil ->
           root =
@@ -254,9 +279,20 @@ defmodule RemoteChain.RPCCache do
   end
 
   def rpc(chain, method, params) do
+    params = normalize_args(chain, method, params)
     cache = GenServer.call(name(chain), :cache, @default_timeout)
+    result = Cache.get(cache, {chain, method, params})
 
-    case Cache.get(cache, {chain, method, params}) do
+    result =
+      if diode?(chain) and method == "eth_getBlockByNumber" and
+           match?(%{"result" => %{"minerSignature" => nil}}, result) do
+        # GenServer.cast(name(chain), {:refresh, method, params})
+        nil
+      else
+        result
+      end
+
+    case result do
       nil ->
         with {:error, :disconnect} <-
                GenServer.call(name(chain), {:rpc, method, params}, @default_timeout) do
@@ -300,7 +336,7 @@ defmodule RemoteChain.RPCCache do
   def validate_parent_block_cache(parent_block_number, parent_hash, chain) do
     cache = GenServer.call(name(chain), :cache, @default_timeout)
     method = "eth_getBlockByNumber"
-    params = [Base16.encode(parent_block_number), false]
+    params = normalize_args(chain, method, [parent_block_number, false])
 
     with %{"result" => %{"hash" => block_hash}} <- Cache.get(cache, {chain, method, params}) do
       if block_hash != parent_hash do
@@ -308,7 +344,7 @@ defmodule RemoteChain.RPCCache do
           "Parent block cache mismatch for block #{parent_block_number}: #{parent_hash} != #{block_hash}"
         )
 
-        Cache.put(cache, {chain, method, params}, nil)
+        Cache.delete(cache, {chain, method, params})
       end
     end
   end
@@ -394,7 +430,7 @@ defmodule RemoteChain.RPCCache do
       block_number = block_number - 5
 
       spawn(fn ->
-        if chain in [Chains.Diode, Chains.DiodeDev, Chains.DiodeStaging] do
+        if diode?(chain) do
           rpc(chain, "dio_edgev2", [Base16.encode(Rlp.encode!(["getblockheader2", block_number]))])
         end
 
@@ -484,5 +520,9 @@ defmodule RemoteChain.RPCCache do
 
   defp should_cache_result(_ret) do
     false
+  end
+
+  defp diode?(chain) do
+    chain in [Chains.Diode, Chains.DiodeDev, Chains.DiodeStaging]
   end
 end

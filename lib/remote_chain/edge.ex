@@ -2,7 +2,7 @@
 # Copyright 2021-2024 Diode
 # Licensed under the Diode License, Version 1.1
 defmodule RemoteChain.Edge do
-  alias DiodeClient.{ABI, Base16, Contracts.CallPermit, Hash, Rlp, Rlpx}
+  alias DiodeClient.{ABI, Base16, Contracts.CallPermit, Hash, Rlp, Rlpx, Secp256k1, Wallet}
   import Network.EdgeV2, only: [response: 1, response: 2, error: 1]
   require Logger
 
@@ -18,38 +18,32 @@ defmodule RemoteChain.Edge do
         error("not implemented")
 
       ["getblockheader", index] when is_binary(index) ->
-        %{
-          "hash" => hash,
-          "nonce" => nonce,
-          "miner" => miner,
-          "number" => number,
-          "parentHash" => previous_block,
-          "stateRoot" => state_hash,
-          "timestamp" => timestamp,
-          "transactionsRoot" => transaction_hash
-        } = RemoteChain.RPCCache.get_block_by_number(chain, hex_blockref(index))
-
-        %{
-          "block_hash" => Base16.decode(hash),
-          "miner" => Base16.decode(miner),
-          "miner_signature" => nil,
-          "nonce" => Base16.decode(nonce),
-          "number" => Base16.decode(number),
-          "state_hash" => Base16.decode(state_hash),
-          "timestamp" => Base16.decode(timestamp),
-          "transaction_hash" => Base16.decode(transaction_hash)
-        }
-        |> then(fn block ->
-          if previous_block == "0Z0Z0Z0Z0Z0Z0Z0Z0Z0Z0Z0Z0Z0Z0Z0Z" do
-            Map.put(block, "previous_block", "0x0")
-          else
-            Map.put(block, "previous_block", Base16.decode(previous_block))
-          end
-        end)
+        get_block_header(chain, index)
         |> response()
 
       ["getblockheader2", index] when is_binary(index) ->
-        error("not implemented")
+        block = get_block_header(chain, index)
+
+        egg =
+          [
+            block["previous_block"],
+            block["state_hash"],
+            block["transaction_hash"],
+            block["timestamp"],
+            block["number"],
+            block["nonce"]
+          ]
+          |> :erlang.term_to_binary(minor_version: 1)
+
+        miner = Secp256k1.recover!(block["miner_signature"], egg) |> Wallet.from_pubkey()
+        pubkey = Wallet.pubkey!(miner)
+
+        if block["miner"] != Wallet.address!(miner) do
+          raise "invalid miner"
+        end
+
+        block = Map.delete(block, "miner")
+        response(block, pubkey)
 
       ["getblockquick", last_block, window_size]
       when is_binary(last_block) and
@@ -165,8 +159,21 @@ defmodule RemoteChain.Edge do
           {:error, error} -> error(inspect(error))
         end
 
-      _ ->
+      [other | _]
+      when other in [
+             "ping",
+             "channel",
+             "isonline",
+             "getobject",
+             "getnode",
+             "getnodes",
+             "portopen"
+           ] ->
         default(msg, state)
+
+      _ ->
+        Logger.error("Unhandled message: #{inspect(msg)}")
+        error("bad input")
     end
   end
 
@@ -310,5 +317,44 @@ defmodule RemoteChain.Edge do
 
         response("ok", tx_hash)
     end
+  end
+
+  defp get_block_header(chain, index) do
+    index = Rlpx.bin2uint(index)
+
+    %{
+      "hash" => hash,
+      "nonce" => nonce,
+      "miner" => miner,
+      "number" => number,
+      "parentHash" => previous_block,
+      "stateRoot" => state_hash,
+      "timestamp" => timestamp,
+      "transactionsRoot" => transaction_hash
+    } = block = RemoteChain.RPCCache.get_block_by_number(chain, hex_blockref(index))
+
+    miner_signature =
+      case block["minerSignature"] do
+        nil -> nil
+        signature -> Base16.decode(signature)
+      end
+
+    %{
+      "block_hash" => Base16.decode(hash),
+      "miner" => Base16.decode(miner),
+      "miner_signature" => miner_signature,
+      "nonce" => Base16.decode_int(nonce),
+      "number" => Base16.decode_int(number),
+      "state_hash" => Base16.decode(state_hash),
+      "timestamp" => Base16.decode_int(timestamp),
+      "transaction_hash" => Base16.decode(transaction_hash)
+    }
+    |> then(fn block ->
+      if previous_block == "0Z0Z0Z0Z0Z0Z0Z0Z0Z0Z0Z0Z0Z0Z0Z0Z" do
+        Map.put(block, "previous_block", "0x0")
+      else
+        Map.put(block, "previous_block", Base16.decode(previous_block))
+      end
+    end)
   end
 end

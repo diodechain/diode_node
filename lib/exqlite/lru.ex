@@ -54,6 +54,7 @@ defmodule Exqlite.LRU do
   end
 
   def delete(key) do
+    key = :erlang.term_to_binary(key)
     query_prepared(:delete, [key])
   end
 

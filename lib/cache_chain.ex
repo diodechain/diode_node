@@ -26,4 +26,12 @@ defmodule CacheChain do
         value
     end
   end
+
+  def delete(cache, key) do
+    %CacheChain{
+      cache
+      | a: RemoteChain.Cache.delete(cache.a, key),
+        b: RemoteChain.Cache.delete(cache.b, key)
+    }
+  end
 end
