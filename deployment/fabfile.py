@@ -36,6 +36,9 @@ def install():
 def cache():
   run("/opt/diode_node/bin/diode_node rpc 'IO.inspect(DetsPlus.info(:remoterpc_cache))'")
 
+@parallel
+def flush_cache():
+  run("/opt/diode_node/bin/diode_node rpc 'IO.inspect(Diode.Cmd.flush_cache())'")
 
 @parallel
 def check():

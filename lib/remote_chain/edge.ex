@@ -35,7 +35,11 @@ defmodule RemoteChain.Edge do
           ]
           |> :erlang.term_to_binary(minor_version: 1)
 
-        miner = Secp256k1.recover!(block["miner_signature"], egg) |> Wallet.from_pubkey()
+        miner_signature =
+          block["miner_signature"] ||
+            raise "block header missing miner signature #{inspect(block)}"
+
+        miner = Secp256k1.recover!(miner_signature, egg) |> Wallet.from_pubkey()
         pubkey = Wallet.pubkey!(miner)
 
         if block["miner"] != Wallet.address!(miner) do

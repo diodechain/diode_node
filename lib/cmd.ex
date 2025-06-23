@@ -13,6 +13,7 @@ defmodule Diode.Cmd do
     DetsPlus.delete_all_objects(Network.Stats.LRU)
     DetsPlus.sync(Network.Stats.LRU)
     Exqlite.LRU.clear()
+    BinaryLRU.flush(:memory_cache)
   end
 
   def status() do

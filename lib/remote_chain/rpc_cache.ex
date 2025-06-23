@@ -285,7 +285,7 @@ defmodule RemoteChain.RPCCache do
 
     result =
       if diode?(chain) and method == "eth_getBlockByNumber" and
-           match?(%{"result" => %{"minerSignature" => nil}}, result) do
+           result != nil and result["result"]["minerSignature"] == nil do
         # GenServer.cast(name(chain), {:refresh, method, params})
         nil
       else
