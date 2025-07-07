@@ -630,8 +630,8 @@ defmodule Network.EdgeV2 do
 
   defp local_portopen(device_address, this, portname, flags, pid, ref) do
     case PortCollection.request_portopen(device_address, this, portname, flags, pid, ref) do
-      {:error, _reason} ->
-        error(ref)
+      {:error, reason} ->
+        error(reason)
 
       :ok ->
         response("ok", ref)
