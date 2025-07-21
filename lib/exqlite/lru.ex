@@ -5,7 +5,7 @@ defmodule Exqlite.LRU do
   require Logger
   use GenServer
 
-  defstruct conn: nil, statements: %{}, max_items: 1_000_000
+  defstruct conn: nil, statements: %{}, max_items: 1_000_000, created_at: nil
 
   def start_link(opts \\ []) do
     {file_path, _opts} = Keyword.pop!(opts, :file_path)
@@ -35,7 +35,14 @@ defmodule Exqlite.LRU do
       end)
       |> Map.new()
 
-    {:ok, %__MODULE__{conn: conn, statements: statements, max_items: max_items}}
+    created_at = File.stat!(file_path, time: :posix).ctime
+
+    {:ok,
+     %__MODULE__{conn: conn, statements: statements, max_items: max_items, created_at: created_at}}
+  end
+
+  def created_at() do
+    GenServer.call(__MODULE__, :created_at)
   end
 
   def get(key) do
@@ -64,7 +71,13 @@ defmodule Exqlite.LRU do
   end
 
   def cleanup_lru(max_items \\ nil) do
-    query_prepared(:cleanupLru, [max_items || GenServer.call(__MODULE__, :max_items)])
+    created_at = GenServer.call(__MODULE__, :created_at)
+
+    if now() - created_at > :timer.hours(24) * 7 do
+      clear()
+    else
+      query_prepared(:cleanupLru, [max_items || GenServer.call(__MODULE__, :max_items)])
+    end
   end
 
   defp now() do
@@ -93,6 +106,10 @@ defmodule Exqlite.LRU do
     ret = collect(conn, stmt, []) |> Enum.reverse()
     :ok = GenServer.cast(__MODULE__, {:release, method, stmt})
     ret
+  end
+
+  def handle_call(:created_at, _from, state) do
+    {:reply, state.created_at, state}
   end
 
   def handle_call(:max_items, _from, state) do
