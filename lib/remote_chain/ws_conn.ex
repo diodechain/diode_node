@@ -30,7 +30,7 @@ defmodule RemoteChain.WSConn do
     {:ok, pid} =
       WebSockex.start(ws_url, __MODULE__, state, async: true, handle_initial_conn_failure: true)
 
-    :timer.send_interval(chain.expected_block_intervall() * 2, pid, :ping)
+    :timer.send_interval(:timer.seconds(chain.expected_block_intervall()) * 2, pid, :ping)
     pid
   end
 
@@ -123,6 +123,10 @@ defmodule RemoteChain.WSConn do
         :ping,
         %WSConn{chain: chain, lastblock_at: lastblock_at, ws_url: ws_url} = state
       ) do
+    if state.subscription_id == nil do
+      raise "No subscription id received, aborting connection with #{ws_url}"
+    end
+
     age = DateTime.diff(DateTime.utc_now(), lastblock_at, :second)
 
     if age > chain.expected_block_intervall() * 10 do

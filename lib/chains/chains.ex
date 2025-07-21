@@ -92,28 +92,12 @@ defmodule Chains.Moonbeam do
   def epoch_duration(), do: 2_592_000
   def chain_prefix(), do: "glmr"
 
-  def rpc_endpoints(),
-    do: [
-      "https://moonbeam.unitedbloc.com:3000",
-      "https://moonbeam-rpc.publicnode.com",
-      "https://rpc.api.moonbeam.network",
-      "https://moonbeam-rpc.dwellir.com",
-      "https://rpc.ankr.com/moonbeam",
-      "https://moonbeam.public.blastapi.io",
-      "https://endpoints.omniatech.io/v1/moonbeam/mainnet/public",
-      "https://moonbeam.api.onfinality.io/public",
-      "https://1rpc.io/glmr"
-    ]
+  def additional_endpoints(),
+    do:
+      ~w(https://moonbeam.public.blastapi.io https://moonbeam-rpc.dwellir.com https://moonbeam.api.onfinality.io/public https://moonbeam.unitedbloc.com https://moonbeam.public.curie.radiumblock.co/http https://1rpc.io/glmr https://moonbeam.rpc.grove.city/v1/01fdb492)
 
-  def ws_endpoints(),
-    do: [
-      "wss://moonbeam.unitedbloc.com:3001",
-      "wss://moonbeam-rpc.dwellir.com",
-      "wss://wss.api.moonbeam.network",
-      "wss://moonbeam-rpc.publicnode.com",
-      "wss://moonbeam.api.onfinality.io/public-ws"
-    ]
-
+  def rpc_endpoints(), do: RemoteChain.ChainList.rpc_endpoints(__MODULE__, additional_endpoints())
+  def ws_endpoints(), do: RemoteChain.ChainList.ws_endpoints(__MODULE__, additional_endpoints())
   def registry_address(), do: Base16.decode("0xD78653669fd3df4dF8F3141Ffa53462121d117a4")
   def developer_fleet_address(), do: Base16.decode("0xa0A4dc6623eC96122066195DE34a813846dC0fC0")
   def transaction_hash(), do: &Hash.keccak_256/1
@@ -130,22 +114,12 @@ defmodule Chains.MoonbaseAlpha do
   def epoch_duration(), do: 2_592_000
   def chain_prefix(), do: "m1"
 
-  def rpc_endpoints(),
-    do: [
-      "https://moonbase.unitedbloc.com:1000",
-      "https://rpc.testnet.moonbeam.network",
-      "https://rpc.api.moonbase.moonbeam.network",
-      "https://moonbase-alpha.public.blastapi.io",
-      "https://moonbeam-alpha.api.onfinality.io/public"
-    ]
+  def additional_endpoints(),
+    do:
+      ~w(https://moonbase-rpc.dwellir.com https://moonbeam-alpha.api.onfinality.io/public https://rpc.api.moonbase.moonbeam.network https://moonbase.unitedbloc.com https://moonbase.public.curie.radiumblock.co/http)
 
-  def ws_endpoints(),
-    do: [
-      "wss://moonbase.unitedbloc.com:1001",
-      "wss://wss.api.moonbase.moonbeam.network",
-      "wss://moonbeam-alpha.api.onfinality.io/public-ws"
-    ]
-
+  def rpc_endpoints(), do: RemoteChain.ChainList.rpc_endpoints(__MODULE__, additional_endpoints())
+  def ws_endpoints(), do: RemoteChain.ChainList.ws_endpoints(__MODULE__, additional_endpoints())
   def registry_address(), do: Base16.decode("0xEb0aDCd736Ae9341DFb635759C5D7D6c2D51B673")
   def developer_fleet_address(), do: Base16.decode("0x6000000000000000000000000000000000000000")
   def transaction_hash(), do: &Hash.keccak_256/1
@@ -162,27 +136,12 @@ defmodule Chains.Moonriver do
   def epoch_duration(), do: 2_592_000
   def chain_prefix(), do: "movr"
 
-  def rpc_endpoints(),
-    do: [
-      "https://moonriver-rpc.dwellir.com",
-      "https://moonriver-rpc.publicnode.com",
-      "https://moonriver.api.onfinality.io/public",
-      "https://moonriver.drpc.org",
-      "https://moonriver.public.blastapi.io",
-      "https://moonriver.unitedbloc.com:2000",
-      "https://rpc.api.moonriver.moonbeam.network"
-    ]
+  def additional_endpoints(),
+    do:
+      ~w(https://moonriver-rpc.dwellir.com https://moonriver.api.onfinality.io/public https://moonriver.unitedbloc.com https://moonriver.public.curie.radiumblock.co/http https://moonriver.rpc.grove.city/v1/01fdb492)
 
-  def ws_endpoints(),
-    do: [
-      "wss://moonriver-rpc.dwellir.com",
-      "wss://moonriver-rpc.publicnode.com",
-      "wss://moonriver.api.onfinality.io/public-ws",
-      "wss://moonriver.drpc.org",
-      "wss://moonriver.unitedbloc.com:2001",
-      "wss://wss.api.moonriver.moonbeam.network"
-    ]
-
+  def rpc_endpoints(), do: RemoteChain.ChainList.rpc_endpoints(__MODULE__, additional_endpoints())
+  def ws_endpoints(), do: RemoteChain.ChainList.ws_endpoints(__MODULE__, additional_endpoints())
   def registry_address(), do: Base16.decode("0xEb0aDCd736Ae9341DFb635759C5D7D6c2D51B673")
   def developer_fleet_address(), do: Base16.decode("0x6000000000000000000000000000000000000000")
   def transaction_hash(), do: &Hash.keccak_256/1
@@ -198,17 +157,8 @@ defmodule Chains.OasisSapphire do
   def epoch_block(epoch), do: Chains.epoch_block(__MODULE__, epoch)
   def epoch_duration(), do: 2_592_000
   def chain_prefix(), do: "sapphire"
-
-  def rpc_endpoints(),
-    do: [
-      "https://sapphire.oasis.io"
-    ]
-
-  def ws_endpoints(),
-    do: [
-      "wss://sapphire.oasis.io/ws"
-    ]
-
+  def rpc_endpoints(), do: RemoteChain.ChainList.rpc_endpoints(__MODULE__)
+  def ws_endpoints(), do: RemoteChain.ChainList.ws_endpoints(__MODULE__)
   def registry_address(), do: raise("not implemented")
   def developer_fleet_address(), do: raise("not implemented")
   def transaction_hash(), do: &Hash.keccak_256/1

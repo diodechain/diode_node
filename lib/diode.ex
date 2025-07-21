@@ -49,6 +49,7 @@ defmodule Diode do
 
     children =
       [
+        Globals,
         Stats,
         Network.Stats,
         supervisor(Model.Sql),

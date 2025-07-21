@@ -41,7 +41,7 @@ defmodule Cron do
       %Job{
         name: "Update chain list",
         interval: :timer.hours(1),
-        fun: &Chains.ChainList.update/0
+        fun: &RemoteChain.ChainList.update/0
       }
     ]
 
