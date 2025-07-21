@@ -48,7 +48,7 @@ defmodule Exqlite.LRU do
   def get(key) do
     key = :erlang.term_to_binary(key)
 
-    case query_prepared(:get, [now(), key]) do
+    case query_prepared(:get, [key]) do
       [[value]] -> :erlang.binary_to_term(value)
       [] -> nil
     end
@@ -147,11 +147,14 @@ defmodule Exqlite.LRU do
 
   defp statements() do
     %{
+      # get: """
+      # UPDATE OR IGNORE cache
+      # SET lastAccess = ?1
+      # WHERE key = ?2
+      # RETURNING value
+      # """,
       get: """
-      UPDATE OR IGNORE cache
-      SET lastAccess = ?1
-      WHERE key = ?2
-      RETURNING value
+      SELECT value FROM cache WHERE key = ?1
       """,
       set: """
       INSERT OR REPLACE INTO cache
