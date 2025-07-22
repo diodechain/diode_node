@@ -51,6 +51,7 @@ defmodule Diode do
       [
         Globals,
         Stats,
+        {Exqlite.LRU, [name: Network.Stats.LRU, file_path: Diode.data_dir("network_stats.sq3")]},
         Network.Stats,
         supervisor(Model.Sql),
         TicketStore,
@@ -63,7 +64,13 @@ defmodule Diode do
 
     with {:ok, pid} <-
            Supervisor.start_link(children, strategy: :rest_for_one, name: Diode.Supervisor) do
-      File.rm(data_dir("remoterpc.cache"))
+      for file <- ["remoterpc.cache", "network_stats.dets+"] do
+        file = Diode.data_dir(file)
+        File.rm(file)
+        File.rm(file <> ".tmp")
+        File.rm(file <> ".tmp.idx")
+      end
+
       cache = %Exqlite.LRU{}
       cache = CacheChain.new(BinaryLRU.handle(:memory_cache), cache)
 

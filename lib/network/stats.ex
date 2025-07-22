@@ -10,27 +10,7 @@ defmodule Network.Stats do
   @seconds_per_tick 60
   def init(_args) do
     :timer.send_interval(@seconds_per_tick * 1000, :tick)
-
-    opts = [
-      file: Diode.data_dir("network_stats.dets+"),
-      auto_save_memory: 100_000_000,
-      page_cache_memory: 100_000_000,
-      compressed: true
-    ]
-
-    {:ok, dets} =
-      try do
-        DetsPlus.open_file(__MODULE__.LRU, opts)
-      rescue
-        error ->
-          Logger.error("Failed to open DetsPlus: #{inspect(error)}, retrying...")
-          File.rm(Diode.data_dir("network_stats.dets+"))
-          DetsPlus.open_file(__MODULE__.LRU, opts)
-      end
-
-    lru = DetsPlus.LRU.new(dets, 1_000_000)
-    :persistent_term.put(__MODULE__.LRU, lru)
-    {:ok, %{counters: %{}, done_counters: %{}, lru: lru}}
+    {:ok, %{counters: %{}, done_counters: %{}}}
   end
 
   def start_link(_args) do
@@ -56,7 +36,7 @@ defmodule Network.Stats do
     stepping = max(stepping - rem(stepping, @seconds_per_tick), 1)
 
     Range.new(from, to, stepping)
-    |> Enum.map(&{&1, DetsPlus.LRU.get(:persistent_term.get(__MODULE__.LRU), &1)})
+    |> Enum.map(&{&1, Exqlite.LRU.get(Network.Stats.LRU, &1)})
     |> Enum.filter(fn
       {_, nil} -> false
       _ -> true
@@ -87,7 +67,7 @@ defmodule Network.Stats do
     # Roll up the counters
     tick_time = System.system_time(:second)
     tick_time = tick_time - rem(tick_time, @seconds_per_tick)
-    DetsPlus.LRU.put(state.lru, tick_time, counters)
+    Exqlite.LRU.set(Network.Stats.LRU, tick_time, counters)
     {:noreply, %{state | done_counters: counters, counters: %{}}}
   end
 end

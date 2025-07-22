@@ -36,7 +36,17 @@ defmodule Cron do
       %Job{
         name: "Cleanup LRU cache",
         interval: :timer.hours(1),
-        fun: &Exqlite.LRU.cleanup_lru/0
+        fun: fn ->
+          created_at = Exqlite.LRU.created_at(Exqlite.LRU)
+
+          if Exqlite.LRU.now() - created_at > :timer.hours(24) * 7 do
+            Exqlite.LRU.flush(Exqlite.LRU)
+          else
+            Exqlite.LRU.gc(Exqlite.LRU)
+          end
+
+          Exqlite.LRU.gc(Network.Stats.LRU)
+        end
       },
       %Job{
         name: "Update chain list",
