@@ -188,7 +188,7 @@ defmodule Exqlite.LRU do
       SELECT value FROM cache WHERE key = ?1
       """,
       set: """
-      INSERT OR REPLACE INTO cache
+      INSERT OR IGNORE INTO cache
       (key, value, lastAccess) VALUES (?1, ?2, ?3)
       """,
       delete: """
