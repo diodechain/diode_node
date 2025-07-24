@@ -41,7 +41,8 @@ defmodule Diode.Config do
         File.cwd!() <> "/nodedata_" <> Atom.to_string(Diode.env())
       end,
       "NAME" => nil,
-      "MEMORY_LIMIT" => nil
+      "MEMORY_LIMIT" => nil,
+      "ACCOUNTANT_ADDRESS" => nil
     }
   end
 
@@ -157,6 +158,16 @@ defmodule Diode.Config do
       )
     end
   end
+
+  # defp on_set("ACCOUNTANT_ADDRESS", value, _old_value) do
+  #   Debouncer.apply(
+  #     {__MODULE__, :set_accountant_address},
+  #     fn ->
+  #       Diode.Accountant.set_address(value)
+  #     end,
+  #     10_000
+  #   )
+  # end
 
   defp on_set(_key, _value, _old_value), do: :ok
 

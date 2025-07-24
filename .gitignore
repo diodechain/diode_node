@@ -11,6 +11,7 @@
 *.snap
 /*.json
 /scripts/*.json
+/scripts/txlog/*.json
 *.pem
 *.o
 *.pyc
