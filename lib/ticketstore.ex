@@ -2,7 +2,7 @@
 # Copyright 2021-2024 Diode
 # Licensed under the Diode License, Version 1.1
 defmodule TicketStore do
-  alias DiodeClient.{Base16, ETSLru, MetaTransaction, Object.Ticket, Rlp, Wallet}
+  alias DiodeClient.{Base16, ETSLru, Object.Ticket, Wallet}
   alias Model.TicketSql
   alias Model.Ets
   use GenServer
@@ -115,68 +115,24 @@ defmodule TicketStore do
       Enum.flat_map(tickets, &Ticket.raw/1)
       |> Contract.Registry.submit_ticket_raw_tx(chain_id)
 
-    case Shell.call_tx!(tx, "latest") do
-      "0x" ->
-        chain = RemoteChain.chainimpl(chain_id)
-        nonce = RemoteChain.NonceProvider.nonce(chain_id)
-        tx = %DiodeClient.Transaction{tx | nonce: nonce}
+    case Diode.Transaction.execute(tx) do
+      {:ok, txhash} ->
+        Enum.each(tickets, &store_submitted_ticket_score/1)
 
-        txhash =
-          if CallPermitAdapter.should_forward_metatransaction?(chain) do
-            tx =
-              MetaTransaction.sign(
-                %MetaTransaction{
-                  from: Diode.address(),
-                  to: tx.to,
-                  call: tx.data,
-                  gaslimit: tx.gasLimit,
-                  deadline: System.os_time(:second) + 3600,
-                  value: tx.value,
-                  nonce: tx.nonce,
-                  chain_id: chain_id
-                },
-                Diode.wallet()
-              )
-              |> MetaTransaction.to_rlp()
-              |> Rlp.encode!()
+        Debouncer.delay(
+          txhash,
+          fn ->
+            Enum.each(tickets, &update_submitted_ticket_score/1)
+          end,
+          :timer.minutes(5)
+        )
 
-            case CallPermitAdapter.forward_metatransaction(chain, tx) do
-              ["response", "ok", txhash] -> txhash
-              other -> {:error, other}
-            end
-          else
-            Shell.submit_tx(tx)
-          end
+        Logger.info("Submitted ticket tx #{inspect(txhash)} for #{length(tickets)} tickets")
+        {:ok, txhash}
 
-        if is_binary(txhash) do
-          Enum.each(tickets, &store_submitted_ticket_score/1)
-
-          Debouncer.delay(
-            txhash,
-            fn ->
-              Enum.each(tickets, &update_submitted_ticket_score/1)
-            end,
-            :timer.minutes(5)
-          )
-
-          RemoteChain.NonceProvider.confirm_nonce(chain_id, tx.nonce)
-          Logger.info("Submitted ticket tx #{inspect(txhash)} for #{length(tickets)} tickets")
-          {:ok, txhash}
-        else
-          RemoteChain.NonceProvider.cancel_nonce(chain_id, tx.nonce)
-
-          Logger.info(
-            "Failed to submit ticket tx #{inspect(txhash)} for #{length(tickets)} tickets"
-          )
-
-          {:error, txhash}
-        end
-
-      {{:evmc_revert, reason}, _} ->
-        {:error, "EVM error: #{inspect(reason)}"}
-
-      other ->
-        {:error, "Unknown error: #{inspect(other)}"}
+      {:error, reason} ->
+        Logger.info("Failed to submit ticket #{inspect(reason)} for #{length(tickets)} tickets")
+        {:error, reason}
     end
   end
 

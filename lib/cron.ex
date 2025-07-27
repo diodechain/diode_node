@@ -52,14 +52,27 @@ defmodule Cron do
         name: "Update chain list",
         interval: :timer.hours(1),
         fun: &RemoteChain.ChainList.update/0
+      },
+      %Job{
+        name: "Accountant",
+        interval: :timer.minutes(5),
+        fun: &Diode.Accountant.schedule_ensure_address/0,
+        startup: :timer.seconds(10)
       }
     ]
 
     for job <- jobs do
       :timer.send_interval(job.interval, self(), {:execute, job.name, job.fun})
 
-      if job.startup do
-        send(self(), {:execute, job.name, job.fun})
+      case job.startup do
+        true ->
+          send(self(), {:execute, job.name, job.fun})
+
+        delay when is_integer(delay) ->
+          :timer.send_after(delay, self(), {:execute, job.name, job.fun})
+
+        _ ->
+          :ok
       end
     end
 

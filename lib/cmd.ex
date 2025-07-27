@@ -24,7 +24,7 @@ defmodule Diode.Cmd do
       IO.puts("Description      : #{Diode.Version.description()}")
     end
 
-    IO.puts("Accountant       : #{Base16.encode(Diode.Accountant.address())}")
+    IO.puts("Accountant       : #{Base16.encode(Diode.Accountant.config_address())}")
     IO.puts("Uptime           : #{div(Diode.uptime(), 1000)}")
 
     devcount = Network.Server.get_connections(Network.EdgeV2) |> Enum.count()
