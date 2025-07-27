@@ -29,15 +29,13 @@ defmodule RemoteChain do
     @chains [
       Chains.Diode,
       Chains.Moonbeam,
-      Chains.MoonbaseAlpha,
       Chains.OasisSapphire
     ]
   end
 
   @all_chains Enum.uniq([
                 Chains.DiodeDev,
-                Chains.DiodeStaging,
-                Chains.Moonriver | @chains
+                Chains.DiodeStaging | @chains
               ])
 
   @doc """
@@ -47,7 +45,7 @@ defmodule RemoteChain do
   def ws_endpoints(chain) do
     String.upcase("#{inspect(chain)}_WS")
     |> String.replace(".", "_")
-    |> maybe_override(chainimpl(chain).ws_endpoints())
+    |> maybe_override(chain, :ws_endpoints)
   end
 
   @doc """
@@ -57,14 +55,14 @@ defmodule RemoteChain do
   def rpc_endpoints(chain) do
     String.upcase("#{inspect(chain)}_RPC")
     |> String.replace(".", "_")
-    |> maybe_override(chainimpl(chain).rpc_endpoints())
+    |> maybe_override(chain, :rpc_endpoints)
   end
 
-  defp maybe_override(name, endpoints) do
+  defp maybe_override(name, chain, key) do
     case System.get_env(name) do
-      nil -> endpoints
-      "!" <> value -> [value]
-      value -> [value]
+      nil -> apply(chainimpl(chain), key, [])
+      "!" <> value -> String.split(value)
+      value -> String.split(value)
     end
   end
 

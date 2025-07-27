@@ -3,7 +3,7 @@ defmodule Diode.Cmd do
   Diode Snap command line interface functions
   """
 
-  alias DiodeClient.{Wallet}
+  alias DiodeClient.{Wallet, Base16}
 
   def configure() do
     Diode.Config.configure()
@@ -24,6 +24,7 @@ defmodule Diode.Cmd do
       IO.puts("Description      : #{Diode.Version.description()}")
     end
 
+    IO.puts("Accountant       : #{Base16.encode(Diode.Accountant.address())}")
     IO.puts("Uptime           : #{div(Diode.uptime(), 1000)}")
 
     devcount = Network.Server.get_connections(Network.EdgeV2) |> Enum.count()

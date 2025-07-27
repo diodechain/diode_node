@@ -16,7 +16,9 @@ num = RemoteChain.RPCCache.rpc!(Chains.Moonbeam, "eth_getStorageAt", [
   Base16.encode(11287000, false)
 ]) |> Base16.decode_int()
 
-max(min(num, block), block - blocks_per_hour)
+num = 11279001
+blocks_per_hour = 600
+max(min(num, block), block - rem(block, blocks_per_hour))
 
 # May 27th
 KademliaLight.find_nodes(<<1>>)

@@ -78,6 +78,12 @@ defmodule RemoteChain.RPC do
         end
       end)
 
+    params =
+      case opts[:from] do
+        nil -> params
+        "0x" <> _ = from -> Map.put(params, :from, from)
+      end
+
     rpc(chain, "eth_call", [params, block])
   end
 

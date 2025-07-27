@@ -20,26 +20,19 @@ defmodule Monitor do
   end
 
   def dump(block \\ "latest") do
-    print("Name", "Address", "Moonbeam", "Alpha")
+    print("Name", "Address", "Moonbeam")
 
     for {name, address} <- nodes() do
       bal1 = balance(address, block)
-      bal2 = m1_balance(address, block)
-      print(name, address, bal1, bal2)
-      {name, bal1, bal2}
+      print(name, address, bal1)
+      {name, bal1}
     end
   end
 
-  def print(name, _address, alpha, beam) do
+  def print(name, _address, beam) do
     name = String.pad_trailing("#{name}", 5)
-    alpha = String.pad_leading("#{alpha}", 10)
     beam = String.pad_leading("#{beam}", 10)
-    IO.puts("#{name} #{alpha} #{beam}")
-  end
-
-  def m1_balance(address, block \\ "latest") do
-    RemoteChain.RPC.get_balance(Chains.MoonbaseAlpha, hex_address(address), hex_blockref(block))
-    |> Base16.decode_int()
+    IO.puts("#{name} #{beam}")
   end
 
   defp hex_blockref(ref) when ref in ["latest", "earliest"], do: ref

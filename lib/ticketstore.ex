@@ -141,7 +141,7 @@ defmodule TicketStore do
               |> Rlp.encode!()
 
             case CallPermitAdapter.forward_metatransaction(chain, tx) do
-              ["ok", txhash] -> txhash
+              ["response", "ok", txhash] -> txhash
               other -> {:error, other}
             end
           else

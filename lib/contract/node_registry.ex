@@ -7,7 +7,7 @@ defmodule Contract.NodeRegistry do
   """
 
   alias DiodeClient.{Base16, Hash, MetaTransaction, Rlp}
-  @address "0xD2AeC9B1DE400b9eb222d7B6e727c6Ad1D77cA2D" |> Base16.decode()
+  @address "0xc4b466f63c0A31302Bc8A688A7c90e1199Bb6f84" |> Base16.decode()
   @token "0x434116a99619f2B465A137199C38c1Aab0353913" |> Base16.decode()
   @chain_id 1284
   @max_uint256 115_792_089_237_316_195_423_570_985_008_687_907_853_269_984_665_640_564_039_457_584_007_913_129_639_935
@@ -17,19 +17,19 @@ defmodule Contract.NodeRegistry do
   def chain_id(), do: @chain_id
   def max_uint256(), do: @max_uint256
 
-  def register_node_transaction(node_address, accountant_address, stake) do
+  def register_node_transaction(accountant_address, stake) do
     Shell.transaction(
       Diode.wallet(),
       @address,
       "registerNode",
       ["address", "address", "uint256"],
-      [node_address, accountant_address, stake],
+      [Diode.address(), accountant_address, stake],
       chainId: @chain_id
     )
   end
 
   def accountant() do
-    Shell.call(chain_id(), @address, "nodes", ["address"], [Diode.address()], "latest")
+    Shell.call(chain_id(), @address, "nodes", ["address"], [Diode.address()])
     |> Hash.to_address()
   end
 
@@ -42,13 +42,13 @@ defmodule Contract.NodeRegistry do
     |> :binary.decode_unsigned()
   end
 
-  def set_token_allowance(amount) do
+  def set_token_allowance() do
     Shell.transaction(
       Diode.wallet(),
       @token,
       "approve",
       ["address", "uint256"],
-      [@address, amount],
+      [@address, max_uint256()],
       chainId: @chain_id
     )
     |> execute()
@@ -56,7 +56,7 @@ defmodule Contract.NodeRegistry do
 
   def execute(tx) do
     case Shell.call_tx!(tx, "latest") do
-      "0x" ->
+      "0x" <> _ ->
         chain = RemoteChain.chainimpl(chain_id())
         nonce = RemoteChain.NonceProvider.nonce(chain_id())
         tx = %DiodeClient.Transaction{tx | nonce: nonce}
@@ -81,7 +81,7 @@ defmodule Contract.NodeRegistry do
               |> Rlp.encode!()
 
             case CallPermitAdapter.forward_metatransaction(chain, tx) do
-              ["ok", txhash] -> txhash
+              ["response", "ok", txhash] -> txhash
               other -> {:error, other}
             end
           else
