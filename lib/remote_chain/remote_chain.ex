@@ -62,6 +62,7 @@ defmodule RemoteChain do
     case System.get_env(name) do
       nil -> apply(chainimpl(chain), key, [])
       "!" <> value -> String.split(value)
+      "+" <> value -> String.split(value) ++ apply(chainimpl(chain), key, [])
       value -> String.split(value)
     end
   end
