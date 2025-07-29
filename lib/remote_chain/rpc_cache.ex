@@ -241,6 +241,7 @@ defmodule RemoteChain.RPCCache do
   defp get_last_change_other(chain, address, block) do
     # Assuming 12s block time for moonbeam
     blocks_per_hour = div(3600, 6)
+    block = div(block, 2) * 2
 
     # `ChangeTracker.sol` slot for signaling: 0x1e4717b2dc5dfd7f487f2043bfe9999372d693bf4d9c51b5b84f1377939cd487
     rpc!(chain, "eth_getStorageAt", [
