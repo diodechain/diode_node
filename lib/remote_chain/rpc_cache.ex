@@ -132,6 +132,15 @@ defmodule RemoteChain.RPCCache do
     |> Enum.map(fn {_, result} -> result end)
   end
 
+  def call_cache(chain, to, from, data, block \\ "latest") do
+    block = resolve_block(chain, block)
+
+    # for call_cache requests we use the last change block as the base
+    # any contract not using change tracking will suffer 240 blocks (one hour) of caching
+    block = get_last_change(chain, to, block)
+    rpc(chain, "eth_call", [%{to: to, data: data, from: from}, block])
+  end
+
   def call(chain, to, from, data, block \\ "latest") do
     rpc!(chain, "eth_call", [%{to: to, data: data, from: from}, block])
   end
@@ -193,46 +202,56 @@ defmodule RemoteChain.RPCCache do
     Base16.encode(resolve_block(chain, block), false)
   end
 
+  @call_permit_address "0x000000000000000000000000000000000000080a"
   def get_last_change(chain, address, block \\ "latest") do
     block = resolve_block(chain, block)
+
+    cond do
+      String.downcase(address) == @call_permit_address -> block
+      diode?(chain) -> get_last_change_diode(chain, address, block)
+      true -> get_last_change_other(chain, address, block)
+    end
+  end
+
+  defp get_last_change_diode(chain, address, block) do
     cache = GenServer.call(name(chain), :cache, @default_timeout)
 
-    if diode?(chain) do
-      case Cache.get(cache, {chain, {:last_change_block, block}}) do
-        nil ->
-          root =
-            get_account_root(chain, address, block)
+    case Cache.get(cache, {chain, {:last_change_block, block}}) do
+      nil ->
+        root =
+          get_account_root(chain, address, block)
 
-          case Cache.get(cache, {chain, {:last_change_root, root}}) do
-            nil ->
-              GenServer.cast(name(chain), {:set_cache, {:last_change_root, root}, block})
-              GenServer.cast(name(chain), {:set_cache, {:last_change_block, block}, block})
-              block
+        case Cache.get(cache, {chain, {:last_change_root, root}}) do
+          nil ->
+            GenServer.cast(name(chain), {:set_cache, {:last_change_root, root}, block})
+            GenServer.cast(name(chain), {:set_cache, {:last_change_block, block}, block})
+            block
 
-            block ->
-              GenServer.cast(name(chain), {:set_cache, {:last_change_block, block}, block})
+          block ->
+            GenServer.cast(name(chain), {:set_cache, {:last_change_block, block}, block})
 
-              block
-          end
+            block
+        end
 
-        block ->
-          block
-      end
-    else
-      # Assuming 12s block time for moonbeam
-      blocks_per_hour = div(3600, 6)
+      block ->
+        block
+    end
+  end
 
-      # `ChangeTracker.sol` slot for signaling: 0x1e4717b2dc5dfd7f487f2043bfe9999372d693bf4d9c51b5b84f1377939cd487
-      rpc!(chain, "eth_getStorageAt", [
-        address,
-        "0x1e4717b2dc5dfd7f487f2043bfe9999372d693bf4d9c51b5b84f1377939cd487",
-        Base16.encode(block, false)
-      ])
-      |> Base16.decode_int()
-      |> case do
-        0 -> block - rem(block, blocks_per_hour)
-        num -> max(min(num, block), block - rem(block, blocks_per_hour))
-      end
+  defp get_last_change_other(chain, address, block) do
+    # Assuming 12s block time for moonbeam
+    blocks_per_hour = div(3600, 6)
+
+    # `ChangeTracker.sol` slot for signaling: 0x1e4717b2dc5dfd7f487f2043bfe9999372d693bf4d9c51b5b84f1377939cd487
+    rpc!(chain, "eth_getStorageAt", [
+      address,
+      "0x1e4717b2dc5dfd7f487f2043bfe9999372d693bf4d9c51b5b84f1377939cd487",
+      Base16.encode(block, false)
+    ])
+    |> Base16.decode_int()
+    |> case do
+      0 -> block - rem(block, blocks_per_hour)
+      num -> max(min(num, block), block - rem(block, blocks_per_hour))
     end
   end
 

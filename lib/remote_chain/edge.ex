@@ -154,6 +154,16 @@ defmodule RemoteChain.Edge do
           send_metatransaction(chain, to, call, sender, min_gas_limit)
         end
 
+      ["rpc", "eth_call", params] ->
+        with {:ok, [params = %{"to" => to, "data" => data}, block]} <- Jason.decode(params),
+             result when is_map(result) <-
+               RemoteChain.RPCCache.call_cache(chain, to, params["from"], data, block) do
+          response(Jason.encode!(result))
+        else
+          {:error, %Jason.DecodeError{}} -> error("invalid json params")
+          {:error, error} -> error(inspect(error))
+        end
+
       ["rpc", method, params] ->
         with {:ok, params} <- Jason.decode(params),
              result when is_map(result) <- RemoteChain.RPCCache.rpc(chain, method, params) do
