@@ -154,7 +154,7 @@ defmodule RemoteChain.Edge do
           send_metatransaction(chain, to, call, sender, min_gas_limit)
         end
 
-      ["rpc", "eth_call", params] ->
+      ["rpc", "eth_call", params] when chain != Chains.OasisSapphire ->
         with {:ok, [params = %{"to" => to, "data" => data}, block]} <- Jason.decode(params),
              result when is_map(result) <-
                RemoteChain.RPCCache.call_cache(chain, to, params["from"], data, block) do
