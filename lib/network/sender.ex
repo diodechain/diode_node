@@ -148,16 +148,11 @@ defmodule Network.Sender do
   @impl true
   def init([socket]) do
     q = self()
-
-    relay =
-      spawn_link(fn ->
-        relayer_loop(q, socket)
-      end)
-
+    relay = spawn_link(__MODULE__, :relayer_loop, [q, socket])
     {:ok, %Sender{partitions: %{}, waiting: nil, relay: relay}}
   end
 
-  defp relayer_loop(q, socket) do
+  def relayer_loop(q, socket) do
     case :ssl.send(socket, await(q)) do
       :ok -> relayer_loop(q, socket)
       other -> Process.exit(self(), other)
