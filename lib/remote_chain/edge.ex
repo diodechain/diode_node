@@ -321,15 +321,17 @@ defmodule RemoteChain.Edge do
         RemoteChain.NonceProvider.confirm_nonce(chain, nonce)
 
         # In order to ensure delivery we're broadcasting to all known endpoints of this chain
-        spawn(fn ->
-          RemoteChain.RPC.send_raw_transaction(chain, payload)
-
-          for endpoint <- Enum.shuffle(chain.rpc_endpoints()) do
-            RemoteChain.HTTP.send_raw_transaction(endpoint, payload)
-          end
-        end)
-
+        spawn(__MODULE__, :forward_raw_transaction, [chain, payload])
         response("ok", tx_hash)
+    end
+  end
+
+  def forward_raw_transaction(chain, payload) do
+    # In order to ensure delivery we're broadcasting to all known endpoints of this chain
+    RemoteChain.RPC.send_raw_transaction(chain, payload)
+
+    for endpoint <- Enum.shuffle(chain.rpc_endpoints()) do
+      RemoteChain.HTTP.send_raw_transaction(endpoint, payload)
     end
   end
 

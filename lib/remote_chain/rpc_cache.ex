@@ -448,14 +448,7 @@ defmodule RemoteChain.RPCCache do
     # to prevent block-reorgs from causing issues we're doing 5 blocks delay
     if optimistic_caching?() and block_number > 5 do
       block_number = block_number - 5
-
-      spawn(fn ->
-        if diode?(chain) do
-          rpc(chain, "dio_edgev2", [Base16.encode(Rlp.encode!(["getblockheader2", block_number]))])
-        end
-
-        get_block_by_number(chain, block_number)
-      end)
+      spawn(__MODULE__, :optimistic_block_cache, [block_number, chain])
     end
 
     {:noreply, %RPCCache{state | block_number: block_number, block_number_requests: []}}
@@ -509,6 +502,14 @@ defmodule RemoteChain.RPCCache do
         state = %RPCCache{state | request_collection: col, request_rpc: request_rpc}
         {:noreply, state}
     end
+  end
+
+  def optimistic_block_cache(block_number, chain) do
+    if diode?(chain) do
+      rpc(chain, "dio_edgev2", [Base16.encode(Rlp.encode!(["getblockheader2", block_number]))])
+    end
+
+    get_block_by_number(chain, block_number)
   end
 
   def resolve_block(chain, "latest"), do: block_number(chain)

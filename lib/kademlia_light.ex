@@ -196,11 +196,7 @@ defmodule KademliaLight do
         end)
 
       state = %{state | network: network}
-
-      spawn(fn ->
-        for stale_node <- stale, do: redistribute_stale(network, stale_node)
-      end)
-
+      spawn(__MODULE__, :update_stale_nodes, [stale, network])
       {:noreply, state}
     else
       {:noreply, state}
@@ -208,7 +204,7 @@ defmodule KademliaLight do
   end
 
   def handle_info(:save, state) do
-    spawn(fn -> Model.File.store(Diode.data_dir(@storage_file), state, true) end)
+    spawn(Model.File, :store, [Diode.data_dir(@storage_file), state, true])
     Process.send_after(self(), :save, 60_000)
     {:noreply, state}
   end
@@ -242,6 +238,10 @@ defmodule KademliaLight do
 
     Process.send_after(self(), :contact_seeds, 60_000)
     {:noreply, %{state | network: network}}
+  end
+
+  def update_stale_nodes(stale, network) do
+    for stale_node <- stale, do: redistribute_stale(network, stale_node)
   end
 
   @impl true

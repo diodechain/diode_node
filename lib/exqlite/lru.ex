@@ -51,11 +51,7 @@ defmodule Exqlite.LRU do
       end)
       |> Map.new()
 
-    spawn(fn ->
-      if get_setting(__MODULE__, "created_at") == nil do
-        set_setting(__MODULE__, "created_at", now())
-      end
-    end)
+    spawn(__MODULE__, :update_created_at, [])
 
     {:ok,
      %__MODULE__{
@@ -64,6 +60,12 @@ defmodule Exqlite.LRU do
        max_items: max_items,
        file_path: file_path
      }}
+  end
+
+  def update_created_at() do
+    if get_setting(__MODULE__, "created_at") == nil do
+      set_setting(__MODULE__, "created_at", now())
+    end
   end
 
   def created_at(name \\ __MODULE__) do
