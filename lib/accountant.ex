@@ -31,8 +31,7 @@ defmodule Diode.Accountant do
   end
 
   defp ensure_address(nil) do
-    Logger.info("Accountant address is configured to nil, nothing to do.")
-    :ok
+    ensure_address(<<0::unsigned-size(160)>>)
   end
 
   defp ensure_address(address) do
