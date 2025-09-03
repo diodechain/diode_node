@@ -37,6 +37,7 @@ defmodule RemoteChain.WSConn do
   @impl true
   def handle_connect(conn, state) do
     Process.monitor(state.owner)
+    Globals.put({__MODULE__, self()}, conn)
     state = %{state | conn: conn}
 
     %{
@@ -109,6 +110,12 @@ defmodule RemoteChain.WSConn do
   def handle_frame(other, state) do
     Logger.error("WSConn received unknown frame: #{inspect(other)}")
     {:ok, state}
+  end
+
+  def send_request(pid, request) when is_pid(pid) and is_binary(request) do
+    conn = Globals.await({__MODULE__, pid})
+    {:ok, frame} = WebSockex.Frame.encode_frame({:text, request})
+    :ok = WebSockex.Conn.socket_send(conn, frame)
   end
 
   @impl true

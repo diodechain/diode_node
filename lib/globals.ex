@@ -52,7 +52,15 @@ defmodule Globals do
   end
 
   def pop(key, default \\ nil) do
-    call({:pop, key, default})
+    case get(key) do
+      nil ->
+        default
+
+      value ->
+        :ets.delete(__MODULE__, key)
+        GenServer.cast(__MODULE__, :pop)
+        value
+    end
   end
 
   def incr(key, default \\ 0) do
@@ -220,6 +228,10 @@ defmodule Globals do
     {:noreply, publish(g, key, value, old, src_gen)}
   end
 
+  def handle_cast(:pop, g = %Globals{generation: generation}) do
+    {:noreply, %Globals{g | generation: generation + 1}}
+  end
+
   def handle_cast({:subscribe, whom, key}, g = %Globals{subscribers: subs, monitors: mons})
       when is_pid(whom) do
     {ref, keys} =
@@ -301,12 +313,6 @@ defmodule Globals do
     end
   end
 
-  def handle_call({:pop, key, default}, _from, g = %Globals{generation: generation}) do
-    value = get(key, default)
-    :ets.delete(__MODULE__, key)
-    {:reply, value, %Globals{g | generation: generation + 1}}
-  end
-
   def handle_call({:incr, key, default}, _from, g = %Globals{generation: generation}) do
     prev_value = get(key, default)
     value = prev_value + 1
@@ -348,14 +354,19 @@ defmodule Globals do
   def handle_info({:timeout, key, from}, g = %Globals{waiting: waiting}) do
     froms = Map.get(waiting, key, [])
     zombie? = Enum.all?(froms, fn {_gen, f, _timer} -> f != from end)
-    pid = Debouncer.worker({__MODULE__, key})
 
-    if pid == nil do
-      Logger.error("Timeout waiting for #{inspect(key)} (zombie=#{zombie?}) - No worker found")
-    else
-      Logger.error("Timeout waiting for #{inspect(key)} (zombie=#{zombie?}) - \
+    # Spawn a new process to handle the timeout reporting
+    # this protects Globals from waiting for the worker() and stracktrace() calls
+    spawn(fn ->
+      pid = Debouncer.worker({__MODULE__, key})
+
+      if pid == nil do
+        Logger.error("Timeout waiting for #{inspect(key)} (zombie=#{zombie?}) - No worker found")
+      else
+        Logger.error("Timeout waiting for #{inspect(key)} (zombie=#{zombie?}) - \
           Worker stuck in: #{inspect(Profiler.stacktrace(pid))}")
-    end
+      end
+    end)
 
     {:noreply, g}
   end
@@ -374,8 +385,6 @@ defmodule Globals do
     if old == nil or value != old do
       pids = Map.keys(Map.get(subs, key, %{}))
 
-      # This does effect `RemoteDrive.publish()` because the drive_dir is part of the value,
-      # using only the key would silently debounce remove values for different drives
       Debouncer.immediate(
         {__MODULE__, :publish, key, value},
         fn ->

@@ -63,7 +63,7 @@ defmodule RemoteChain.NodeProxy do
       }
       |> Poison.encode!()
 
-    WebSockex.cast(conn, {:send_request, request})
+    RemoteChain.WSConn.send_request(conn, request)
     RotatingFile.write(state.log, request <> "\n")
 
     {:noreply,

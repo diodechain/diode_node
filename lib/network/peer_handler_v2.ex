@@ -203,7 +203,14 @@ defmodule Network.PeerHandlerV2 do
 
   defp handle_msg([@store, key, value], state) do
     # Checks are made within KademliaSql
-    KademliaSql.maybe_update_object(key, value)
+    Debouncer.immediate(
+      {__MODULE__, :store, key},
+      fn ->
+        KademliaSql.maybe_update_object(key, value)
+      end,
+      10_000
+    )
+
     {[@response, @store, "ok"], state}
   end
 
