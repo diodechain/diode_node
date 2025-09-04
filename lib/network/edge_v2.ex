@@ -83,8 +83,8 @@ defmodule Network.EdgeV2 do
     {:noreply, send_socket(state, {:port, ref}, random_ref(), ["portsend", ref, data], trace)}
   end
 
-  def handle_cast(fun, state) when is_function(fun) do
-    fun.(state)
+  def handle_cast({:send_socket, partition, request_id, result}, state) do
+    {:noreply, send_socket(state, partition, request_id, result)}
   end
 
   def handle_cast({:trace, msg}, state) do
@@ -440,10 +440,8 @@ defmodule Network.EdgeV2 do
 
         spawn_link(fn ->
           result = handle_async_msg(method_params, state)
-
-          GenServer.cast(pid, fn state2 ->
-            {:noreply, send_socket(state2, request_id, request_id, result)}
-          end)
+          result = encode_request(request_id, result)
+          GenServer.cast(pid, {:send_socket, request_id, request_id, result})
         end)
 
         {:noreply, state}
@@ -646,8 +644,13 @@ defmodule Network.EdgeV2 do
     |> Rlp.decode!()
   end
 
-  defp encode(msg) do
-    Rlp.encode!(msg)
+  defp encode_request(request_id, msg) when is_list(msg) do
+    Rlp.encode!([request_id, msg])
+  end
+
+  defp encode_request(_request_id, msg) when is_binary(msg) do
+    # This is an optimization where we assume msg is already encoded
+    msg
   end
 
   defp is_portsend({:port, _}), do: true
@@ -668,7 +671,10 @@ defmodule Network.EdgeV2 do
       # early exit
       unpaid > Diode.ticket_grace() ->
         send(self(), {:stop_unpaid, unpaid})
-        msg = encode([random_ref(), ["goodbye", "ticket expected", "you might get blocked"]])
+
+        msg =
+          encode_request(random_ref(), ["goodbye", "ticket expected", "you might get blocked"])
+
         :ok = do_send_socket(state, partition, msg)
         account_outgoing(state, msg)
 
@@ -683,7 +689,7 @@ defmodule Network.EdgeV2 do
           if data == nil do
             account_outgoing(state)
           else
-            msg = encode([request_id, data])
+            msg = encode_request(request_id, data)
             :ok = do_send_socket(state, partition, msg, trace)
             account_outgoing(state, msg)
           end
