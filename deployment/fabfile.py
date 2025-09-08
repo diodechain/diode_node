@@ -40,13 +40,16 @@ def cache():
 def flush_cache():
   run("/opt/diode_node/bin/diode_node rpc 'IO.inspect(Diode.Cmd.flush_cache())'")
 
+def reload(module):
+  run("/opt/diode_node/bin/diode_node rpc 'IO.inspect(Shell.reload({}))'".format(module))
+
 @parallel
 def check():
   with hide('status', 'running'):
     local("echo | nc -q0  {} 41046 && echo {}=ok".format(env.host, env.host))
   run("/opt/diode_node/bin/diode_node pid")
 
-@parallel
+#@parallel
 def version():
   run("/opt/diode_node/bin/diode_node rpc 'IO.inspect({:c.uptime(), String.trim(Diode.Version.description())})'")
 

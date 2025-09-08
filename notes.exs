@@ -1,3 +1,9 @@
+# Sept 8th
+for chain <- [Chains.Diode, Chains.Moonbeam, Chains.OasisSapphire] do
+  rpc = RemoteChain.RPCCache.whereis(chain)
+  :sys.get_state(rpc).request_collection
+end
+
 # June 23rd
 RemoteChain.RPCCache.get_block_by_number(Chains.Diode, 9262330)
 
