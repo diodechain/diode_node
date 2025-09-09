@@ -48,6 +48,16 @@ defmodule RemoteChain do
     |> maybe_override(chain, :ws_endpoints)
   end
 
+  def ws_fallback_endpoints(chain) do
+    String.upcase("#{inspect(chain)}_WS_FALLBACK")
+    |> String.replace(".", "_")
+    |> System.get_env()
+    |> case do
+      nil -> []
+      value -> String.split(value)
+    end
+  end
+
   @doc """
   This function reads endpoints from environment variables when available. So it's possible
   to override the default endpoints by setting the environment variables like `CHAINS_MOONBEAM_RPC`.

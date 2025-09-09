@@ -1,3 +1,18 @@
+# Sept 9th
+bns = "0x8a093e3A83F63A00FFFC4729aa55482845a49294"
+b = 12524017
+RemoteChain.RPC.get_storage_at(Chains.Moonbeam, bns, "0x3", b-1000)
+RemoteChain.RPC.get_storage_at(Chains.Moonbeam, bns, "0x3", b)
+
+
+# Sept 8th
+chain_id = 1284
+peak = RemoteChain.peaknumber(chain_id)
+epoch = RemoteChain.epoch(chain_id, peak)
+RemoteChain.blocktime(chain_id, RemoteChain.chainimpl(chain_id).epoch_block(epoch))
+
+chain = Chains.Moonbeam
+
 # Sept 8th
 for chain <- [Chains.Diode, Chains.Moonbeam, Chains.OasisSapphire] do
   rpc = RemoteChain.RPCCache.whereis(chain)

@@ -19,7 +19,8 @@ defmodule RemoteChain.NodeProxy do
     requests: %{},
     lastblocks: %{},
     subscriptions: %{},
-    log: nil
+    log: nil,
+    fallback: nil
   ]
 
   def start_link(chain) do
@@ -53,32 +54,8 @@ defmodule RemoteChain.NodeProxy do
     state = ensure_connections(state)
     conn = Enum.random(Map.values(state.connections))
     id = state.req + 1
-
-    request =
-      %{
-        "jsonrpc" => "2.0",
-        "id" => id,
-        "method" => method,
-        "params" => params
-      }
-      |> Poison.encode!()
-
-    RemoteChain.WSConn.send_request(conn, request)
-    RotatingFile.write(state.log, request <> "\n")
-
-    {:noreply,
-     %{
-       state
-       | req: id,
-         requests:
-           Map.put(state.requests, id, %{
-             from: from,
-             method: method,
-             params: params,
-             start_ms: System.os_time(:millisecond),
-             conn: conn
-           })
-     }}
+    state = send_request(state, conn, id, method, params, from)
+    {:noreply, %{state | req: id}}
   end
 
   @impl true
@@ -125,7 +102,7 @@ defmodule RemoteChain.NodeProxy do
 
   def handle_info(
         {:DOWN, _ref, :process, down_pid, reason},
-        state = %{connections: connections, subscriptions: subs}
+        state = %{connections: connections, subscriptions: subs, fallback: fallback}
       ) do
     if Map.has_key?(subs, down_pid) do
       subs = Map.delete(subs, down_pid)
@@ -153,17 +130,23 @@ defmodule RemoteChain.NodeProxy do
         |> Map.new()
 
       new_connections = Enum.filter(connections, fn {_, pid} -> pid != down_pid end) |> Map.new()
-      {:noreply, %{state | connections: new_connections, requests: requests}}
+      new_fallback = if fallback == down_pid, do: nil, else: fallback
+
+      {:noreply,
+       %{state | connections: new_connections, requests: requests, fallback: new_fallback}}
     end
   end
 
-  def handle_info({:response, _ws_url, %{"id" => id} = response}, state) do
+  def handle_info(
+        {:response, _ws_url, %{"id" => id} = response},
+        state = %NodeProxy{fallback: fallback}
+      ) do
     case Map.pop(state.requests, id) do
       {nil, _} ->
         Logger.warning("No request found for response: #{inspect(response)}")
         {:noreply, state}
 
-      {%{from: from, start_ms: start_ms, method: method, params: params}, requests} ->
+      {%{from: from, start_ms: start_ms, method: method, params: params, conn: conn}, requests} ->
         time_ms = System.os_time(:millisecond) - start_ms
 
         if time_ms > 400 do
@@ -177,26 +160,79 @@ defmodule RemoteChain.NodeProxy do
           Logger.debug("RPC #{method} #{inspect(params)} took #{time_ms}ms")
         end
 
-        GenServer.reply(from, response)
-        {:noreply, %{state | requests: requests}}
+        if fallback != nil and conn != fallback and is_fallback_candidate(response) do
+          Logger.info("RPC #{method} #{inspect(params)} retrying with fallback")
+          state = send_request(%{state | requests: requests}, fallback, id, method, params, from)
+          {:noreply, state}
+        else
+          GenServer.reply(from, response)
+          {:noreply, %{state | requests: requests}}
+        end
     end
   end
 
-  defp ensure_connections(state = %NodeProxy{chain: chain, connections: connections})
-       when map_size(connections) < @security_level do
-    urls = MapSet.new(RemoteChain.ws_endpoints(chain))
-    existing = MapSet.new(Map.keys(connections))
-    new_urls = MapSet.difference(urls, existing)
-    new_url = MapSet.to_list(new_urls) |> Enum.random()
-
-    pid = RemoteChain.WSConn.start(self(), chain, new_url)
-    Process.monitor(pid)
-    state = %{state | connections: Map.put(connections, new_url, pid)}
-    ensure_connections(state)
+  def is_fallback_candidate(response) do
+    if Map.has_key?(response, "result") do
+      response["result"] in [
+        nil,
+        "0x0000000000000000000000000000000000000000000000000000000000000000"
+      ]
+    else
+      false
+    end
   end
 
-  defp ensure_connections(state) do
-    state
+  defp send_request(state, conn, id, method, params, from) do
+    request =
+      %{
+        "jsonrpc" => "2.0",
+        "id" => id,
+        "method" => method,
+        "params" => params
+      }
+      |> Poison.encode!()
+
+    RemoteChain.WSConn.send_request(conn, request)
+    RotatingFile.write(state.log, request <> "\n")
+
+    requests =
+      Map.put(state.requests, id, %{
+        from: from,
+        method: method,
+        params: params,
+        start_ms: System.os_time(:millisecond),
+        conn: conn
+      })
+
+    %{state | requests: requests}
+  end
+
+  defp ensure_connections(
+         state = %NodeProxy{chain: chain, connections: connections, fallback: fallback}
+       ) do
+    fallback_urls = RemoteChain.ws_fallback_endpoints(chain)
+
+    cond do
+      fallback == nil and length(fallback_urls) > 0 ->
+        pid = RemoteChain.WSConn.start(self(), chain, Enum.random(fallback_urls))
+        Process.monitor(pid)
+        state = %{state | fallback: pid}
+        ensure_connections(state)
+
+      map_size(connections) < @security_level ->
+        urls = MapSet.new(RemoteChain.ws_endpoints(chain))
+        existing = MapSet.new(Map.keys(connections))
+        new_urls = MapSet.difference(urls, existing)
+        new_url = MapSet.to_list(new_urls) |> Enum.random()
+
+        pid = RemoteChain.WSConn.start(self(), chain, new_url)
+        Process.monitor(pid)
+        state = %{state | connections: Map.put(connections, new_url, pid)}
+        ensure_connections(state)
+
+      true ->
+        state
+    end
   end
 
   def name(chain) do
