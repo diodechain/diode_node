@@ -160,7 +160,7 @@ defmodule RemoteChain.NodeProxy do
           Logger.debug("RPC #{method} #{inspect(params)} took #{time_ms}ms")
         end
 
-        if fallback != nil and conn != fallback and is_fallback_candidate(response) do
+        if fallback != nil and conn != fallback and is_fallback_candidate(method, response) do
           Logger.info("RPC #{method} #{inspect(params)} retrying with fallback")
           state = send_request(%{state | requests: requests}, fallback, id, method, params, from)
           {:noreply, state}
@@ -171,14 +171,21 @@ defmodule RemoteChain.NodeProxy do
     end
   end
 
-  def is_fallback_candidate(response) do
-    if Map.has_key?(response, "result") do
-      response["result"] in [
-        nil,
-        "0x0000000000000000000000000000000000000000000000000000000000000000"
-      ]
-    else
-      false
+  def is_fallback_candidate(method, response) do
+    result = response["result"]
+
+    case method do
+      "eth_getStorageAt" ->
+        result == "0x0000000000000000000000000000000000000000000000000000000000000000"
+
+      "eth_getCode" ->
+        result == "0x"
+
+      "eth_call" ->
+        get_in(response, ["error", "code"]) == -32603
+
+      _other ->
+        Map.has_key?(response, "result") and result == nil
     end
   end
 

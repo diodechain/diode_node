@@ -1,8 +1,11 @@
 # Sept 9th
+vi /etc/systemd/system/diode.service
 bns = "0x8a093e3A83F63A00FFFC4729aa55482845a49294"
 b = 12524017
 RemoteChain.RPC.get_storage_at(Chains.Moonbeam, bns, "0x3", b-1000)
 RemoteChain.RPC.get_storage_at(Chains.Moonbeam, bns, "0x3", b)
+RemoteChain.RPC.get_block_by_number(Chains.Moonbeam, b)
+Shell.call(Chains.Moonbeam, DiodeClient.Base16.decode(bns), "Version", [], [], blockRef: b-8_000_000)
 
 
 # Sept 8th
