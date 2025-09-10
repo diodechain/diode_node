@@ -113,16 +113,14 @@ defmodule RemoteChain.WSConn do
   end
 
   def send_request(pid, request) when is_pid(pid) and is_binary(request) do
-    conn = Globals.await({__MODULE__, pid})
-    {:ok, frame} = WebSockex.Frame.encode_frame({:text, request})
-    :ok = WebSockex.Conn.socket_send(conn, frame)
-  end
+    conn = Globals.get({__MODULE__, pid})
 
-  @impl true
-  # RemoteChain.RPC.block_number(Chains.Diode)
-  def handle_cast({:send_request, request}, state) do
-    send_frame(request, state)
-    {:ok, state}
+    if conn == nil do
+      {:error, :not_connected}
+    else
+      {:ok, frame} = WebSockex.Frame.encode_frame({:text, request})
+      WebSockex.Conn.socket_send(conn, frame)
+    end
   end
 
   @impl true

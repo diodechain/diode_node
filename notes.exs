@@ -1,3 +1,10 @@
+for chain <- [Chains.Diode, Chains.Moonbeam, Chains.OasisSapphire] do
+  rpc = RemoteChain.RPCCache.whereis(chain)
+  proxy = :global.whereis_name(elem(RemoteChain.NodeProxy.name(chain), 1))
+  {map_size(:sys.get_state(rpc).request_collection), map_size(:sys.get_state(proxy).requests)}
+end
+
+
 # Sept 9th
 vi /etc/systemd/system/diode.service
 bns = "0x8a093e3A83F63A00FFFC4729aa55482845a49294"

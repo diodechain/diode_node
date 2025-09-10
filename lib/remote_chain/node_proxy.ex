@@ -199,19 +199,29 @@ defmodule RemoteChain.NodeProxy do
       }
       |> Poison.encode!()
 
-    RemoteChain.WSConn.send_request(conn, request)
-    RotatingFile.write(state.log, request <> "\n")
+    ret = RemoteChain.WSConn.send_request(conn, request)
 
-    requests =
-      Map.put(state.requests, id, %{
-        from: from,
-        method: method,
-        params: params,
-        start_ms: System.os_time(:millisecond),
-        conn: conn
-      })
+    if :ok == ret do
+      RotatingFile.write(state.log, request <> "\n")
 
-    %{state | requests: requests}
+      requests =
+        Map.put(state.requests, id, %{
+          from: from,
+          method: method,
+          params: params,
+          start_ms: System.os_time(:millisecond),
+          conn: conn
+        })
+
+      %{state | requests: requests}
+    else
+      Logger.warning(
+        "Failed to send request to #{inspect(conn)}: #{inspect(request)}: #{inspect(ret)}"
+      )
+
+      GenServer.reply(from, {:error, :disconnect})
+      state
+    end
   end
 
   defp ensure_connections(
