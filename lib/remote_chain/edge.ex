@@ -6,7 +6,7 @@ defmodule RemoteChain.Edge do
   import Network.EdgeV2, only: [response: 1, response: 2, error: 1]
   require Logger
 
-  def wallet_factory_address(), do: Base16.decode("0x355DdBCf0e9fD70D78829eEcb443389290Ee53E1")
+  def wallet_factory_address(), do: Base16.decode("0x1E568739AF8FD8FE0748DEFB74A917EA9D38FE29")
 
   def handle_async_msg(chain, msg, state) do
     case msg do
