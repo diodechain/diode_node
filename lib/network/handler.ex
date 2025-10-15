@@ -23,7 +23,7 @@ defmodule Network.Handler do
 
       def init({state, [:connect, node_id, address, port]}) do
         setup_process(state)
-        log({node_id, address}, "Creating connect worker")
+        # log({node_id, address}, "Creating connect worker")
         {:ok, state, {:continue, [:connect, node_id, address, port]}}
       end
 
@@ -195,13 +195,13 @@ defmodule Network.Handler do
   def name({node_id, node_address}) do
     prefix =
       case node_id do
-        bin when is_binary(bin) -> Base16.prefix(node_id, 6) <> "@"
-        wallet when is_tuple(wallet) -> Base16.prefix(Wallet.address!(wallet), 6) <> "@"
+        bin when is_binary(bin) -> Base16.encode(node_id) <> "@"
+        wallet when is_tuple(wallet) -> Base16.encode(Wallet.address!(wallet)) <> "@"
         _ -> ""
       end
 
     if is_binary(node_id) do
-      :binary.part(Base.encode16(node_id, case: :lower), 0, 6) <> "@"
+      Base16.encode(node_id) <> "@"
     else
       ""
     end

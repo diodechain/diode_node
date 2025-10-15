@@ -752,7 +752,7 @@ defmodule Network.EdgeV2 do
   def on_nodeid(edge) do
     OnCrash.call(fn reason ->
       if reason != :kill_clone and reason != :normal do
-        log({edge, nil}, "Edge #{Wallet.printable(edge)} down for: #{inspect(reason)}")
+        log({edge, nil}, "down for: #{inspect(reason)}")
       end
     end)
 
