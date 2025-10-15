@@ -749,7 +749,13 @@ defmodule Network.EdgeV2 do
     %{state | unpaid_bytes: unpaid + unpaid_rx + byte_size(msg), unpaid_rx_bytes: 0}
   end
 
-  def on_nodeid(_edge) do
+  def on_nodeid(edge) do
+    OnCrash.call(fn reason ->
+      if reason != :kill_clone and reason != :normal do
+        log({edge, nil}, "Edge #{Wallet.printable(edge)} down for: #{inspect(reason)}")
+      end
+    end)
+
     :ok
   end
 
