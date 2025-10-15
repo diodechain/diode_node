@@ -199,7 +199,7 @@ defmodule RemoteChain.RPCCache do
   end
 
   defp normalize_block(chain, block) do
-    Base16.encode(resolve_block(chain, block), false)
+    Base16.encode(resolve_block(chain, block), short: true)
   end
 
   @call_permit_address "0x000000000000000000000000000000000000080a"
