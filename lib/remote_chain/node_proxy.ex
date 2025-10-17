@@ -173,18 +173,24 @@ defmodule RemoteChain.NodeProxy do
 
   def is_fallback_candidate(method, response) do
     result = response["result"]
+    error_message = get_in(response, ["error", "message"]) || ""
 
-    case method do
-      "eth_getStorageAt" ->
+    cond do
+      # -32603 is the Moonbeam code for "State already discarded"
+      get_in(response, ["error", "code"]) == -32603 ->
+        true
+
+      # Oasis chain error message for block not found
+      String.contains?(error_message, "roothash: block not found") ->
+        true
+
+      method == "eth_getStorageAt" ->
         result == "0x0000000000000000000000000000000000000000000000000000000000000000"
 
-      "eth_getCode" ->
+      method == "eth_getCode" ->
         result == "0x"
 
-      "eth_call" ->
-        get_in(response, ["error", "code"]) == -32603
-
-      _other ->
+      true ->
         Map.has_key?(response, "result") and result == nil
     end
   end
