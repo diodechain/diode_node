@@ -1,3 +1,10 @@
+# Oct 17th
+
+RemoteChain.RPC.get_code(Chains.OasisSapphire, "0x71a1d7c8111c792ac6e3eadacedcec2fbc25b63a", "0x963f21")
+RemoteChain.ws_fallback_endpoints(Chains.OasisSapphire)
+
+
+# Sept 26th
 for chain <- [Chains.Diode, Chains.Moonbeam, Chains.OasisSapphire] do
   rpc = RemoteChain.RPCCache.whereis(chain)
   proxy = :global.whereis_name(elem(RemoteChain.NodeProxy.name(chain), 1))
