@@ -20,7 +20,7 @@ defmodule Contract.Registry do
       fleet = call(chain_id, "EpochFleet", ["address"], [fleet], block_ref)
 
       [[_fleet, totalConnections, totalBytes, nodeArray]] =
-        ABI.decode_types(["(address, uint256, uint256, address[])"], fleet)
+        ABI.decode_args(["(address, uint256, uint256, address[])"], fleet)
 
       %{
         totalConnections: totalConnections,
@@ -31,7 +31,7 @@ defmodule Contract.Registry do
       fleet = call(chain_id, "GetFleet", ["address"], [fleet], block_ref)
 
       [[exists, currentBalance, withdrawRequestSize, withdrawableBalance, currentEpoch, score]] =
-        ABI.decode_types(["(bool, uint256, uint256, uint256, uint256, uint256)"], fleet)
+        ABI.decode_args(["(bool, uint256, uint256, uint256, uint256, uint256)"], fleet)
 
       %{
         exists: exists,
@@ -57,7 +57,7 @@ defmodule Contract.Registry do
           block_ref
         )
 
-      hd(ABI.decode_types(["uint256"], score))
+      hd(ABI.decode_args(["uint256"], score))
     end
   end
 

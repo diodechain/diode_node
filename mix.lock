@@ -14,7 +14,7 @@
   "deoxysii": {:hex, :deoxysii, "1.0.4", "6514fc898fef5a24287770d6c2e2ffeb7ff332bd2ff2d7018b099dc1fc057b95", [:mix], [], "hexpm", "5c4ab28b0d81e552d504b28dc55cda5cf9f89405daa1a3c8f896557627ba5cac"},
   "dets_plus": {:hex, :dets_plus, "2.4.3", "d440791412ecb4b2aef283837c50d40ba4f4c28ed617fff46e3f1f515ec7ebc9", [:mix], [{:paged_file, "~> 1.1", [hex: :paged_file, repo: "hexpm", optional: false]}], "hexpm", "6c7e0a89cebac1a8ce5cdf3f5ce9947909749108e399d2625bbac6b6794d73d1"},
   "dialyxir": {:hex, :dialyxir, "1.4.6", "7cca478334bf8307e968664343cbdb432ee95b4b68a9cba95bdabb0ad5bdfd9a", [:mix], [{:erlex, ">= 0.2.7", [hex: :erlex, repo: "hexpm", optional: false]}], "hexpm", "8cf5615c5cd4c2da6c501faae642839c8405b49f8aa057ad4ae401cb808ef64d"},
-  "diode_client": {:git, "https://github.com/diodechain/diode_client_ex.git", "c628c0a44a482cd3d8f5548b5b4c21223fc80d33", []},
+  "diode_client": {:git, "https://github.com/diodechain/diode_client_ex.git", "c214c2c7b83e9ef102e18bd5572f8bfeacfb8871", []},
   "earmark_parser": {:hex, :earmark_parser, "1.4.44", "f20830dd6b5c77afe2b063777ddbbff09f9759396500cdbe7523efd58d7a339c", [:mix], [], "hexpm", "4778ac752b4701a5599215f7030989c989ffdc4f6df457c5f36938cc2d2a2750"},
   "eblake2": {:hex, :eblake2, "1.0.0", "ec8ad20e438aab3f2e8d5d118c366a0754219195f8a0f536587440f8f9bcf2ef", [:rebar3], [], "hexpm", "3c4d300a91845b25d501929a26ac2e6f7157480846fab2347a4c11ae52e08a99"},
   "elixir_make": {:hex, :elixir_make, "0.9.0", "6484b3cd8c0cee58f09f05ecaf1a140a8c97670671a6a0e7ab4dc326c3109726", [:mix], [], "hexpm", "db23d4fd8b757462ad02f8aa73431a426fe6671c80b200d9710caf3d1dd0ffdb"},

@@ -45,6 +45,10 @@ defmodule Diode do
       File.rm("remoterpc_cache")
     end
 
+    with [port | _] <- edge2_ports() do
+      System.put_env("SEED_LIST", "localhost:#{port}")
+    end
+
     puts("")
 
     children =

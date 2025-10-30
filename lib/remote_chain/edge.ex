@@ -269,6 +269,14 @@ defmodule RemoteChain.Edge do
     gas_limit = min_gas_limit + 100_000
     chain_id = chain.chain_id()
 
+    {type, call} =
+      if chain == Chains.OasisSapphire do
+        DiodeClient.ensure_wallet()
+        {"encrypted", DiodeClient.OasisSapphire.encrypt_data(call)}
+      else
+        {"plain", call}
+      end
+
     with false <- RemoteChain.TxRelay.pending_sender_tx?(chain, sender),
          {:error, reason} <-
            RemoteChain.RPC.call(
@@ -281,7 +289,7 @@ defmodule RemoteChain.Edge do
       maybe_nonce = RemoteChain.NonceProvider.peek_nonce(chain)
 
       Logger.error(
-        "RTX #{chain_id}/#{maybe_nonce} from #{Base16.encode(sender)} call failed: #{inspect(reason)}"
+        "RTX #{type} #{chain_id}/#{maybe_nonce} from #{Base16.encode(sender)} call failed: #{inspect(reason)}"
       )
 
       error("transaction_rejected")
@@ -311,7 +319,7 @@ defmodule RemoteChain.Edge do
           |> Base16.encode()
 
         Logger.info(
-          "RTX #{chain_id}/#{nonce} from #{Base16.encode(sender)} => #{tx_hash} (#{inspect(tx)})"
+          "RTX #{type} #{chain_id}/#{nonce} from #{Base16.encode(sender)} => #{tx_hash} (#{inspect(tx)})"
         )
 
         # We're pushing to the TxRelay keep alive server to ensure the TX

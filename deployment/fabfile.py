@@ -50,6 +50,9 @@ def check():
   run("/opt/diode_node/bin/diode_node pid")
 
 #@parallel
+def uptime():
+  run("/opt/diode_node/bin/diode_node rpc 'IO.inspect({:c.uptime(), String.trim(Diode.Version.description())})'")
+
 def version():
   run("/opt/diode_node/bin/diode_node rpc 'IO.inspect({:c.uptime(), String.trim(Diode.Version.description())})'")
 
