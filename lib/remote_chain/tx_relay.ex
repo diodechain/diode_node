@@ -40,7 +40,26 @@ defmodule RemoteChain.TxRelay do
   end
 
   @impl true
-  def handle_cast(tx = %Tx{}, %TxRelay{txlist: txlist} = state) do
+  def handle_cast(tx = %Tx{metatx: metatx}, %TxRelay{txlist: txlist} = state) do
+    nonce = Transaction.nonce(metatx)
+
+    txlist =
+      Enum.reject(txlist, fn tx ->
+        tx_nonce = Transaction.nonce(tx.metatx)
+        tx_hash = Transaction.hash(tx.metatx) |> Base16.encode()
+        tx_chain_id = Transaction.chain_id(tx.metatx)
+
+        if tx_nonce >= nonce do
+          Logger.info(
+            "RTX removing tx #{tx_chain_id}/#{tx_nonce} => #{tx_hash} because it's >= #{nonce}"
+          )
+
+          true
+        else
+          false
+        end
+      end)
+
     {:noreply, %TxRelay{state | txlist: [tx | txlist]}}
   end
 
