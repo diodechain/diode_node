@@ -97,10 +97,11 @@ defmodule Network.EdgeV2 do
   end
 
   @impl true
-  def terminate(reason, %{sender: sender}) do
-    # log(state, "Received terminate ~p ~p", [reason, state])
+  def terminate(reason, state = %{sender: sender}) do
     if reason == :normal do
       Network.Sender.stop(sender)
+    else
+      log(state, "Received terminate: #{inspect(reason)}")
     end
 
     reason
