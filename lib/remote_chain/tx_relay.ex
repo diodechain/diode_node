@@ -13,7 +13,7 @@ defmodule RemoteChain.TxRelay do
   defstruct [:chain, :txlist]
 
   defmodule Tx do
-    defstruct [:metatx, :payload, :sender]
+    defstruct [:metatx, :payload, :sender, :timestamp]
   end
 
   def start_link(chain) do
@@ -31,7 +31,12 @@ defmodule RemoteChain.TxRelay do
   end
 
   def keep_alive(chain, metatx, payload, sender) do
-    GenServer.cast(name(chain), %Tx{metatx: metatx, payload: payload, sender: sender})
+    GenServer.cast(name(chain), %Tx{
+      metatx: metatx,
+      payload: payload,
+      sender: sender,
+      timestamp: System.os_time(:second)
+    })
   end
 
   @impl true
@@ -94,6 +99,13 @@ defmodule RemoteChain.TxRelay do
         chain_id = Transaction.chain_id(metatx)
         nonce = Transaction.nonce(metatx)
         Logger.info("RTX done: #{chain_id}/#{nonce} => #{tx_hash}")
+        process(rest, nonce, gas_price, state)
+
+      tx.timestamp < System.os_time(:second) - 300 ->
+        tx_hash = Transaction.hash(metatx) |> Base16.encode()
+        chain_id = Transaction.chain_id(metatx)
+        nonce = Transaction.nonce(metatx)
+        Logger.warning("RTX timeout: #{chain_id}/#{nonce} => #{tx_hash}")
         process(rest, nonce, gas_price, state)
 
       tx_gas_price < gas_price ->
