@@ -54,6 +54,8 @@ defmodule Diode do
     children =
       [
         Globals,
+        {BinaryLRU, [name: :memory_cache, max_memory_size: 100_000_000]},
+        {Exqlite.LRU, [file_path: Diode.data_dir("lru.sq3")]},
         Stats,
         {Exqlite.LRU, [name: Network.Stats.LRU, file_path: Diode.data_dir("network_stats.sq3")]},
         Network.Stats,
@@ -61,9 +63,7 @@ defmodule Diode do
         TicketStore,
         Cron,
         supervisor(Channels),
-        {PubSub, args},
-        {BinaryLRU, [name: :memory_cache, max_memory_size: 100_000_000]},
-        {Exqlite.LRU, [file_path: Diode.data_dir("lru.sq3")]}
+        {PubSub, args}
       ]
 
     with {:ok, pid} <-

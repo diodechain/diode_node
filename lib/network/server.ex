@@ -94,7 +94,14 @@ defmodule Network.Server do
   end
 
   def get_connections(name) do
-    GenServer.call(name, :get_connections)
+    with pid <- Process.whereis(name),
+         true <- is_pid(pid),
+         {:ok, connections} <- GenServer.call(pid, :get_connections) do
+      connections
+    else
+      _ ->
+        %{}
+    end
   end
 
   def ensure_node_connection(name, node_id, address, port)
