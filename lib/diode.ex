@@ -5,7 +5,7 @@ require Logger
 
 defmodule Diode do
   use Application
-  alias DiodeClient.{Hash, Object, Wallet}
+  alias DiodeClient.{Hash, Object, Wallet, Base16}
 
   def start(type, args) do
     if Application.get_env(:diode, :no_start) do
@@ -45,9 +45,7 @@ defmodule Diode do
       File.rm("remoterpc_cache")
     end
 
-    with [port | _] <- edge2_ports() do
-      System.put_env("SEED_LIST", "localhost:#{port}")
-    end
+    maybe_set_self_seed()
 
     puts("")
 
@@ -317,5 +315,20 @@ defmodule Diode do
   def uptime() do
     {uptime, _} = :erlang.statistics(:wall_clock)
     uptime
+  end
+
+  defp maybe_set_self_seed() do
+    case System.get_env("SEED_LIST") do
+      nil ->
+        case edge2_ports() do
+          [] -> :ok
+          [_ | _] ->
+            id = Wallet.address!(Diode.wallet()) |> Base16.encode()
+            System.put_env("SEED_LIST", "diode://#{id}@localhost:#{peer2_port()}")
+        end
+
+      _ ->
+        :ok
+    end
   end
 end
