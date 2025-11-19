@@ -210,8 +210,8 @@ defmodule KademliaLight do
   end
 
   def handle_info(:contact_seeds, state = %KademliaLight{network: network}) do
-    for seed <- Diode.seeds() do
-      %URI{userinfo: node_id, host: address, port: port} = URI.parse(seed)
+    for peer_server <- Diode.default_peer_list() do
+      %URI{userinfo: node_id, host: address, port: port} = URI.parse(peer_server)
 
       id =
         case node_id do
