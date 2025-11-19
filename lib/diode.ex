@@ -270,8 +270,8 @@ defmodule Diode do
 
   def default_peer2_port(), do: 51055
 
-  def seeds() do
-    Diode.Config.get("SEED_LIST")
+  def default_peer_list() do
+    Diode.Config.get("DEFAULT_PEER_LIST")
     |> String.split(" ", trim: true)
     |> Enum.reject(fn item -> item == "none" end)
   end

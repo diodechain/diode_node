@@ -26,7 +26,7 @@ defmodule Diode.Config do
 
         "#{a}.#{b}.#{c}.#{d}"
       end,
-      "SEED_LIST" => fn ->
+      "DEFAULT_PEER_LIST" => fn ->
         [
           "diode://0xceca2f8cf1983b4cf0c1ba51fd382c2bc37aba58@us1.prenet.diode.io:51055",
           "diode://0x7e4cd38d266902444dc9c8f7c0aa716a32497d0b@us2.prenet.diode.io:51055",
