@@ -85,6 +85,7 @@ defmodule Model.KademliaSql do
 
   def put_object(key, object) do
     object = BertInt.encode!(object)
+
     query!(
       "REPLACE INTO p2p_objects (key, object, stored_at) VALUES(?1, ?2, ?3)",
       [key, object, now_seconds()]
@@ -215,7 +216,9 @@ defmodule Model.KademliaSql do
     epoch = safe_ticket_epoch(ticket)
 
     cond do
-      chain_id == nil or epoch == nil -> false
+      chain_id == nil or epoch == nil ->
+        false
+
       true ->
         with {:ok, current_epoch} <- safe_chain_epoch(chain_id) do
           epoch + @ticket_epoch_grace < current_epoch

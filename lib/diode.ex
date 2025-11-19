@@ -321,7 +321,9 @@ defmodule Diode do
     case System.get_env("SEED_LIST") do
       nil ->
         case edge2_ports() do
-          [] -> :ok
+          [] ->
+            :ok
+
           [_ | _] ->
             id = Wallet.address!(Diode.wallet()) |> Base16.encode()
             System.put_env("SEED_LIST", "diode://#{id}@localhost:#{peer2_port()}")
