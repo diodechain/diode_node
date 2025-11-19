@@ -4,13 +4,10 @@
 defmodule Model.KademliaSql do
   alias RemoteChain.RPCCache
   alias Model.Sql
-  alias DiodeClient.{Object}
-  alias DiodeClient.Object.Ticket, as: Ticket
-  import DiodeClient.Object.TicketV1, only: :macros
+  alias DiodeClient.Object
   import DiodeClient.Object.TicketV2, only: :macros
   require Logger
 
-  @ticket_epoch_grace 1
   @ticket_ttl_seconds 24 * 60 * 60
 
   def query!(sql, params \\ []) do
@@ -97,28 +94,14 @@ defmodule Model.KademliaSql do
   end
 
   def object(key) do
-    Sql.query!(__MODULE__, "SELECT object, stored_at FROM p2p_objects WHERE key = ?1", [key])
-    |> case do
-      [[object_blob, stored_at]] ->
-        case decode_binary(key, object_blob, stored_at) do
-          {_, binary, _} -> binary
-          nil -> nil
-        end
-
-      [] ->
-        nil
-    end
+    Sql.fetch!(__MODULE__, "SELECT object FROM p2p_objects WHERE key = ?1", key)
   end
 
   def scan() do
-    query!("SELECT key, object, stored_at FROM p2p_objects")
-    |> Enum.reduce([], fn row, acc ->
-      case decode_term_row(row) do
-        nil -> acc
-        tuple -> [tuple | acc]
-      end
+    query!("SELECT key, object FROM p2p_objects")
+    |> Enum.map(fn [key, obj] ->
+      {key, BertInt.decode!(obj)}
     end)
-    |> Enum.reverse()
   end
 
   @spec objects(integer, integer) :: any
@@ -128,22 +111,18 @@ defmodule Model.KademliaSql do
 
     if range_start < range_end do
       query!(
-        "SELECT key, object, stored_at FROM p2p_objects WHERE key >= ?1 AND key <= ?2",
+        "SELECT key, object FROM p2p_objects WHERE key >= ?1 AND key <= ?2",
         [bstart, bend]
       )
     else
       query!(
-        "SELECT key, object, stored_at FROM p2p_objects WHERE key >= ?1 OR key <= ?2",
+        "SELECT key, object FROM p2p_objects WHERE key >= ?1 OR key <= ?2",
         [bstart, bend]
       )
     end
-    |> Enum.reduce([], fn row, acc ->
-      case decode_binary_row(row) do
-        nil -> acc
-        {key, binary, _stored_at} -> [{key, binary} | acc]
-      end
+    |> Enum.map(fn [key, obj] ->
+      {key, BertInt.decode!(obj)}
     end)
-    |> Enum.reverse()
   end
 
   defp await(chain) do
@@ -158,109 +137,12 @@ defmodule Model.KademliaSql do
     end
   end
 
-  defp decode_binary_row([key, object_blob, stored_at]) do
-    decode_binary(key, object_blob, stored_at)
-  end
-
-  defp decode_term_row(row) do
-    with {key, binary, stored_at} <- decode_binary_row(row) do
-      {key, Object.decode!(binary), stored_at}
-    end
-  end
-
-  defp decode_binary(key, object_blob, stored_at) do
-    binary = BertInt.decode!(object_blob)
-
-    if stale_object?(binary, stored_at) do
-      delete_object(key)
-      nil
-    else
-      {key, binary, stored_at}
-    end
-  end
-
-  defp stale_object?(binary, stored_at, now \\ now_seconds()) do
-    case maybe_decode_ticket(binary) do
-      {:ticket, ticket} -> stale_ticket?(ticket, stored_at, now)
-      _ -> false
-    end
-  end
-
-  defp maybe_decode_ticket(binary) do
-    case safe_decode_object(binary) do
-      {:ok, ticketv1() = ticket} -> {:ticket, ticket}
-      {:ok, ticketv2() = ticket} -> {:ticket, ticket}
-      _ -> :not_ticket
-    end
-  end
-
-  defp safe_decode_object(binary) do
-    {:ok, Object.decode!(binary)}
-  rescue
-    _ -> :error
-  end
-
-  defp stale_ticket?(ticket, stored_at, now) do
-    time_expired?(stored_at, now) or epoch_expired?(ticket)
-  end
-
-  defp time_expired?(stored_at, now)
-       when is_integer(stored_at) and stored_at > 0 do
-    now - stored_at > @ticket_ttl_seconds
-  end
-
-  defp time_expired?(_stored_at, _now), do: false
-
-  defp epoch_expired?(ticket) do
-    chain_id = safe_chain_id(ticket)
-    epoch = safe_ticket_epoch(ticket)
-
-    cond do
-      chain_id == nil or epoch == nil ->
-        false
-
-      true ->
-        with {:ok, current_epoch} <- safe_chain_epoch(chain_id) do
-          epoch + @ticket_epoch_grace < current_epoch
-        else
-          _ -> false
-        end
-    end
-  end
-
-  defp safe_chain_id(ticket) do
-    Ticket.chain_id(ticket)
-  rescue
-    _ -> nil
-  end
-
-  defp safe_ticket_epoch(ticket) do
-    Ticket.epoch(ticket)
-  rescue
-    _ -> nil
-  end
-
-  defp safe_chain_epoch(chain_id) do
-    {:ok, RemoteChain.epoch(chain_id)}
-  rescue
-    _ -> :error
-  end
-
   def prune_stale_objects() do
-    now = now_seconds()
+    deadline = now_seconds() - @ticket_ttl_seconds
 
-    removed =
-      query!("SELECT key, object, stored_at FROM p2p_objects")
-      |> Enum.reduce(0, fn [key, object_blob, stored_at], acc ->
-        binary = BertInt.decode!(object_blob)
+    query!("DELETE FROM p2p_objects WHERE stored_at > 0 AND stored_at < ?1", [deadline])
 
-        if stale_object?(binary, stored_at, now) do
-          delete_object(key)
-          acc + 1
-        else
-          acc
-        end
-      end)
+    removed = Sql.lookup!(__MODULE__, "SELECT changes()", [], 0)
 
     if removed > 0 do
       Logger.info("Removed #{removed} stale ticket objects")
@@ -278,13 +160,13 @@ defmodule Model.KademliaSql do
 
     count =
       scan()
-      |> Enum.filter(fn {_key, obj, _stored_at} ->
+      |> Enum.filter(fn {_key, obj} ->
         case obj do
           ticketv2(epoch: tepoch) -> tepoch >= epoch
           _ -> false
         end
       end)
-      |> Enum.map(fn {key, obj, _stored_at} ->
+      |> Enum.map(fn {key, obj} ->
         # After a chain fork some signatures might have become invalid
         hash = obj |> Object.key() |> KademliaLight.hash()
 

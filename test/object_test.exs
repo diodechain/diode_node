@@ -65,18 +65,8 @@ defmodule ObjectTest do
     end
   end
 
-  test "stale tickets expire based on ttl" do
-    key = <<1::256>>
-    persist_ticket(key)
-
-    old = System.os_time(:second) - 2 * 24 * 60 * 60
-    Model.KademliaSql.query!("UPDATE p2p_objects SET stored_at = ?1 WHERE key = ?2", [old, key])
-
-    assert Model.KademliaSql.object(key) == nil
-  end
-
   test "ticket gc removes stale rows" do
-    key = <<2::256>>
+    key = <<1::256>>
     persist_ticket(key)
 
     old = System.os_time(:second) - 2 * 24 * 60 * 60
