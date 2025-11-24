@@ -71,6 +71,7 @@ defmodule ObjectTest do
 
     ttl = 246_060
     recent = System.os_time(:second) - ttl + 10
+
     Model.KademliaSql.query!("UPDATE p2p_objects SET stored_at = ?1 WHERE key = ?2", [recent, key])
 
     assert Model.KademliaSql.prune_stale_objects() == 0
