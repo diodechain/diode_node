@@ -52,10 +52,8 @@ defmodule KBuckets do
   end
 
   def object(item = %Item{}) do
-    case Model.KademliaSql.object(key(item)) do
-      nil -> nil
-      binary -> Object.decode!(binary)
-    end
+    Model.KademliaSql.object(key(item))
+    |> Object.decode!()
   end
 
   def to_uri(item) do

@@ -391,26 +391,17 @@ defmodule Network.Rpc do
         KademliaLight.network()
         |> KBuckets.to_list()
         |> Enum.filter(fn item -> not KBuckets.is_self(item) end)
-        |> Enum.reduce([], fn item, acc ->
+        |> Enum.map(fn item ->
           address = Wallet.address!(item.node_id)
 
-          case KBuckets.object(item) do
-            nil ->
-              acc
-
-            object ->
-              [
-                %{
-                  connected: Map.has_key?(conns, Wallet.address!(item.node_id)),
-                  last_seen: encode16(item.last_connected),
-                  last_error: encode16(item.last_error),
-                  node_id: encode16(address),
-                  node: Json.prepare!(object, big_x: false),
-                  retries: encode16(item.retries)
-                }
-                | acc
-              ]
-          end
+          %{
+            connected: Map.has_key?(conns, Wallet.address!(item.node_id)),
+            last_seen: encode16(item.last_connected),
+            last_error: encode16(item.last_error),
+            node_id: encode16(address),
+            node: Json.prepare!(KBuckets.object(item), big_x: false),
+            retries: encode16(item.retries)
+          }
         end)
         |> Enum.reverse()
         |> Enum.concat(connected)

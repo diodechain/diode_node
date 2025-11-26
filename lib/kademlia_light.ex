@@ -166,7 +166,39 @@ defmodule KademliaLight do
   end
 
   def network() do
-    call(fn _from, state -> {:reply, state.network, state} end)
+    call(&ensure_network_integrity/2)
+  end
+
+  defp ensure_network_integrity(_from, state) do
+    state = ensure_network_integrity!(state)
+    {:reply, state.network, state}
+  end
+
+  defp ensure_network_integrity!(state = %KademliaLight{network: network}) do
+    missing =
+      KBuckets.to_list(network)
+      |> Enum.reject(&KBuckets.is_self/1)
+      |> Enum.filter(fn item ->
+        KademliaSql.object(KBuckets.key(item)) == nil
+      end)
+
+    if missing == [] do
+      state
+    else
+      missing_ids =
+        missing
+        |> Enum.map(fn %KBuckets.Item{node_id: node_id} -> Wallet.printable(node_id) end)
+        |> Enum.join(", ")
+
+      Logger.error(
+        "KademliaLight network missing #{length(missing)} objects; clearing cached table: #{missing_ids}"
+      )
+
+      reset_state = %KademliaLight{network: KBuckets.new(), tasks: %{}}
+      Model.File.store(Diode.data_dir(@storage_file), reset_state, true)
+
+      raise "KademliaLight network contains entries without persisted objects"
+    end
   end
 
   @impl true
@@ -209,7 +241,10 @@ defmodule KademliaLight do
     {:noreply, state}
   end
 
-  def handle_info(:contact_seeds, state = %KademliaLight{network: network}) do
+  def handle_info(:contact_seeds, state = %KademliaLight{}) do
+    state = ensure_network_integrity!(state)
+    network = state.network
+
     for peer_server <- Diode.default_peer_list() do
       %URI{userinfo: node_id, host: address, port: port} = URI.parse(peer_server)
 
@@ -357,63 +392,51 @@ defmodule KademliaLight do
   end
 
   def rpc(%KBuckets.Item{node_id: node_id} = node, call) do
-    case ensure_node_connection(node) do
-      nil ->
-        Logger.debug(
-          "Skipping rpc to #{Wallet.printable(node_id)} because node object is missing"
+    pid = ensure_node_connection(node)
+
+    try do
+      GenServer.call(pid, {:rpc, call}, 2000)
+    rescue
+      error ->
+        Logger.warning(
+          "Failed to get a result from #{Wallet.printable(node_id)} #{inspect(error)}"
+        )
+
+        []
+    catch
+      :exit, {:timeout, _} ->
+        Debouncer.immediate(
+          {:timeout, node_id},
+          fn ->
+            Logger.info("Timeout while getting a result from #{Wallet.printable(node_id)}")
+          end,
+          60_000
         )
 
         []
 
-      pid ->
-        try do
-          GenServer.call(pid, {:rpc, call}, 2000)
-        rescue
-          error ->
-            Logger.warning(
-              "Failed to get a result from #{Wallet.printable(node_id)} #{inspect(error)}"
-            )
+      :exit, {:normal, _} ->
+        Debouncer.immediate(
+          {:down, node_id},
+          fn ->
+            Logger.info("Connection down while getting a result from #{Wallet.printable(node_id)}")
+          end,
+          60_000
+        )
 
-            []
-        catch
-          :exit, {:timeout, _} ->
-            Debouncer.immediate(
-              {:timeout, node_id},
-              fn ->
-                Logger.info("Timeout while getting a result from #{Wallet.printable(node_id)}")
-              end,
-              60_000
-            )
+        []
 
-            []
+      any, what ->
+        Logger.warning(
+          "Failed(2) to get a result from #{Wallet.printable(node_id)} #{inspect({any, what})}"
+        )
 
-          :exit, {:normal, _} ->
-            Debouncer.immediate(
-              {:down, node_id},
-              fn ->
-                Logger.info(
-                  "Connection down while getting a result from #{Wallet.printable(node_id)}"
-                )
-              end,
-              60_000
-            )
-
-            []
-
-          any, what ->
-            Logger.warning(
-              "Failed(2) to get a result from #{Wallet.printable(node_id)} #{inspect({any, what})}"
-            )
-
-            []
-        end
+        []
     end
   end
 
   def rpcast(%KBuckets.Item{} = node, call) do
-    if pid = ensure_node_connection(node) do
-      GenServer.cast(pid, {:rpc, call})
-    end
+    GenServer.cast(ensure_node_connection(node), {:rpc, call})
   end
 
   defp queue_redistribute(network, node) do
@@ -548,19 +571,10 @@ defmodule KademliaLight do
         Diode.peer2_port()
       )
     else
-      case KBuckets.object(item) do
-        nil ->
-          Logger.debug(
-            "Missing node object for #{Wallet.printable(node_id)}, skipping connection"
-          )
-
-          nil
-
-        server ->
-          host = Server.host(server)
-          port = Server.peer_port(server)
-          Network.Server.ensure_node_connection(PeerHandlerV2, node_id, host, port)
-      end
+      server = KBuckets.object(item)
+      host = Server.host(server)
+      port = Server.peer_port(server)
+      Network.Server.ensure_node_connection(PeerHandlerV2, node_id, host, port)
     end
   end
 
