@@ -291,11 +291,13 @@ defmodule KademliaLight do
   end
 
   def handle_cast({:drop_nodes, keys}, state = %KademliaLight{network: network}) do
+    keys = keys -- [KBuckets.hash(Diode.wallet())]
+
     network =
       Enum.reduce(keys, network, fn key, acc ->
         case KBuckets.item(acc, key) do
           nil -> acc
-          item -> if KBuckets.is_self(item), do: acc, else: KBuckets.delete_item(acc, item)
+          item -> KBuckets.delete_item(acc, item)
         end
       end)
 

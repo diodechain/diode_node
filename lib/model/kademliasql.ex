@@ -101,8 +101,10 @@ defmodule Model.KademliaSql do
   end
 
   def scan() do
-    query!("SELECT key, object, stored_at FROM p2p_objects")
-    |> Enum.reduce([], fn row, acc -> [decode_term_row(row) | acc] end)
+    query!("SELECT key, object FROM p2p_objects")
+    |> Enum.reduce([], fn [key, object_blob], acc ->
+      [{key, Object.decode!(BertInt.decode!(object_blob))} | acc]
+    end)
     |> Enum.reverse()
   end
 
@@ -113,18 +115,17 @@ defmodule Model.KademliaSql do
 
     if range_start < range_end do
       query!(
-        "SELECT key, object, stored_at FROM p2p_objects WHERE key >= ?1 AND key <= ?2",
+        "SELECT key, object FROM p2p_objects WHERE key >= ?1 AND key <= ?2",
         [bstart, bend]
       )
     else
       query!(
-        "SELECT key, object, stored_at FROM p2p_objects WHERE key >= ?1 OR key <= ?2",
+        "SELECT key, object FROM p2p_objects WHERE key >= ?1 OR key <= ?2",
         [bstart, bend]
       )
     end
-    |> Enum.reduce([], fn row, acc ->
-      {key, binary, _stored_at} = decode_binary_row(row)
-      [{key, binary} | acc]
+    |> Enum.reduce([], fn [key, object_blob], acc ->
+      [{key, BertInt.decode!(object_blob)} | acc]
     end)
     |> Enum.reverse()
   end
@@ -141,38 +142,36 @@ defmodule Model.KademliaSql do
     end
   end
 
-  defp decode_binary_row([key, object_blob, stored_at]) do
-    decode_binary(key, object_blob, stored_at)
-  end
-
-  defp decode_term_row(row) do
-    {key, binary, stored_at} = decode_binary_row(row)
-    {key, Object.decode!(binary), stored_at}
-  end
-
-  defp decode_binary(key, object_blob, stored_at) do
-    {key, BertInt.decode!(object_blob), stored_at}
-  end
-
   def prune_stale_objects() do
     cutoff = now_seconds() - @stale_prune_seconds
 
-    stale_keys =
-      query!("SELECT key FROM p2p_objects WHERE stored_at < ?1", [cutoff])
-      |> Enum.map(&hd/1)
-
-    if stale_keys != [] do
-      query!("DELETE FROM p2p_objects WHERE stored_at < ?1", [cutoff])
-      KademliaLight.drop_nodes(stale_keys)
-    end
-
-    removed = length(stale_keys)
+    removed = prune_stale_chunk(cutoff, 0)
 
     if removed > 0 do
       Logger.info("Removed #{removed} stale ticket objects")
     end
 
     removed
+  end
+
+  defp prune_stale_chunk(cutoff, acc) do
+    stale_keys =
+      query!("SELECT key FROM p2p_objects WHERE stored_at < ?1 LIMIT 100", [cutoff])
+      |> Enum.map(&hd/1)
+
+    case stale_keys do
+      [] ->
+        acc
+
+      keys ->
+        KademliaLight.drop_nodes(keys)
+
+        Enum.each(keys, fn key ->
+          query!("DELETE FROM p2p_objects WHERE key = ?1", [key])
+        end)
+
+        prune_stale_chunk(cutoff, acc + length(keys))
+    end
   end
 
   defp now_seconds(), do: System.os_time(:second)
@@ -184,13 +183,13 @@ defmodule Model.KademliaSql do
 
     count =
       scan()
-      |> Enum.filter(fn {_key, obj, _stored_at} ->
+      |> Enum.filter(fn {_key, obj} ->
         case obj do
           ticketv2(epoch: tepoch) -> tepoch >= epoch
           _ -> false
         end
       end)
-      |> Enum.map(fn {key, obj, _stored_at} ->
+      |> Enum.map(fn {key, obj} ->
         # After a chain fork some signatures might have become invalid
         hash = obj |> Object.key() |> KademliaLight.hash()
 
