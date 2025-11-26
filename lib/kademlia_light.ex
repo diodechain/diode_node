@@ -419,7 +419,9 @@ defmodule KademliaLight do
         Debouncer.immediate(
           {:down, node_id},
           fn ->
-            Logger.info("Connection down while getting a result from #{Wallet.printable(node_id)}")
+            Logger.info(
+              "Connection down while getting a result from #{Wallet.printable(node_id)}"
+            )
           end,
           60_000
         )
