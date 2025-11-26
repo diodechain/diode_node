@@ -5,6 +5,7 @@ defmodule Model.KademliaSql do
   alias RemoteChain.RPCCache
   alias Model.Sql
   alias DiodeClient.Object
+  alias KBuckets
   import DiodeClient.Object.TicketV2, only: :macros
   require Logger
 
@@ -164,7 +165,11 @@ defmodule Model.KademliaSql do
         acc
 
       keys ->
-        KademliaLight.drop_nodes(keys)
+        drop_keys = keys -- [KBuckets.key(Diode.wallet())]
+
+        if drop_keys != [] do
+          KademliaLight.drop_nodes(drop_keys)
+        end
 
         Enum.each(keys, fn key ->
           query!("DELETE FROM p2p_objects WHERE key = ?1", [key])
