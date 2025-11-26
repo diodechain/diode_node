@@ -256,6 +256,10 @@ defmodule KademliaLight do
     GenServer.cast(__MODULE__, {:register_node, node_id})
   end
 
+  def drop_nodes(keys) when is_list(keys) do
+    GenServer.cast(__MODULE__, {:drop_nodes, keys})
+  end
+
   # Private call used by PeerHandlerV2 when connections are established
   @impl true
   def handle_cast({:register_node, node_id}, state) do
@@ -284,6 +288,18 @@ defmodule KademliaLight do
       nil -> {:noreply, state}
       item -> {:noreply, %{state | network: do_failed_node(item, state.network)}}
     end
+  end
+
+  def handle_cast({:drop_nodes, keys}, state = %KademliaLight{network: network}) do
+    network =
+      Enum.reduce(keys, network, fn key, acc ->
+        case KBuckets.item(acc, key) do
+          nil -> acc
+          item -> if KBuckets.is_self(item), do: acc, else: KBuckets.delete_item(acc, item)
+        end
+      end)
+
+    {:noreply, %{state | network: network}}
   end
 
   def handle_cast(

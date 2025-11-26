@@ -156,8 +156,17 @@ defmodule Model.KademliaSql do
 
   def prune_stale_objects() do
     cutoff = now_seconds() - @stale_prune_seconds
-    query!("DELETE FROM p2p_objects WHERE stored_at < ?1", [cutoff])
-    removed = Sql.lookup!(__MODULE__, "SELECT changes()") || 0
+
+    stale_keys =
+      query!("SELECT key FROM p2p_objects WHERE stored_at < ?1", [cutoff])
+      |> Enum.map(&hd/1)
+
+    if stale_keys != [] do
+      query!("DELETE FROM p2p_objects WHERE stored_at < ?1", [cutoff])
+      KademliaLight.drop_nodes(stale_keys)
+    end
+
+    removed = length(stale_keys)
 
     if removed > 0 do
       Logger.info("Removed #{removed} stale ticket objects")
