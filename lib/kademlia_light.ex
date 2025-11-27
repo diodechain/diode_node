@@ -538,10 +538,19 @@ defmodule KademliaLight do
       end
     end
 
+    network =
+      Enum.reduce(KBuckets.to_list(kb.network), kb.network, fn node, acc ->
+        if KademliaSql.object(KBuckets.key(node)) == nil do
+          KBuckets.delete_item(acc, node)
+        else
+          acc
+        end
+      end)
+
     # Clean dead nodes every 10 minutes
     :timer.send_interval(10 * 60 * 1000, :clean)
 
-    {:ok, kb, {:continue, :seed}}
+    {:ok, %{kb | network: network}, {:continue, :seed}}
   end
 
   @doc "Method used for testing"
