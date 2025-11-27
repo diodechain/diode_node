@@ -314,14 +314,7 @@ defmodule RemoteChain.RPCCache do
 
     case result do
       nil ->
-        with {:error, :disconnect} <-
-               GenServerDbg.call(name(chain), {:rpc, method, params}, @default_timeout) do
-          Logger.warning(
-            "RPC disconnect in #{inspect(chain)}.#{method}(#{inspect(params)}) retrying..."
-          )
-
-          GenServerDbg.call(name(chain), {:rpc, method, params}, @default_timeout)
-        end
+        rpc_direct(cache, chain, method, params)
 
       result ->
         if :rand.uniform() < 0.1 do
@@ -331,6 +324,35 @@ defmodule RemoteChain.RPCCache do
         result
     end
     |> maybe_validate_parent_block_cache(method, chain)
+  end
+
+  defp rpc_direct(cache, chain, method, params) do
+    Cache.get(cache, {chain, method, params}) ||
+      Globals.locked({:rpc_direct, chain, method, params}, fn ->
+        Cache.get(cache, {chain, method, params}) || node_proxy_rpc(cache, chain, method, params)
+      end)
+  end
+
+  defp node_proxy_rpc(cache, chain, method, params) do
+    ret =
+      GenServerDbg.call(NodeProxy.name(chain), {:rpc, method, params}, @default_timeout)
+      |> case do
+        {:error, :disconnect} ->
+          Logger.warning(
+            "RPC disconnect in #{inspect(chain)}.#{method}(#{inspect(params)}) retrying..."
+          )
+
+          GenServerDbg.call(NodeProxy.name(chain), {:rpc, method, params}, @default_timeout)
+
+        other ->
+          other
+      end
+
+    if should_cache_method(method, params) and should_cache_result(ret) do
+      Cache.put(cache, {chain, method, params}, ret)
+    end
+
+    ret
   end
 
   def maybe_validate_parent_block_cache(
