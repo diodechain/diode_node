@@ -275,7 +275,10 @@ defmodule KademliaLight do
       KBuckets.to_list(network)
       |> Enum.reduce(network, fn item = %KBuckets.Item{node_id: node_id}, network ->
         if not Map.has_key?(online, Wallet.address!(node_id)) do
-          if next_retry(item) < now, do: ensure_node_connection(item)
+          if next_retry(item) < now do
+            spawn(fn -> ensure_node_connection(item) end)
+          end
+
           network
         else
           KBuckets.update_item(network, %KBuckets.Item{item | last_connected: now})
