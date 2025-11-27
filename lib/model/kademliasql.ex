@@ -4,9 +4,12 @@
 defmodule Model.KademliaSql do
   alias RemoteChain.RPCCache
   alias Model.Sql
-  alias DiodeClient.{Object}
-  import DiodeClient.Object.TicketV2
+  alias DiodeClient.Object
+  alias KBuckets
+  import DiodeClient.Object.TicketV2, only: :macros
   require Logger
+
+  @stale_prune_seconds 246_060
 
   def query!(sql, params \\ []) do
     Sql.query!(__MODULE__, sql, params)
@@ -16,9 +19,24 @@ defmodule Model.KademliaSql do
     query!("""
         CREATE TABLE IF NOT EXISTS p2p_objects (
           key BLOB PRIMARY KEY,
-          object BLOB
+          object BLOB,
+          stored_at INTEGER NOT NULL
         )
     """)
+
+    ensure_stored_at_column()
+  end
+
+  defp ensure_stored_at_column() do
+    unless has_column?("stored_at") do
+      query!("ALTER TABLE p2p_objects ADD COLUMN stored_at INTEGER NOT NULL DEFAULT 0")
+      query!("UPDATE p2p_objects SET stored_at = strftime('%s','now') WHERE stored_at = 0")
+    end
+  end
+
+  defp has_column?(column) do
+    query!("PRAGMA table_info(p2p_objects)")
+    |> Enum.any?(fn [_, name, _type, _notnull, _default, _pk] -> name == column end)
   end
 
   def clear() do
@@ -65,7 +83,11 @@ defmodule Model.KademliaSql do
 
   def put_object(key, object) do
     object = BertInt.encode!(object)
-    query!("REPLACE INTO p2p_objects (key, object) VALUES(?1, ?2)", [key, object])
+
+    query!(
+      "REPLACE INTO p2p_objects (key, object, stored_at) VALUES(?1, ?2, ?3)",
+      [key, object, now_seconds()]
+    )
   end
 
   def delete_object(key) do
@@ -73,15 +95,18 @@ defmodule Model.KademliaSql do
   end
 
   def object(key) do
-    Sql.fetch!(__MODULE__, "SELECT object FROM p2p_objects WHERE key = ?1", key)
+    case Sql.query!(__MODULE__, "SELECT object FROM p2p_objects WHERE key = ?1", [key]) do
+      [[object_blob]] -> BertInt.decode!(object_blob)
+      [] -> nil
+    end
   end
 
   def scan() do
     query!("SELECT key, object FROM p2p_objects")
-    |> Enum.map(fn [key, obj] ->
-      obj = BertInt.decode!(obj) |> Object.decode!()
-      {key, obj}
+    |> Enum.reduce([], fn [key, object_blob], acc ->
+      [{key, Object.decode!(BertInt.decode!(object_blob))} | acc]
     end)
+    |> Enum.reverse()
   end
 
   @spec objects(integer, integer) :: any
@@ -100,7 +125,10 @@ defmodule Model.KademliaSql do
         [bstart, bend]
       )
     end
-    |> Enum.map(fn [key, obj] -> {key, BertInt.decode!(obj)} end)
+    |> Enum.reduce([], fn [key, object_blob], acc ->
+      [{key, BertInt.decode!(object_blob)} | acc]
+    end)
+    |> Enum.reverse()
   end
 
   defp await(chain) do
@@ -114,6 +142,45 @@ defmodule Model.KademliaSql do
         :ok
     end
   end
+
+  def prune_stale_objects() do
+    cutoff = now_seconds() - @stale_prune_seconds
+
+    removed = prune_stale_chunk(cutoff, 0)
+
+    if removed > 0 do
+      Logger.info("Removed #{removed} stale ticket objects")
+    end
+
+    removed
+  end
+
+  defp prune_stale_chunk(cutoff, acc) do
+    self = KBuckets.key(Diode.wallet())
+
+    stale_keys =
+      query!("SELECT key FROM p2p_objects WHERE stored_at < ?1 AND key != ?2 LIMIT 100", [
+        cutoff,
+        self
+      ])
+      |> Enum.map(&hd/1)
+
+    case stale_keys do
+      [] ->
+        acc
+
+      keys ->
+        KademliaLight.drop_nodes(keys)
+
+        for key <- keys do
+          query!("DELETE FROM p2p_objects WHERE key = ?1", [key])
+        end
+
+        prune_stale_chunk(cutoff, acc + length(keys))
+    end
+  end
+
+  defp now_seconds(), do: System.os_time(:second)
 
   def clear_invalid_objects() do
     await(Chains.Diode)

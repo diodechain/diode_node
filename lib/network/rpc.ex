@@ -403,6 +403,7 @@ defmodule Network.Rpc do
             retries: encode16(item.retries)
           }
         end)
+        |> Enum.reverse()
         |> Enum.concat(connected)
         |> Enum.reduce(%{}, fn item, acc ->
           Map.put_new(acc, item.node_id, item)

@@ -166,10 +166,56 @@ defmodule KademliaLight do
   end
 
   def network() do
-    call(fn _from, state -> {:reply, state.network, state} end)
+    network = GenServer.call(__MODULE__, :network)
+
+    Debouncer.immediate(
+      {__MODULE__, :ensure_network_integrity},
+      fn -> ensure_network_integrity(GenServer.call(__MODULE__, :network)) end,
+      60_000
+    )
+
+    network
+  end
+
+  defp ensure_network_integrity(network) do
+    missing =
+      KBuckets.to_list(network)
+      |> Enum.reject(&KBuckets.is_self/1)
+      |> Enum.filter(fn item ->
+        KademliaSql.object(KBuckets.key(item)) == nil
+      end)
+
+    if not Enum.empty?(missing) do
+      missing_ids = Enum.map(missing, &KBuckets.key/1)
+
+      "KademliaLight network missing #{length(missing)} objects; clearing cached table: #{inspect(missing_ids)}"
+      |> Logger.error()
+
+      drop_nodes(missing_ids)
+    end
   end
 
   @impl true
+  def handle_call(:reset, _from, _state) do
+    {:reply, :ok, %KademliaLight{network: KBuckets.new()}}
+  end
+
+  def handle_call({:drop_nodes, keys}, _from, state = %KademliaLight{network: network}) do
+    network =
+      Enum.reduce(keys, network, fn key, acc ->
+        case KBuckets.item(acc, key) do
+          nil -> acc
+          item -> KBuckets.delete_item(acc, item)
+        end
+      end)
+
+    {:reply, :ok, %{state | network: network}}
+  end
+
+  def handle_call(:network, _from, state) do
+    {:reply, state.network, state}
+  end
+
   def handle_call({:call, fun}, from, state) do
     fun.(from, state)
   end
@@ -254,6 +300,10 @@ defmodule KademliaLight do
   def register_node(node_id, server) do
     Model.KademliaSql.maybe_update_object(nil, server)
     GenServer.cast(__MODULE__, {:register_node, node_id})
+  end
+
+  def drop_nodes(keys) when is_list(keys) do
+    GenServer.call(__MODULE__, {:drop_nodes, keys}, 60_000)
   end
 
   # Private call used by PeerHandlerV2 when connections are established
@@ -496,9 +546,7 @@ defmodule KademliaLight do
 
   @doc "Method used for testing"
   def reset() do
-    call(fn _from, _state ->
-      {:reply, :ok, %KademliaLight{network: KBuckets.new()}}
-    end)
+    GenServer.call(__MODULE__, :reset)
   end
 
   def clean() do
@@ -585,10 +633,6 @@ defmodule KademliaLight do
 
         other
     end
-  end
-
-  defp call(fun) do
-    GenServer.call(__MODULE__, {:call, fun})
   end
 
   def hash(binary) do
