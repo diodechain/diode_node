@@ -92,9 +92,13 @@ defmodule Chains.Moonbeam do
   def epoch_duration(), do: 2_592_000
   def chain_prefix(), do: "glmr"
 
-  def additional_endpoints(),
-    do:
-      ~w(https://moonbeam.public.blastapi.io https://moonbeam-rpc.dwellir.com https://moonbeam.api.onfinality.io/public https://moonbeam.unitedbloc.com https://moonbeam.public.curie.radiumblock.co/http https://1rpc.io/glmr https://moonbeam.rpc.grove.city/v1/01fdb492)
+  def additional_endpoints() do
+    ~w(
+      https://moonbeam.api.onfinality.io/public
+      https://moonbeam.unitedbloc.com
+      https://moonbeam.public.curie.radiumblock.co/http
+      https://1rpc.io/glmr)
+  end
 
   def rpc_endpoints(), do: RemoteChain.ChainList.rpc_endpoints(__MODULE__, additional_endpoints())
   def ws_endpoints(), do: RemoteChain.ChainList.ws_endpoints(__MODULE__, additional_endpoints())
