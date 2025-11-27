@@ -272,7 +272,12 @@ defmodule Diode do
     |> Enum.reject(fn item -> item == "none" end)
   end
 
-  def self(), do: Globals.get(:self_ticket) || update_self()
+  def self() do
+    Globals.get(:self_ticket) ||
+      Globals.locked(:self_ticket, fn ->
+        Globals.get(:self_ticket) || update_self()
+      end)
+  end
 
   defp update_self() do
     self_ticket =

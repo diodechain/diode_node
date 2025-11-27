@@ -41,18 +41,7 @@ defmodule KademliaTest do
 
     for n <- range do
       pid = Server.ensure_node_connection(PeerHandler, nil, "localhost", peer_port(n))
-
-      ret =
-        try do
-          GenServerDbg.call(pid, {:rpc, [PeerHandler.ping()]}, 15_000)
-        rescue
-          _error ->
-            IO.puts(inspect(Process.info(pid, :current_stacktrace)))
-        catch
-          _type, _error ->
-            IO.puts(inspect(Process.info(pid, :current_stacktrace)))
-        end
-
+      ret = GenServerDbg.call(pid, {:rpc, [PeerHandler.ping()]}, 15_000)
       assert ret == [PeerHandler.pong()]
     end
   end
