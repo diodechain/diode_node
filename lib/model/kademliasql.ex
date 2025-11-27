@@ -156,8 +156,13 @@ defmodule Model.KademliaSql do
   end
 
   defp prune_stale_chunk(cutoff, acc) do
+    self = KBuckets.key(Diode.wallet())
+
     stale_keys =
-      query!("SELECT key FROM p2p_objects WHERE stored_at < ?1 LIMIT 100", [cutoff])
+      query!("SELECT key FROM p2p_objects WHERE stored_at < ?1 AND key != ?2 LIMIT 100", [
+        cutoff,
+        self
+      ])
       |> Enum.map(&hd/1)
 
     case stale_keys do
@@ -165,15 +170,11 @@ defmodule Model.KademliaSql do
         acc
 
       keys ->
-        drop_keys = keys -- [KBuckets.key(Diode.wallet())]
+        KademliaLight.drop_nodes(keys)
 
-        if drop_keys != [] do
-          KademliaLight.drop_nodes(drop_keys)
-        end
-
-        Enum.each(keys, fn key ->
+        for key <- keys do
           query!("DELETE FROM p2p_objects WHERE key = ?1", [key])
-        end)
+        end
 
         prune_stale_chunk(cutoff, acc + length(keys))
     end

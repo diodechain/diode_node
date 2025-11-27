@@ -166,15 +166,18 @@ defmodule KademliaLight do
   end
 
   def network() do
-    call(&ensure_network_integrity/2)
+    network = GenServer.call(__MODULE__, :network)
+
+    Debouncer.immediate(
+      {__MODULE__, :ensure_network_integrity},
+      fn -> ensure_network_integrity(GenServer.call(__MODULE__, :network)) end,
+      60_000
+    )
+
+    network
   end
 
-  defp ensure_network_integrity(_from, state) do
-    state = ensure_network_integrity!(state)
-    {:reply, state.network, state}
-  end
-
-  defp ensure_network_integrity!(state = %KademliaLight{network: network}) do
+  defp ensure_network_integrity(network) do
     missing =
       KBuckets.to_list(network)
       |> Enum.reject(&KBuckets.is_self/1)
@@ -182,26 +185,37 @@ defmodule KademliaLight do
         KademliaSql.object(KBuckets.key(item)) == nil
       end)
 
-    if missing == [] do
-      state
-    else
-      missing_ids =
-        missing
-        |> Enum.map(fn %KBuckets.Item{node_id: node_id} -> Wallet.printable(node_id) end)
-        |> Enum.join(", ")
+    if not Enum.empty?(missing) do
+      missing_ids = Enum.map(missing, &KBuckets.key/1)
 
-      Logger.error(
-        "KademliaLight network missing #{length(missing)} objects; clearing cached table: #{missing_ids}"
-      )
+      "KademliaLight network missing #{length(missing)} objects; clearing cached table: #{inspect(missing_ids)}"
+      |> Logger.error()
 
-      reset_state = %KademliaLight{network: KBuckets.new(), tasks: %{}}
-      Model.File.store(Diode.data_dir(@storage_file), reset_state, true)
-
-      raise "KademliaLight network contains entries without persisted objects"
+      drop_nodes(missing_ids)
     end
   end
 
   @impl true
+  def handle_call(:reset, _from, _state) do
+    {:reply, :ok, %KademliaLight{network: KBuckets.new()}}
+  end
+
+  def handle_call({:drop_nodes, keys}, _from, state = %KademliaLight{network: network}) do
+    network =
+      Enum.reduce(keys, network, fn key, acc ->
+        case KBuckets.item(acc, key) do
+          nil -> acc
+          item -> KBuckets.delete_item(acc, item)
+        end
+      end)
+
+    {:reply, :ok, %{state | network: network}}
+  end
+
+  def handle_call(:network, _from, state) do
+    {:reply, state.network, state}
+  end
+
   def handle_call({:call, fun}, from, state) do
     fun.(from, state)
   end
@@ -241,10 +255,7 @@ defmodule KademliaLight do
     {:noreply, state}
   end
 
-  def handle_info(:contact_seeds, state = %KademliaLight{}) do
-    state = ensure_network_integrity!(state)
-    network = state.network
-
+  def handle_info(:contact_seeds, state = %KademliaLight{network: network}) do
     for peer_server <- Diode.default_peer_list() do
       %URI{userinfo: node_id, host: address, port: port} = URI.parse(peer_server)
 
@@ -292,7 +303,7 @@ defmodule KademliaLight do
   end
 
   def drop_nodes(keys) when is_list(keys) do
-    GenServer.cast(__MODULE__, {:drop_nodes, keys})
+    GenServer.call(__MODULE__, {:drop_nodes, keys}, 60_000)
   end
 
   # Private call used by PeerHandlerV2 when connections are established
@@ -323,18 +334,6 @@ defmodule KademliaLight do
       nil -> {:noreply, state}
       item -> {:noreply, %{state | network: do_failed_node(item, state.network)}}
     end
-  end
-
-  def handle_cast({:drop_nodes, keys}, state = %KademliaLight{network: network}) do
-    network =
-      Enum.reduce(keys, network, fn key, acc ->
-        case KBuckets.item(acc, key) do
-          nil -> acc
-          item -> KBuckets.delete_item(acc, item)
-        end
-      end)
-
-    {:noreply, %{state | network: network}}
   end
 
   def handle_cast(
@@ -547,9 +546,7 @@ defmodule KademliaLight do
 
   @doc "Method used for testing"
   def reset() do
-    call(fn _from, _state ->
-      {:reply, :ok, %KademliaLight{network: KBuckets.new()}}
-    end)
+    GenServer.call(__MODULE__, :reset)
   end
 
   def clean() do
@@ -636,10 +633,6 @@ defmodule KademliaLight do
 
         other
     end
-  end
-
-  defp call(fun) do
-    GenServer.call(__MODULE__, {:call, fun})
   end
 
   def hash(binary) do
