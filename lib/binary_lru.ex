@@ -21,15 +21,15 @@ defmodule BinaryLRU do
   end
 
   def handle(pid) do
-    GenServer.call(pid, :handle)
+    GenServerDbg.call(pid, :handle)
   end
 
   def memory_size(%Handle{pid: pid}) do
-    GenServer.call(pid, :memory_size)
+    GenServerDbg.call(pid, :memory_size)
   end
 
   def size(%Handle{pid: pid}) do
-    GenServer.call(pid, :size)
+    GenServerDbg.call(pid, :size)
   end
 
   def insert(lru, key, value), do: put(lru, key, value)
@@ -68,11 +68,11 @@ defmodule BinaryLRU do
   end
 
   def flush(%Handle{pid: pid}) do
-    GenServer.call(pid, :reinit)
+    GenServerDbg.call(pid, :reinit)
   end
 
   def flush(name) when is_pid(name) or is_atom(name) do
-    GenServer.call(name, :reinit)
+    GenServerDbg.call(name, :reinit)
   end
 
   @impl GenServer

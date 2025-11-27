@@ -27,7 +27,7 @@ defmodule RemoteChain.TxRelay do
   end
 
   def pending_sender_tx?(chain, sender) do
-    GenServer.call(name(chain), {:pending_sender_tx?, sender})
+    GenServerDbg.call(name(chain), {:pending_sender_tx?, sender})
   end
 
   def keep_alive(chain, metatx, payload, sender) do

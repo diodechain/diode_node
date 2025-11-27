@@ -52,7 +52,7 @@ defmodule RemoteChain.RPCCache do
   end
 
   def block_number(chain) do
-    case GenServer.call(name(chain), :block_number) do
+    case GenServerDbg.call(name(chain), :block_number) do
       number when number != nil -> number
     end
   end
@@ -88,7 +88,7 @@ defmodule RemoteChain.RPCCache do
     # any contract not using change tracking will suffer 240 blocks (one hour) of caching
     block = get_last_change(chain, address, block)
 
-    cache = GenServer.call(name(chain), :cache, @default_timeout)
+    cache = GenServerDbg.call(name(chain), :cache, @default_timeout)
 
     cache_results =
       Enum.map(slots, fn slot ->
@@ -146,7 +146,7 @@ defmodule RemoteChain.RPCCache do
   end
 
   def get_code(chain, address, block \\ "latest") do
-    cache = GenServer.call(name(chain), :cache, @default_timeout)
+    cache = GenServerDbg.call(name(chain), :cache, @default_timeout)
 
     # Optimization since code once set can never change
     case Cache.get(cache, {chain, {:code, address}}) do
@@ -214,7 +214,7 @@ defmodule RemoteChain.RPCCache do
   end
 
   defp get_last_change_diode(chain, address, block) do
-    cache = GenServer.call(name(chain), :cache, @default_timeout)
+    cache = GenServerDbg.call(name(chain), :cache, @default_timeout)
 
     case Cache.get(cache, {chain, {:last_change_block, block}}) do
       nil ->
@@ -300,7 +300,7 @@ defmodule RemoteChain.RPCCache do
 
   def rpc(chain, method, params) do
     params = normalize_args(chain, method, params)
-    cache = GenServer.call(name(chain), :cache, @default_timeout)
+    cache = GenServerDbg.call(name(chain), :cache, @default_timeout)
     result = Cache.get(cache, {chain, method, params})
 
     result =
@@ -315,12 +315,12 @@ defmodule RemoteChain.RPCCache do
     case result do
       nil ->
         with {:error, :disconnect} <-
-               GenServer.call(name(chain), {:rpc, method, params}, @default_timeout) do
+               GenServerDbg.call(name(chain), {:rpc, method, params}, @default_timeout) do
           Logger.warning(
             "RPC disconnect in #{inspect(chain)}.#{method}(#{inspect(params)}) retrying..."
           )
 
-          GenServer.call(name(chain), {:rpc, method, params}, @default_timeout)
+          GenServerDbg.call(name(chain), {:rpc, method, params}, @default_timeout)
         end
 
       result ->
@@ -354,7 +354,7 @@ defmodule RemoteChain.RPCCache do
   def maybe_validate_parent_block_cache(other, _method, _chain), do: other
 
   def validate_parent_block_cache(parent_block_number, parent_hash, chain) do
-    cache = GenServer.call(name(chain), :cache, @default_timeout)
+    cache = GenServerDbg.call(name(chain), :cache, @default_timeout)
     method = "eth_getBlockByNumber"
     params = normalize_args(chain, method, [parent_block_number, false])
 

@@ -38,7 +38,7 @@ defmodule RemoteChain.NodeProxy do
   end
 
   def rpc(chain, method, params) do
-    GenServer.call(name(chain), {:rpc, method, params}, @default_timeout)
+    GenServerDbg.call(name(chain), {:rpc, method, params}, @default_timeout)
   end
 
   def subscribe_block(chain) do
@@ -86,10 +86,9 @@ defmodule RemoteChain.NodeProxy do
     lastblocks = Map.put(lastblocks, ws_url, block_number)
 
     if Enum.count(lastblocks, fn {_, block} -> block == block_number end) >= @security_level do
-      send(
-        :global.whereis_name({RPCCache, chain}),
-        {{__MODULE__, chain}, :block_number, block_number}
-      )
+      if pid = :global.whereis_name({RPCCache, chain}) do
+        send(pid, {{__MODULE__, chain}, :block_number, block_number})
+      end
 
       for {pid, _ref} <- subs do
         # RemoteChain.RPCCache.set_block_number(chain, block_number)

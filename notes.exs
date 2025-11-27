@@ -67,7 +67,7 @@ nodes = KademliaLight.find_node_lookup(key)
 
 {:ok, pid} = GenServer.start_link(KademliaSearch, KademliaLight)
 spawn(fn -> Profiler.fprof(pid) end)
-GenServer.call(pid, {:find_nodes, key, nodes, KBuckets.k(), Network.PeerHandlerV2.find_node()}, 20_000)
+GenServerDbg.call(pid, {:find_nodes, key, nodes, KBuckets.k(), Network.PeerHandlerV2.find_node()}, 20_000)
 
 
 
@@ -115,7 +115,7 @@ tx = "0xae300056ccb8e08c33f7be418349184ea879dd228f3989aeff4afad69b73e8aa"
 
 # May 14th
 
-cache = GenServer.call({:global, {RemoteChain.RPCCache, Chains.Diode}}, :cache)
+cache = GenServerDbg.call({:global, {RemoteChain.RPCCache, Chains.Diode}}, :cache)
 
 # May 7th
 
@@ -413,7 +413,7 @@ fleet_obj = Contract.Registry.call(chain_id, "GetFleet", ["address"], [fleet_add
 
 # Jul 9th
 
-handle = GenServer.call(:remoterpc_cache, :get_handle)
+handle = GenServerDbg.call(:remoterpc_cache, :get_handle)
 DetsPlus.delete_all_objects(:remoterpc_cache)
 Enum.take(handle, 50_000) |> Enum.map(fn e -> elem(e, 0) end) |> Enum.filter(&is_integer/1) |> Enum.min_max()
 handle |> Enum.map(fn e -> elem(e, 0) end) |> Enum.filter(&is_integer/1) |> Enum.min_max()

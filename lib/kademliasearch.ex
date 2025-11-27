@@ -34,7 +34,7 @@ defmodule KademliaSearch do
 
   def find_nodes(module, key, nearest, k, cmd) do
     {:ok, pid} = GenServer.start_link(__MODULE__, module)
-    GenServer.call(pid, {:find_nodes, key, nearest, k, cmd}, 20_000)
+    GenServerDbg.call(pid, {:find_nodes, key, nearest, k, cmd}, 20_000)
   end
 
   def handle_call({:find_nodes, key, nearest, k, cmd}, from, state) do

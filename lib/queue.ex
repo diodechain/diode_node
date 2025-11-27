@@ -9,11 +9,11 @@ defmodule Queue do
   end
 
   def shift() do
-    GenServer.call(__MODULE__, :out)
+    GenServerDbg.call(__MODULE__, :out)
   end
 
   def size() do
-    GenServer.call(__MODULE__, :size)
+    GenServerDbg.call(__MODULE__, :size)
   end
 
   def append(message) do

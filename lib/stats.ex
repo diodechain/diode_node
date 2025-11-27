@@ -30,7 +30,7 @@ defmodule Stats do
   end
 
   def get(metric, default \\ 0) do
-    GenServer.call(__MODULE__, :get)
+    GenServerDbg.call(__MODULE__, :get)
     |> Map.get(metric, default)
   end
 

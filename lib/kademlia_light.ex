@@ -166,11 +166,11 @@ defmodule KademliaLight do
   end
 
   def network() do
-    network = GenServer.call(__MODULE__, :network)
+    network = GenServerDbg.call(__MODULE__, :network)
 
     Debouncer.immediate(
       {__MODULE__, :ensure_network_integrity},
-      fn -> ensure_network_integrity(GenServer.call(__MODULE__, :network)) end,
+      fn -> ensure_network_integrity(GenServerDbg.call(__MODULE__, :network)) end,
       60_000
     )
 
@@ -303,7 +303,7 @@ defmodule KademliaLight do
   end
 
   def drop_nodes(keys) when is_list(keys) do
-    GenServer.call(__MODULE__, {:drop_nodes, keys}, 60_000)
+    GenServerDbg.call(__MODULE__, {:drop_nodes, keys}, 60_000)
   end
 
   # Private call used by PeerHandlerV2 when connections are established
@@ -394,7 +394,7 @@ defmodule KademliaLight do
     pid = ensure_node_connection(node)
 
     try do
-      GenServer.call(pid, {:rpc, call}, 2000)
+      GenServerDbg.call(pid, {:rpc, call}, 2000)
     rescue
       error ->
         Logger.warning(
@@ -555,7 +555,7 @@ defmodule KademliaLight do
 
   @doc "Method used for testing"
   def reset() do
-    GenServer.call(__MODULE__, :reset)
+    GenServerDbg.call(__MODULE__, :reset)
   end
 
   def clean() do
@@ -563,7 +563,7 @@ defmodule KademliaLight do
   end
 
   def append(key, value, store_self \\ false) do
-    GenServer.call(__MODULE__, {:append, key, value, store_self})
+    GenServerDbg.call(__MODULE__, {:append, key, value, store_self})
   end
 
   # -------------------------------------------------------------------------------------

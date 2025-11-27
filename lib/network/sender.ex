@@ -18,19 +18,19 @@ defmodule Network.Sender do
   end
 
   def push_async(q, partition, data, trace) do
-    GenServer.call(q, {:push_async, partition, data, trace})
+    GenServerDbg.call(q, {:push_async, partition, data, trace})
   end
 
   def push(q, partition, data) do
-    GenServer.call(q, {:push, partition, data}, :infinity)
+    GenServerDbg.call(q, {:push, partition, data}, :infinity)
   end
 
   def pop(q) do
-    GenServer.call(q, :pop)
+    GenServerDbg.call(q, :pop)
   end
 
   def await(q) do
-    GenServer.call(q, :await, :infinity)
+    GenServerDbg.call(q, :await, :infinity)
   end
 
   @impl true

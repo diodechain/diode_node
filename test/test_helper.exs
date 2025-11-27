@@ -157,7 +157,7 @@ defmodule TestHelper do
       Process.whereis(RemoteChain.Anvil) ||
         elem(GenServer.start(ChainAgent, [], name: RemoteChain.Anvil), 1)
 
-    GenServer.call(chaintask, :restart)
+    GenServerDbg.call(chaintask, :restart)
   end
 
   def wait(n) do

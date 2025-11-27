@@ -73,7 +73,7 @@ defmodule Exqlite.LRU do
   end
 
   def max_items(name \\ __MODULE__) do
-    GenServer.call(name, :max_items)
+    GenServerDbg.call(name, :max_items)
   end
 
   def get(name \\ __MODULE__, key) do
@@ -129,7 +129,7 @@ defmodule Exqlite.LRU do
   end
 
   defp query_prepared(name, method, params) when is_atom(method) do
-    {conn, stmt} = GenServer.call(name, {:get, method})
+    {conn, stmt} = GenServerDbg.call(name, {:get, method})
 
     stmt =
       if stmt == nil do

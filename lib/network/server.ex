@@ -96,7 +96,7 @@ defmodule Network.Server do
   def get_connections(name) do
     with pid <- Process.whereis(name),
          true <- is_pid(pid),
-         {:ok, connections} <- GenServer.call(pid, :get_connections) do
+         {:ok, connections} <- GenServerDbg.call(pid, :get_connections) do
       connections
     else
       _ ->
@@ -106,7 +106,7 @@ defmodule Network.Server do
 
   def ensure_node_connection(name, node_id, address, port)
       when node_id == nil or is_tuple(node_id) do
-    GenServer.call(name, {:ensure_node_connection, node_id, address, port})
+    GenServerDbg.call(name, {:ensure_node_connection, node_id, address, port})
   end
 
   def handle_client_exit(state = %{clients: clients}, pid, reason) do

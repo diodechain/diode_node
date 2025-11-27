@@ -11,7 +11,7 @@ defmodule Anvil do
 
   def start_link(url) do
     with {:ok, pid} <- GenServer.start_link(__MODULE__, url, name: __MODULE__) do
-      GenServer.call(pid, :await_port_open)
+      GenServerDbg.call(pid, :await_port_open)
       {:ok, pid}
     end
   end

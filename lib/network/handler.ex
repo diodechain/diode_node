@@ -78,7 +78,8 @@ defmodule Network.Handler do
              # register ensure this process is stored under the correct remote_id
              # and also ensure setops(active:true) is not sent before server.ex
              # finished the handshake
-             {:ok, server_port} <- GenServer.call(server, {:register, remote_id, address, port}),
+             {:ok, server_port} <-
+               GenServerDbg.call(server, {:register, remote_id, address, port}),
              :ok <- set_keepalive(:os.type(), socket),
              :ok <- :ssl.setopts(socket, active: true) do
           expected_id = state[:node_id]

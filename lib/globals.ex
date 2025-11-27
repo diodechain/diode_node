@@ -372,7 +372,7 @@ defmodule Globals do
   end
 
   defp call(what, timeout \\ @timeout) do
-    GenServer.call(__MODULE__, what, timeout || @timeout)
+    GenServerDbg.call(__MODULE__, what, timeout || @timeout)
   end
 
   defp publish(

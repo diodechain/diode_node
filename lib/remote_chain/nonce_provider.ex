@@ -30,11 +30,11 @@ defmodule RemoteChain.NonceProvider do
   end
 
   def peek_nonce(chain) do
-    GenServer.call(name(chain), :peek_nonce) || fetch_nonce(chain)
+    GenServerDbg.call(name(chain), :peek_nonce) || fetch_nonce(chain)
   end
 
   def nonce(chain) do
-    GenServer.call(name(chain), :nonce)
+    GenServerDbg.call(name(chain), :nonce)
   end
 
   def confirm_nonce(chain, nonce) do
@@ -46,7 +46,7 @@ defmodule RemoteChain.NonceProvider do
   end
 
   def has_next_nonce?(chain) do
-    GenServer.call(name(chain), :has_next_nonce?)
+    GenServerDbg.call(name(chain), :has_next_nonce?)
   end
 
   @impl true
