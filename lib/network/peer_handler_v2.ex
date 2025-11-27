@@ -86,8 +86,7 @@ defmodule Network.PeerHandlerV2 do
   end
 
   defp send_hello(state) do
-    hostname = Diode.Config.get("HOST")
-    hello = Diode.self(hostname)
+    hello = Diode.self()
     # We don't have server registration atm
     chain_id = 0
 

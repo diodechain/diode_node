@@ -242,10 +242,6 @@ defmodule Diode do
     Path.join(Diode.Config.get("DATA_DIR"), file)
   end
 
-  def host() do
-    Diode.Config.get("HOST")
-  end
-
   @spec rpc_port() :: integer()
   def rpc_port() do
     Diode.Config.get_int("RPC_PORT")
@@ -276,23 +272,29 @@ defmodule Diode do
     |> Enum.reject(fn item -> item == "none" end)
   end
 
-  def self(), do: self(host())
+  def self(), do: Globals.get(:self_ticket) || update_self()
 
-  def self(hostname) do
-    Object.Server.new(hostname, hd(edge2_ports()), peer2_port(), Diode.Version.version(), [
-      ["tickets", TicketStore.epoch_score()],
-      ["uptime", Diode.uptime()],
-      ["time", System.os_time()],
-      ["name", Diode.Config.get("NAME")],
-      ["block", RemoteChain.peaknumber(Chains.Moonbeam)]
-    ])
-    |> Object.Server.sign(Wallet.privkey!(Diode.wallet()))
+  defp update_self() do
+    self_ticket =
+      Diode.Config.get("HOST")
+      |> Object.Server.new(hd(edge2_ports()), peer2_port(), Diode.Version.version(), [
+        ["tickets", TicketStore.epoch_score()],
+        ["uptime", Diode.uptime()],
+        ["time", System.os_time()],
+        ["name", Diode.Config.get("NAME")],
+        ["block", RemoteChain.peaknumber(Chains.Moonbeam)]
+      ])
+      |> Object.Server.sign(Wallet.privkey!(Diode.wallet()))
+
+    Globals.set(:self_ticket, self_ticket)
   end
 
   def broadcast_self() do
     Debouncer.immediate(
       :broadcast_self,
-      fn -> KademliaLight.store(Diode.self()) end,
+      fn ->
+        KademliaLight.store(update_self())
+      end,
       10_000
     )
   end

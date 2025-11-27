@@ -86,7 +86,9 @@ defmodule RemoteChain.NodeProxy do
     lastblocks = Map.put(lastblocks, ws_url, block_number)
 
     if Enum.count(lastblocks, fn {_, block} -> block == block_number end) >= @security_level do
-      if pid = :global.whereis_name({RPCCache, chain}) do
+      pid = :global.whereis_name({RPCCache, chain})
+
+      if pid != :undefined do
         send(pid, {{__MODULE__, chain}, :block_number, block_number})
       end
 
