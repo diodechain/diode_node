@@ -58,9 +58,9 @@ defmodule Diode do
         {Exqlite.LRU, [file_path: Diode.data_dir("lru.sq3")]},
         Stats,
         {Exqlite.LRU, [name: Network.Stats.LRU, file_path: Diode.data_dir("network_stats.sq3")]},
-        Network.Stats,
         supervisor(Model.Sql),
         TicketStore,
+        Network.Stats,
         Cron,
         supervisor(Channels),
         {PubSub, args}
