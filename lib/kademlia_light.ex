@@ -462,7 +462,7 @@ defmodule KademliaLight do
   #  that node
   @max_key 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF
   defp redistribute(network, node) do
-    Logger.info("Redistributing for #{inspect(node.node_id)}")
+    Logger.info("Redistributing for #{inspect(Wallet.printable(node.node_id))}")
     online = Network.Server.get_connections(PeerHandlerV2)
     node = %KBuckets.Item{} = KBuckets.item(network, node)
 
