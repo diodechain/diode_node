@@ -94,13 +94,10 @@ defmodule Network.Server do
   end
 
   def get_connections(name) do
-    with pid <- Process.whereis(name),
-         true <- is_pid(pid),
-         {:ok, connections} <- GenServerDbg.call(pid, :get_connections) do
-      connections
+    if pid = Process.whereis(name) do
+      GenServerDbg.call(pid, :get_connections)
     else
-      _ ->
-        %{}
+      %{}
     end
   end
 
