@@ -40,9 +40,28 @@ defmodule Network.PeerHandlerV2 do
         ports: %PortCollection{pid: self()},
         server: nil,
         stable: false,
+        sender: spawn_link(__MODULE__, :sender_new, [self(), state.socket]),
         start_time: System.os_time(:second)
       })
     )
+  end
+
+  def sender_new(parent, socket) do
+    Process.monitor(parent)
+    sender_loop(socket)
+  end
+
+  defp sender_loop(socket) do
+    receive do
+      {:DOWN, _ref, :process, _parent, _reason} ->
+        :ok
+
+      {:send, msg} ->
+        case :ssl.send(socket, encode(msg)) do
+          :ok -> sender_loop(socket)
+          other -> Process.exit(self(), other)
+        end
+    end
   end
 
   def ssl_options(opts) do
@@ -90,28 +109,24 @@ defmodule Network.PeerHandlerV2 do
     # We don't have server registration atm
     chain_id = 0
 
-    case ssl_send(state, [@hello, Object.encode!(hello), chain_id, []]) do
-      {:noreply, state} ->
-        receive do
-          {:ssl, _socket, msg} ->
-            msg = decode(msg)
+    {:noreply, state} = ssl_send(state, [@hello, Object.encode!(hello), chain_id, []])
 
-            case hd(msg) do
-              @hello ->
-                handle_msg(msg, state)
+    receive do
+      {:ssl, _socket, msg} ->
+        msg = decode(msg)
 
-              _ ->
-                log(state, "expected hello message, but got #{inspect(msg)}")
-                {:stop, :normal, state}
-            end
-        after
-          3_000 ->
-            log(state, "expected hello message, timeout")
+        case hd(msg) do
+          @hello ->
+            handle_msg(msg, state)
+
+          _ ->
+            log(state, "expected hello message, but got #{inspect(msg)}")
             {:stop, :normal, state}
         end
-
-      other ->
-        other
+    after
+      3_000 ->
+        log(state, "expected hello message, timeout")
+        {:stop, :normal, state}
     end
   end
 
@@ -280,17 +295,9 @@ defmodule Network.PeerHandlerV2 do
     {:noreply, %{state | calls: calls}}
   end
 
-  defp ssl_send(state = %{socket: socket, last_send: prev}, data) do
-    raw = encode(data)
-
-    case :ssl.send(socket, raw) do
-      :ok ->
-        {:noreply, %{state | last_send: data}}
-
-      {:error, reason} ->
-        log(state, "Connection dropped for #{reason} last message I sent was: #{inspect(prev)}")
-        {:stop, :normal, state}
-    end
+  defp ssl_send(state = %{sender: sender}, data) do
+    send(sender, {:send, data})
+    {:noreply, %{state | last_send: data}}
   end
 
   def on_nodeid(nil) do
