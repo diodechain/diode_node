@@ -271,21 +271,24 @@ defmodule KademliaLight do
     online = Network.Server.get_connections(PeerHandlerV2)
     now = System.os_time(:second)
 
-    network =
+    {online, offline} =
       KBuckets.to_list(network)
-      |> Enum.reduce(network, fn item = %KBuckets.Item{node_id: node_id}, network ->
-        if not Map.has_key?(online, Wallet.address!(node_id)) do
-          if next_retry(item) < now do
-            spawn(fn -> ensure_node_connection(item) end)
-          end
-
-          network
-        else
-          KBuckets.update_item(network, %KBuckets.Item{item | last_connected: now})
-        end
+      |> Enum.split_with(fn %KBuckets.Item{node_id: node_id} ->
+        Map.has_key?(online, Wallet.address!(node_id))
       end)
 
-    Process.send_after(self(), :contact_seeds, 60_000)
+    network =
+      Enum.reduce(online, network, fn item, network ->
+        KBuckets.update_item(network, %KBuckets.Item{item | last_connected: now})
+      end)
+
+    offline = Enum.filter(offline, fn item -> next_retry(item) < now end)
+
+    spawn_link(fn ->
+      Enum.each(offline, fn item -> ensure_node_connection(item) end)
+      Process.send_after(self(), :contact_seeds, 60_000)
+    end)
+
     {:noreply, %{state | network: network}}
   end
 

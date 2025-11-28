@@ -71,9 +71,13 @@ defmodule Diode.Config do
   end
 
   def get(var) do
-    Globals.cache({__MODULE__, var}, fn ->
-      get_config_value(var) || get_runtime_fallback(var)
-    end, :infinity)
+    Globals.cache(
+      {__MODULE__, var},
+      fn ->
+        get_config_value(var) || get_runtime_fallback(var)
+      end,
+      :infinity
+    )
   end
 
   def get_int(name) do
