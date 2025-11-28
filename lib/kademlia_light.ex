@@ -285,6 +285,8 @@ defmodule KademliaLight do
     offline = Enum.filter(offline, fn item -> next_retry(item) < now end)
 
     spawn_link(fn ->
+      Process.register(self(), :offline_nodes_contacter)
+      Logger.info("Contacting #{length(offline)} offline nodes")
       Enum.each(offline, fn item -> ensure_node_connection(item) end)
       Process.send_after(self(), :contact_seeds, :timer.minutes(1))
     end)
@@ -293,6 +295,8 @@ defmodule KademliaLight do
   end
 
   def update_stale_nodes(stale, network) do
+    Process.register(self(), :stale_nodes_updater)
+    Logger.info("Redistributing #{length(stale)} stale nodes")
     for stale_node <- stale, do: redistribute_stale(network, stale_node)
   end
 
@@ -458,6 +462,7 @@ defmodule KademliaLight do
   #  that node
   @max_key 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF
   defp redistribute(network, node) do
+    Logger.info("Redistributing for #{inspect(node.node_id)}")
     online = Network.Server.get_connections(PeerHandlerV2)
     node = %KBuckets.Item{} = KBuckets.item(network, node)
 

@@ -49,6 +49,13 @@ defmodule Model.KademliaSql do
     query!("DELETE FROM p2p_objects")
   end
 
+  def size() do
+    case query!("SELECT COUNT(*) FROM p2p_objects") do
+      [[count]] -> count
+      [] -> 0
+    end
+  end
+
   def append!(_key, _value) do
     throw(:not_implemented)
   end
