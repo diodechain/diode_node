@@ -255,7 +255,7 @@ defmodule Network.Server do
             actual_key == connect_key ->
               # 'other_pid' might be a just established connection that doesn't have validated the endpoint key yet
               # e.g. it might be to a different node_id. But 'pid' is validated now, so we keep it.
-              Process.exit(other_pid, :kill_clone)
+              kill_clone(other_pid, actual_key)
 
               Map.put(clients, actual_key, {pid, now})
               |> Map.put(pid, actual_key)
@@ -270,12 +270,21 @@ defmodule Network.Server do
             true ->
               # This connection was made with a different node_id.
               # We close it.
-              Process.exit(pid, :kill_clone)
+              kill_clone(pid, actual_key)
               clients
           end
       end
 
     {:reply, {:ok, hd(state.ports)}, %{state | clients: clients}}
+  end
+
+  defp kill_clone(pid, actual_key) do
+    if Wallet.equal?(Diode.wallet(), actual_key) do
+      # Don't kill the self-connection (it always registers twice)
+      :ok
+    else
+      Process.exit(pid, :kill_clone)
+    end
   end
 
   @impl true
