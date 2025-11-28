@@ -1,3 +1,22 @@
+# Nov 28th
+
+node_id = DiodeClient.Base16.decode("0x1350d3b501d6842ed881b59de4b95b27372bfae9") |> DiodeClient.Wallet.from_address()
+KademliaLight.node_range(node_id)
+
+node_range = fn hex ->
+  node_id = DiodeClient.Base16.decode(hex) |> DiodeClient.Wallet.from_address()
+  IO.inspect(node_id, label: "node_id")
+  KademliaLight.node_range(node_id)
+end
+
+13:03:18.984 [info] Redistributing 5 objects to "0x131a24483657a0e5746009cd9a4161b125340941"
+13:03:19.584 [info] Redistributing 2 objects to "0x71c94dd1b9e75e83313e23c67f2112a630b7be1c"
+13:03:19.702 [info] Redistributing 295 objects to "0x76b10e78e92960a0b328a5f77760eb2a11545bbc"
+13:03:20.284 [info] Redistributing 1 objects to "0xcadfee6fe2dcd48b154435c65360dff1aca23131"
+13:03:20.584 [info] Redistributing 25 objects to "0xd6187eddf079d3a12c4ca5c3b38920721bab6535"
+13:03:21.384 [info] Redistributing 4 objects to "0x957376b607b3e12edc7379ad6490c448a48b5ef5"
+13:03:22.103 [info] Redistributing 384 objects to "0xae699211c62156b8f29ce17be47d2f069a27f2a6"
+iex(30)> a
 # Oct 17th
 
 RemoteChain.RPC.get_code(Chains.OasisSapphire, "0x71a1d7c8111c792ac6e3eadacedcec2fbc25b63a", "0x963f21")

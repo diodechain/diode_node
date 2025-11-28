@@ -256,7 +256,10 @@ defmodule KademliaLight do
   end
 
   def handle_info(:contact_seeds, state = %KademliaLight{network: network}) do
-    for peer_server <- Diode.default_peer_list() do
+    list = Diode.default_peer_list()
+    Logger.info("Contacting #{length(list)} seeds")
+
+    for peer_server <- list do
       %URI{userinfo: node_id, host: address, port: port} = URI.parse(peer_server)
 
       id =
@@ -283,12 +286,13 @@ defmodule KademliaLight do
       end)
 
     offline = Enum.filter(offline, fn item -> next_retry(item) < now end)
+    parent = self()
 
     spawn_link(fn ->
       Process.register(self(), :offline_nodes_contacter)
       Logger.info("Contacting #{length(offline)} offline nodes")
       Enum.each(offline, fn item -> ensure_node_connection(item) end)
-      Process.send_after(self(), :contact_seeds, :timer.minutes(1))
+      Process.send_after(parent, :contact_seeds, :timer.minutes(1))
     end)
 
     {:noreply, %{state | network: network}}
@@ -333,7 +337,7 @@ defmodule KademliaLight do
 
       %KBuckets.Item{} = node ->
         network = KBuckets.update_item(state.network, %KBuckets.Item{node | retries: 0})
-        if node.retries > 0, do: queue_redistribute(network, node)
+        if node.retries > 0, do: queue_redistribute(node)
         {:noreply, %{state | network: network}}
     end
   end
@@ -365,12 +369,7 @@ defmodule KademliaLight do
     }
 
     network = KBuckets.insert_item(network, node)
-
-    # Because of bucket size limit, the new node might not get stored
-    if KBuckets.member?(network, node_id) do
-      queue_redistribute(network, node)
-    end
-
+    queue_redistribute(node)
     %{state | network: network}
   end
 
@@ -450,19 +449,20 @@ defmodule KademliaLight do
     GenServer.cast(ensure_node_connection(node), {:rpc, call})
   end
 
-  defp queue_redistribute(network, node) do
-    Debouncer.immediate(
+  defp queue_redistribute(node) do
+    # We want to ensure that all other nodes have also come online
+    # before redistributing
+    Debouncer.apply(
       {:redistribute, node.node_id},
-      fn -> redistribute(network, node) end,
-      :timer.minutes(10)
+      fn -> redistribute(node) end,
+      :timer.minutes(2)
     )
   end
 
   #  redistribute resends all key/values that are nearer to the given node to
   #  that node
   @max_key 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF
-  defp redistribute(network, node) do
-    Logger.info("Redistributing for #{inspect(Wallet.printable(node.node_id))}")
+  def node_range(node, network \\ network()) do
     online = Network.Server.get_connections(PeerHandlerV2)
     node = %KBuckets.Item{} = KBuckets.item(network, node)
 
@@ -482,46 +482,47 @@ defmodule KademliaLight do
 
     range_start = rem(div(previ + nodei, 2), @max_key)
     range_end = rem(div(nexti + nodei, 2), @max_key)
+    {range_start, range_end}
+  end
 
-    objs = KademliaSql.objects(range_start, range_end)
-    Enum.each(objs, fn {key, value} -> rpcast(node, [PeerHandlerV2.store(), key, value]) end)
+  defp redistribute(node) do
+    network = network()
+
+    if KBuckets.member?(network, node.node_id) do
+      {range_start, range_end} = node_range(node, network)
+      objs = KademliaSql.objects(range_start, range_end)
+      redist = Enum.shuffle(objs) |> Enum.take(100)
+
+      Logger.info(
+        "Redistributing #{length(redist)} of #{length(objs)} objects to #{inspect(Wallet.printable(node.node_id))}"
+      )
+
+      Enum.each(objs, fn {key, value} -> rpcast(node, [PeerHandlerV2.store(), key, value]) end)
+    end
   end
 
   @doc """
     opposite operation of redistribute() resends all key/values belonged to a now missing
     node to the still existing neighbouring nodes
   """
-  @max_key 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF
   def redistribute_stale(network, %KBuckets.Item{} = node) do
-    online = Network.Server.get_connections(PeerHandlerV2)
+    {range_start, range_end} = node_range(node, network)
 
-    {previ, prev} =
-      case filter_online(KBuckets.prev(network, node), online) do
-        [prev | _] -> {KBuckets.integer(prev), prev}
-        [] -> {KBuckets.integer(node), nil}
-      end
+    objs = KademliaSql.objects(range_start, range_end)
 
-    nodei = KBuckets.integer(node)
+    redist =
+      objs
+      |> Enum.shuffle()
+      |> Enum.take(100)
 
-    {nexti, next} =
-      case filter_online(KBuckets.next(network, node), online) do
-        [next | _] -> {KBuckets.integer(next), next}
-        [] -> {KBuckets.integer(node), nil}
-      end
+    Logger.info(
+      "Redistributing #{length(redist)} of #{length(objs)} stale objects to #{inspect(Wallet.printable(node.node_id))}"
+    )
 
-    nodes = Enum.filter([prev, next], fn x -> x != nil end)
-
-    if nodes != [] do
-      range_start = rem(div(previ + nodei, 2), @max_key)
-      range_end = rem(div(nexti + nodei, 2), @max_key)
-
-      objs = KademliaSql.objects(range_start, range_end)
-
-      for {key, value} <- objs do
-        for node <- nodes do
-          rpcast(node, [PeerHandlerV2.store(), key, value])
-        end
-      end
+    for {key, value} <- redist do
+      do_find_nodes(key, KBuckets.k(), PeerHandlerV2.find_node())
+      |> Enum.take(@k)
+      |> Enum.each(fn node -> rpcast(node, [PeerHandlerV2.store(), key, value]) end)
     end
   end
 
@@ -599,7 +600,7 @@ defmodule KademliaLight do
         Diode.peer2_port()
       )
     else
-      server = KBuckets.object(item)
+      server = KBuckets.stale_object(item)
       host = Server.host(server)
       port = Server.peer_port(server)
       Network.Server.ensure_node_connection(PeerHandlerV2, node_id, host, port)

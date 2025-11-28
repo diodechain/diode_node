@@ -53,8 +53,17 @@ defmodule Model.KademliaSql do
     query!("UPDATE p2p_objects SET stored_at = ?1", [stale_silence_deadline()])
   end
 
-  def size() do
+  def stale_size() do
     case query!("SELECT COUNT(*) FROM p2p_objects") do
+      [[count]] -> count
+      [] -> 0
+    end
+  end
+
+  def size() do
+    case query!("SELECT COUNT(*) FROM p2p_objects WHERE stored_at > ?1", [
+           stale_silence_deadline()
+         ]) do
       [[count]] -> count
       [] -> 0
     end
@@ -146,12 +155,12 @@ defmodule Model.KademliaSql do
 
     if range_start < range_end do
       query!(
-        "SELECT key, object FROM p2p_objects WHERE key >= ?1 AND key <= ?2 AND stored_at > ?3",
+        "SELECT key, object FROM p2p_objects WHERE (key >= ?1 AND key <= ?2) AND stored_at > ?3",
         [bstart, bend, stale_silence_deadline()]
       )
     else
       query!(
-        "SELECT key, object FROM p2p_objects WHERE key >= ?1 OR key <= ?2 AND stored_at > ?3",
+        "SELECT key, object FROM p2p_objects WHERE (key >= ?1 OR key <= ?2) AND stored_at > ?3",
         [bstart, bend, stale_silence_deadline()]
       )
     end

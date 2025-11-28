@@ -56,6 +56,11 @@ defmodule KBuckets do
     |> Object.decode!()
   end
 
+  def stale_object(item = %Item{}) do
+    Model.KademliaSql.stale_object(key(item))
+    |> Object.decode!()
+  end
+
   def to_uri(item) do
     server = object(item)
     host = Server.host(server)
