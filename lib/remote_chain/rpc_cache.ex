@@ -375,6 +375,10 @@ defmodule RemoteChain.RPCCache do
 
   def maybe_validate_parent_block_cache(other, _method, _chain), do: other
 
+  def validate_parent_block_cache(parent_block_number, _parent_hash, _chain)
+      when parent_block_number <= 0,
+      do: :ok
+
   def validate_parent_block_cache(parent_block_number, parent_hash, chain) do
     cache = GenServerDbg.call(name(chain), :cache, @default_timeout)
     method = "eth_getBlockByNumber"

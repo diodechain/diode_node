@@ -23,6 +23,12 @@ defmodule Chains do
   def timestamp_block(base_height, base_timestamp, search_timestamp, block_intervall) do
     base_height - floor((base_timestamp - search_timestamp) / block_intervall)
   end
+
+  if Mix.env() == :test do
+    def default_ticket_chain(), do: Chains.Anvil
+  else
+    def default_ticket_chain(), do: Chains.Moonbeam
+  end
 end
 
 defmodule Chains.Diode do

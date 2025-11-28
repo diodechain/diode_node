@@ -12,8 +12,10 @@ defmodule Model.KademliaSql do
   @day_seconds 86_400
   # Don't report after two days
   @stale_silence_seconds @day_seconds * 2
+  def stale_silence_deadline(), do: now_seconds() - @stale_silence_seconds
   # Prune after four days
   @stale_prune_seconds @day_seconds * 4
+  def stale_prune_deadline(), do: now_seconds() - @stale_prune_seconds
 
   def query!(sql, params \\ []) do
     Sql.query!(__MODULE__, sql, params)
@@ -103,7 +105,7 @@ defmodule Model.KademliaSql do
     case Sql.query!(
            __MODULE__,
            "SELECT object FROM p2p_objects WHERE key = ?1 AND stored_at > ?2",
-           [key, now_seconds() - @stale_silence_seconds]
+           [key, stale_silence_deadline()]
          ) do
       [[object_blob]] -> BertInt.decode!(object_blob)
       [] -> nil
@@ -119,7 +121,7 @@ defmodule Model.KademliaSql do
 
   def scan() do
     query!("SELECT key, object FROM p2p_objects WHERE stored_at > ?1", [
-      now_seconds() - @stale_silence_seconds
+      stale_silence_deadline()
     ])
     |> Enum.reduce([], fn [key, object_blob], acc ->
       [{key, Object.decode!(BertInt.decode!(object_blob))} | acc]
@@ -127,7 +129,6 @@ defmodule Model.KademliaSql do
     |> Enum.reverse()
   end
 
-  @spec objects(integer, integer) :: any
   def objects(range_start, range_end) do
     bstart = <<range_start::integer-size(256)>>
     bend = <<range_end::integer-size(256)>>
@@ -135,12 +136,12 @@ defmodule Model.KademliaSql do
     if range_start < range_end do
       query!(
         "SELECT key, object FROM p2p_objects WHERE key >= ?1 AND key <= ?2 AND stored_at > ?3",
-        [bstart, bend, now_seconds() - @stale_silence_seconds]
+        [bstart, bend, stale_silence_deadline()]
       )
     else
       query!(
         "SELECT key, object FROM p2p_objects WHERE key >= ?1 OR key <= ?2 AND stored_at > ?3",
-        [bstart, bend, now_seconds() - @stale_silence_seconds]
+        [bstart, bend, stale_silence_deadline()]
       )
     end
     |> Enum.reduce([], fn [key, object_blob], acc ->
@@ -162,7 +163,7 @@ defmodule Model.KademliaSql do
   end
 
   def prune_stale_objects() do
-    cutoff = now_seconds() - @stale_prune_seconds
+    cutoff = stale_prune_deadline()
     removed = prune_stale_chunk(cutoff, 0)
 
     if removed > 0 do

@@ -93,6 +93,7 @@ defmodule Chains.Anvil do
             "forge",
             [
               "create",
+              "--broadcast",
               "--rpc-url",
               "http://localhost:8545",
               "--private-key",
@@ -103,11 +104,16 @@ defmodule Chains.Anvil do
             stderr_to_stdout: true
           )
 
-        [_, address] = Regex.run(~r/Deployed to: (0x.{40})/, text)
-        address = Base16.decode(address)
-        :persistent_term.put({__MODULE__, name}, address)
-        if postfun != nil, do: postfun.(address)
-        address
+        case Regex.run(~r/Deployed to: (0x.{40})/, text) do
+          [_, address] ->
+            address = Base16.decode(address)
+            :persistent_term.put({__MODULE__, name}, address)
+            if postfun != nil, do: postfun.(address)
+            address
+
+          _other ->
+            raise "Failed to deploy contract #{name}: #{inspect(text)}"
+        end
 
       value ->
         value

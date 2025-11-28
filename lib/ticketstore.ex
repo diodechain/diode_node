@@ -305,8 +305,10 @@ defmodule TicketStore do
   end
 
   def epoch_score(epoch \\ epoch()) when is_integer(epoch) do
-    Ets.lookup(__MODULE__, {:meta, :score, epoch, Chains.Moonbeam.chain_id()}, fn ->
-      Enum.reduce(tickets(Chains.Moonbeam.chain_id(), epoch), 0, fn tck, acc ->
+    chain_id = Chains.default_ticket_chain().chain_id()
+
+    Ets.lookup(__MODULE__, {:meta, :score, epoch, chain_id}, fn ->
+      Enum.reduce(tickets(chain_id, epoch), 0, fn tck, acc ->
         ticket_score(tck) + acc
       end)
     end)

@@ -286,7 +286,7 @@ defmodule Diode do
         ["uptime", Diode.uptime()],
         ["time", System.os_time()],
         ["name", Diode.Config.get("NAME")],
-        ["block", RemoteChain.peaknumber(Chains.Moonbeam)]
+        ["block", RemoteChain.peaknumber(Chains.default_ticket_chain())]
       ])
       |> Object.Server.sign(Wallet.privkey!(Diode.wallet()))
 

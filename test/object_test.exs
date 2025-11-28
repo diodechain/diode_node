@@ -65,27 +65,25 @@ defmodule ObjectTest do
     end
   end
 
-  test "ticket gc keeps recent rows" do
+  test "ticket gc keeps recent rows, but doesn't report stale objects" do
     key = <<1::256>>
     persist_ticket(key)
 
-    ttl = 246_060
-    recent = System.os_time(:second) - ttl + 10
+    recent = Model.KademliaSql.stale_silence_deadline() - 10
 
     Model.KademliaSql.query!("UPDATE p2p_objects SET stored_at = ?1 WHERE key = ?2", [recent, key])
 
     assert Model.KademliaSql.prune_stale_objects() == 0
-    assert Model.KademliaSql.object(key) != nil
+    assert Model.KademliaSql.object(key) == nil
+    assert Model.KademliaSql.stale_object(key) != nil
   end
 
   test "ticket gc removes stale rows" do
     key = <<2::256>>
     persist_ticket(key)
 
-    ttl = 246_060
-    old = System.os_time(:second) - ttl - 10
+    old = Model.KademliaSql.stale_prune_deadline() - 10
     Model.KademliaSql.query!("UPDATE p2p_objects SET stored_at = ?1 WHERE key = ?2", [old, key])
-
     assert Model.KademliaSql.prune_stale_objects() == 1
     assert Model.KademliaSql.object(key) == nil
   end
