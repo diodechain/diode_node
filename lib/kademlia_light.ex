@@ -18,8 +18,8 @@ defmodule KademliaLight do
   @k 3
   @storage_file "kademlia_light.etf"
 
-  defstruct tasks: %{}, network: nil
-  @type t :: %KademliaLight{tasks: map(), network: KBuckets.t()}
+  defstruct tasks: %{}, network: nil, version: 2
+  @type t :: %KademliaLight{tasks: map(), network: KBuckets.t(), version: integer()}
 
   def start_link(_opts) do
     GenServer.start_link(__MODULE__, :ok, name: __MODULE__, hibernate_after: 5_000)
@@ -228,12 +228,12 @@ defmodule KademliaLight do
   @impl true
   def handle_info(:clean, state = %KademliaLight{network: network}) do
     # Remove all nodes who haven't connected in the last 30 hours
-    deadline = System.os_time(:second) - 60 * 30
+    deadline = stale_deadline()
 
     stale =
       KBuckets.to_list(network)
       |> Enum.reject(fn n -> KBuckets.is_self(n) end)
-      |> Enum.reject(fn n -> n.last_connected > deadline end)
+      |> Enum.reject(fn n -> is_integer(n.last_connected) and n.last_connected > deadline end)
 
     if length(stale) > 0 do
       network =
@@ -251,7 +251,7 @@ defmodule KademliaLight do
 
   def handle_info(:save, state) do
     spawn(Model.File, :store, [Diode.data_dir(@storage_file), state, true])
-    Process.send_after(self(), :save, 60_000)
+    Process.send_after(self(), :save, :timer.minutes(1))
     {:noreply, state}
   end
 
@@ -286,7 +286,7 @@ defmodule KademliaLight do
 
     spawn_link(fn ->
       Enum.each(offline, fn item -> ensure_node_connection(item) end)
-      Process.send_after(self(), :contact_seeds, 60_000)
+      Process.send_after(self(), :contact_seeds, :timer.minutes(1))
     end)
 
     {:noreply, %{state | network: network}}
@@ -450,7 +450,7 @@ defmodule KademliaLight do
     Debouncer.immediate(
       {:redistribute, node.node_id},
       fn -> redistribute(network, node) end,
-      10_000
+      :timer.minutes(10)
     )
   end
 
@@ -538,6 +538,15 @@ defmodule KademliaLight do
         %KademliaLight{network: KBuckets.new()}
       end)
 
+    kb =
+      if Map.get(kb, :version, 0) < 2 do
+        Logger.warning("KademliaLight version is too old, resetting")
+        KademliaSql.clear()
+        %KademliaLight{network: KBuckets.new()}
+      else
+        kb
+      end
+
     for node <- KBuckets.to_list(kb.network) do
       if Map.has_key?(node, :object) and is_tuple(node.object) do
         KademliaSql.maybe_update_object(nil, node.object)
@@ -554,7 +563,7 @@ defmodule KademliaLight do
       end)
 
     # Clean dead nodes every 10 minutes
-    :timer.send_interval(10 * 60 * 1000, :clean)
+    :timer.send_interval(:timer.minutes(10), :clean)
 
     {:ok, %{kb | network: network}, {:continue, :seed}}
   end
@@ -652,5 +661,9 @@ defmodule KademliaLight do
 
   def hash(binary) do
     Diode.hash(binary)
+  end
+
+  defp stale_deadline() do
+    System.os_time(:second) - 60 * 30
   end
 end
