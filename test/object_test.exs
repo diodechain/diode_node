@@ -5,8 +5,8 @@ defmodule ObjectTest do
   use ExUnit.Case, async: true
   import TestHelper
   import DiodeClient.Object.TicketV2, only: [ticketv2: 1]
-  alias Object.Server
-
+  alias DiodeClient.Object.Server
+  alias DiodeClient.{Object, Wallet}
   # Testing forward compatibility of server tickets
 
   test "forward/backward compatibility" do

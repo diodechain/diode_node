@@ -5,8 +5,9 @@ defmodule Edge2Test do
   use ExUnit.Case, async: false
   alias Network.Server, as: Server
   alias Network.EdgeV2, as: EdgeHandler
-  alias Object.TicketV2, as: Ticket
-  alias Object.Channel, as: Channel
+  alias DiodeClient.Object.TicketV2, as: Ticket
+  alias DiodeClient.Object.Channel, as: Channel
+  alias DiodeClient.{Wallet, Rlpx}
   import TestHelper
   import Ticket
   import Channel
@@ -14,7 +15,7 @@ defmodule Edge2Test do
   import While
 
   @ticket_grace 8196
-  @port Rlpx.num2bin(3000)
+  @port Rlpx.uint2bin(3000)
 
   setup do
     TicketStore.clear()
