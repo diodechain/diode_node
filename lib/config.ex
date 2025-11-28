@@ -71,7 +71,9 @@ defmodule Diode.Config do
   end
 
   def get(var) do
-    get_config_value(var) || get_runtime_fallback(var)
+    Globals.cache({__MODULE__, var}, fn ->
+      get_config_value(var) || get_runtime_fallback(var)
+    end, :infinity)
   end
 
   def get_int(name) do
@@ -103,6 +105,7 @@ defmodule Diode.Config do
   end
 
   def set(var, value) do
+    Globals.put({__MODULE__, var}, value)
     old_value = System.get_env(var)
     snap_set(var, value)
     System.put_env(var, value)

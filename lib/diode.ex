@@ -53,7 +53,6 @@ defmodule Diode do
 
     children =
       [
-        Globals,
         {BinaryLRU, [name: :memory_cache, max_memory_size: 100_000_000]},
         {Exqlite.LRU, [file_path: Diode.data_dir("lru.sq3")]},
         Stats,
