@@ -546,7 +546,7 @@ defmodule KademliaLight do
     kb =
       if Map.get(kb, :version, 0) < 2 do
         Logger.warning("KademliaLight version is too old, resetting")
-        KademliaSql.clear()
+        KademliaSql.archive()
         %KademliaLight{network: KBuckets.new()}
       else
         kb

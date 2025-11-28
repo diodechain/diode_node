@@ -49,6 +49,10 @@ defmodule Model.KademliaSql do
     query!("DELETE FROM p2p_objects")
   end
 
+  def archive() do
+    query!("UPDATE p2p_objects SET stored_at = ?1", [stale_silence_deadline()])
+  end
+
   def size() do
     case query!("SELECT COUNT(*) FROM p2p_objects") do
       [[count]] -> count
