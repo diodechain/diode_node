@@ -9,7 +9,11 @@ defmodule Model.KademliaSql do
   import DiodeClient.Object.TicketV2, only: :macros
   require Logger
 
-  @stale_prune_seconds 246_060
+  @day_seconds 86_400
+  # Don't report after two days
+  @stale_silence_seconds @day_seconds * 2
+  # Prune after four days
+  @stale_prune_seconds @day_seconds * 4
 
   def query!(sql, params \\ []) do
     Sql.query!(__MODULE__, sql, params)
@@ -56,7 +60,8 @@ defmodule Model.KademliaSql do
     hkey = KademliaLight.hash(Object.key(object))
     # Checking that we got a valid object
     if key == nil or key == hkey do
-      case object(hkey) do
+      # querying stale objects too ensure we won't re-store a stale object
+      case stale_object(hkey) do
         nil ->
           put_object(hkey, Object.encode!(object))
 
@@ -95,6 +100,17 @@ defmodule Model.KademliaSql do
   end
 
   def object(key) do
+    case Sql.query!(
+           __MODULE__,
+           "SELECT object FROM p2p_objects WHERE key = ?1 AND stored_at > ?2",
+           [key, now_seconds() - @stale_silence_seconds]
+         ) do
+      [[object_blob]] -> BertInt.decode!(object_blob)
+      [] -> nil
+    end
+  end
+
+  def stale_object(key) do
     case Sql.query!(__MODULE__, "SELECT object FROM p2p_objects WHERE key = ?1", [key]) do
       [[object_blob]] -> BertInt.decode!(object_blob)
       [] -> nil
@@ -102,7 +118,9 @@ defmodule Model.KademliaSql do
   end
 
   def scan() do
-    query!("SELECT key, object FROM p2p_objects")
+    query!("SELECT key, object FROM p2p_objects WHERE stored_at > ?1", [
+      now_seconds() - @stale_silence_seconds
+    ])
     |> Enum.reduce([], fn [key, object_blob], acc ->
       [{key, Object.decode!(BertInt.decode!(object_blob))} | acc]
     end)
@@ -116,13 +134,13 @@ defmodule Model.KademliaSql do
 
     if range_start < range_end do
       query!(
-        "SELECT key, object FROM p2p_objects WHERE key >= ?1 AND key <= ?2",
-        [bstart, bend]
+        "SELECT key, object FROM p2p_objects WHERE key >= ?1 AND key <= ?2 AND stored_at > ?3",
+        [bstart, bend, now_seconds() - @stale_silence_seconds]
       )
     else
       query!(
-        "SELECT key, object FROM p2p_objects WHERE key >= ?1 OR key <= ?2",
-        [bstart, bend]
+        "SELECT key, object FROM p2p_objects WHERE key >= ?1 OR key <= ?2 AND stored_at > ?3",
+        [bstart, bend, now_seconds() - @stale_silence_seconds]
       )
     end
     |> Enum.reduce([], fn [key, object_blob], acc ->
@@ -145,7 +163,6 @@ defmodule Model.KademliaSql do
 
   def prune_stale_objects() do
     cutoff = now_seconds() - @stale_prune_seconds
-
     removed = prune_stale_chunk(cutoff, 0)
 
     if removed > 0 do
