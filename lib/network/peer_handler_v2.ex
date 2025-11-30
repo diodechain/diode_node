@@ -315,6 +315,7 @@ defmodule Network.PeerHandlerV2 do
 
   defp map_network_items(items) do
     Enum.map(items, &map_network_item/1)
+    |> Enum.filter(fn item -> item.object != nil end)
   end
 
   defp map_network_item(
@@ -327,7 +328,7 @@ defmodule Network.PeerHandlerV2 do
       __struct__: KBuckets.Item,
       last_seen: last_seen,
       node_id: node_id,
-      object: KBuckets.object(item),
+      object: KBuckets.object?(item),
       retries: 0
     }
   end

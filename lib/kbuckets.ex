@@ -56,6 +56,12 @@ defmodule KBuckets do
     |> Object.decode!()
   end
 
+  def object?(item = %Item{}) do
+    if object = Model.KademliaSql.object(key(item)) do
+      Object.decode!(object)
+    end
+  end
+
   def stale_object(item = %Item{}) do
     Model.KademliaSql.stale_object(key(item))
     |> Object.decode!()
