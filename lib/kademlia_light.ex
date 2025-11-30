@@ -403,7 +403,8 @@ defmodule KademliaLight do
     pid = ensure_node_connection(node)
 
     try do
-      GenServerDbg.call(pid, {:rpc, call}, 2000)
+      # Don't need to use GenServerDbg.call here because we're regelualry exepcting timeouts
+      GenServer.call(pid, {:rpc, call}, 2000)
     rescue
       error ->
         Logger.warning(
