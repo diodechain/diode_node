@@ -3,6 +3,8 @@
 # Copyright 2021-2024 Diode
 # Licensed under the Diode License, Version 1.1
 rm -rf data_dev/
+export CHAINS_DIODE_WS=ws://localhost:3834/ws
+export CHAINS_DIODE_RPC=http://localhost:3834
 export MIX_ENV=dev
 mix deps.get
 exec iex -S mix run --no-halt
