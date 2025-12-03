@@ -18,6 +18,7 @@ defmodule RemoteChain.NodeProxy do
     req: 100,
     requests: %{},
     lastblocks: %{},
+    lastblock: 0,
     subscriptions: %{},
     log: nil,
     fallback: nil
@@ -81,11 +82,25 @@ defmodule RemoteChain.NodeProxy do
   @impl true
   def handle_info(
         {:new_block, ws_url, block_number},
-        state = %NodeProxy{chain: chain, lastblocks: lastblocks, subscriptions: subs}
+        state = %NodeProxy{
+          chain: chain,
+          lastblocks: lastblocks,
+          subscriptions: subs,
+          lastblock: lastblock,
+          fallback: fallback
+        }
       ) do
     lastblocks = Map.put(lastblocks, ws_url, block_number)
+    security_level = if fallback != nil, do: @security_level + 1, else: @security_level
 
-    if Enum.count(lastblocks, fn {_, block} -> block == block_number end) >= @security_level do
+    block_number =
+      if Enum.count(lastblocks, fn {_, block} -> block >= block_number end) >= security_level do
+        max(block_number, lastblock)
+      else
+        lastblock
+      end
+
+    if block_number > lastblock do
       pid = :global.whereis_name({RPCCache, chain})
 
       if pid != :undefined do
@@ -98,7 +113,7 @@ defmodule RemoteChain.NodeProxy do
       end
     end
 
-    {:noreply, %{state | lastblocks: lastblocks}}
+    {:noreply, %{state | lastblocks: lastblocks, lastblock: block_number}}
   end
 
   def handle_info(
