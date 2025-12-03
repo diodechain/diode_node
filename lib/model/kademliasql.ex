@@ -83,11 +83,11 @@ defmodule Model.KademliaSql do
     # Checking that we got a valid object
     if key == nil or key == hkey do
       # querying stale objects too ensure we won't re-store a stale object
-      case stale_object(hkey) do
+      case stale_object_ext(hkey) do
         nil ->
           put_object(hkey, Object.encode!(object))
 
-        existing ->
+        {existing, stale?} ->
           existing_object = Object.decode!(existing)
 
           case {Object.modname(existing_object), Object.modname(object)} do
@@ -95,26 +95,30 @@ defmodule Model.KademliaSql do
               put_object(hkey, Object.encode!(object))
 
             {Object.TicketV2, Object.TicketV1} ->
-              nil
+              existing_object
 
             _ ->
               if Object.block_number(existing_object) < Object.block_number(object) do
                 put_object(hkey, Object.encode!(object))
+              else
+                if stale? do
+                  nil
+                else
+                  existing_object
+                end
               end
           end
       end
     end
-
-    hkey
   end
 
   def put_object(key, object) do
-    object = BertInt.encode!(object)
-
     query!(
       "REPLACE INTO p2p_objects (key, object, stored_at) VALUES(?1, ?2, ?3)",
-      [key, object, now_seconds()]
+      [key, BertInt.encode!(object), now_seconds()]
     )
+
+    object
   end
 
   def delete_object(key) do
@@ -136,6 +140,16 @@ defmodule Model.KademliaSql do
     case Sql.query!(__MODULE__, "SELECT object FROM p2p_objects WHERE key = ?1", [key]) do
       [[object_blob]] -> BertInt.decode!(object_blob)
       [] -> nil
+    end
+  end
+
+  defp stale_object_ext(key) do
+    case Sql.query!(__MODULE__, "SELECT object, stored_at FROM p2p_objects WHERE key = ?1", [key]) do
+      [[object_blob, stored_at]] ->
+        {BertInt.decode!(object_blob), stored_at < stale_silence_deadline()}
+
+      [] ->
+        nil
     end
   end
 

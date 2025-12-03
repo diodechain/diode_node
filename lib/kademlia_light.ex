@@ -144,7 +144,7 @@ defmodule KademliaLight do
     network =
       Enum.reduce(visited, before, fn item, network ->
         if not KBuckets.member?(network, item) do
-          KBuckets.insert_items(network, visited)
+          KBuckets.insert_item(network, item)
         else
           network
         end
