@@ -224,7 +224,6 @@ defmodule Network.EdgeV2 do
         when cmd in [
                "getblock",
                "getblockquick",
-               "getblockquick2",
                "getstateroots",
                "getaccount",
                "getaccountroot",
@@ -236,6 +235,14 @@ defmodule Network.EdgeV2 do
           msg = Rlp.encode!(msg) |> Base16.encode()
 
           RemoteChain.RPCCache.rpc!(RemoteChain.diode_l1_fallback(), "dio_edgev2", [msg])
+          |> Base16.decode()
+          |> Rlp.decode!()
+
+        [cmd | _rest]
+        when cmd in ["getblockquick2"] ->
+          msg = Rlp.encode!(msg) |> Base16.encode()
+
+          RemoteChain.RPC.rpc!(RemoteChain.diode_l1_fallback(), "dio_edgev2", [msg])
           |> Base16.decode()
           |> Rlp.decode!()
 
