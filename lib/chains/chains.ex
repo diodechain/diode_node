@@ -102,7 +102,6 @@ defmodule Chains.Moonbeam do
     ~w(
       https://moonbeam.api.onfinality.io/public
       https://moonbeam.unitedbloc.com
-      https://moonbeam.public.curie.radiumblock.co/http
       https://1rpc.io/glmr)
   end
 
@@ -111,6 +110,18 @@ defmodule Chains.Moonbeam do
   def registry_address(), do: Base16.decode("0xD78653669fd3df4dF8F3141Ffa53462121d117a4")
   def developer_fleet_address(), do: Base16.decode("0xa0A4dc6623eC96122066195DE34a813846dC0fC0")
   def transaction_hash(), do: &Hash.keccak_256/1
+
+  def check_url(url) do
+    # Smoke check for BNS contract check, only for debugging
+    RemoteChain.HTTP.rpc(url, "eth_call", [
+      %{to: "0x8A093E3A83F63A00FFFC4729AA55482845A49294", data: "0xbb62860d"},
+      "latest"
+    ])
+    |> case do
+      {:ok, _} -> true
+      {:error, _} -> false
+    end
+  end
 end
 
 defmodule Chains.Moonriver do

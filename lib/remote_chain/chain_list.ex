@@ -43,6 +43,9 @@ defmodule RemoteChain.ChainList do
     |> Enum.to_list()
     |> Enum.filter(fn {:ok, {_, result}} -> result end)
     |> Enum.map(fn {:ok, {url, _}} -> url end)
+    |> Enum.reject(fn url ->
+      String.contains?(url, "pocket.network") or String.contains?(url, "curie.radiumblock.co")
+    end)
   end
 
   def test?("ws" <> _url) do
