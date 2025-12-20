@@ -36,7 +36,8 @@ defmodule Cron do
       %Job{
         name: "Ticket GC",
         interval: :timer.hours(1),
-        fun: &Model.KademliaSql.prune_stale_objects/0
+        fun: &Model.KademliaSql.prune_stale_objects/0,
+        startup: :timer.minutes(1)
       },
       %Job{
         name: "Cleanup LRU cache",
