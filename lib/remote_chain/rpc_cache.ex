@@ -561,13 +561,8 @@ defmodule RemoteChain.RPCCache do
     true
   end
 
-  defp should_cache_result(%{"result" => _}) do
-    true
-  end
-
-  defp should_cache_result(_ret) do
-    false
-  end
+  defp should_cache_result(%{"result" => ret}), do: ret != nil
+  defp should_cache_result(_ret), do: false
 
   defp diode?(chain) do
     chain in [Chains.Diode, Chains.DiodeDev, Chains.DiodeStaging]

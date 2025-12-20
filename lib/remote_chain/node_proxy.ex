@@ -21,7 +21,8 @@ defmodule RemoteChain.NodeProxy do
     lastblock: 0,
     subscriptions: %{},
     log: nil,
-    fallback: nil
+    fallback: nil,
+    fallback_url: nil
   ]
 
   def start_link(chain) do
@@ -118,7 +119,12 @@ defmodule RemoteChain.NodeProxy do
 
   def handle_info(
         {:DOWN, _ref, :process, down_pid, reason},
-        state = %{connections: connections, subscriptions: subs, fallback: fallback}
+        state = %{
+          connections: connections,
+          subscriptions: subs,
+          fallback: fallback,
+          fallback_url: fallback_url
+        }
       ) do
     if Map.has_key?(subs, down_pid) do
       subs = Map.delete(subs, down_pid)
@@ -146,10 +152,18 @@ defmodule RemoteChain.NodeProxy do
         |> Map.new()
 
       new_connections = Enum.filter(connections, fn {_, pid} -> pid != down_pid end) |> Map.new()
-      new_fallback = if fallback == down_pid, do: nil, else: fallback
+
+      {new_fallback, new_fallback_url} =
+        if fallback == down_pid, do: {nil, nil}, else: {fallback, fallback_url}
 
       {:noreply,
-       %{state | connections: new_connections, requests: requests, fallback: new_fallback}}
+       %{
+         state
+         | connections: new_connections,
+           requests: requests,
+           fallback: new_fallback,
+           fallback_url: new_fallback_url
+       }}
     end
   end
 
@@ -249,24 +263,23 @@ defmodule RemoteChain.NodeProxy do
   defp ensure_connections(
          state = %NodeProxy{chain: chain, connections: connections, fallback: fallback}
        ) do
-    fallback_urls = RemoteChain.ws_fallback_endpoints(chain)
+    urls = MapSet.new(RemoteChain.ws_endpoints(chain))
+    existing = MapSet.new(Map.keys(connections) ++ [state.fallback_url])
+    new_urls = MapSet.difference(urls, existing) |> Enum.shuffle()
+    fallback_url = List.first(Enum.shuffle(RemoteChain.ws_fallback_endpoints(chain)) ++ new_urls)
 
     cond do
-      fallback == nil and length(fallback_urls) > 0 ->
-        pid = RemoteChain.WSConn.start(self(), chain, Enum.random(fallback_urls))
-        Process.monitor(pid)
-        state = %{state | fallback: pid}
-        ensure_connections(state)
-
       map_size(connections) < @security_level ->
-        urls = MapSet.new(RemoteChain.ws_endpoints(chain))
-        existing = MapSet.new(Map.keys(connections))
-        new_urls = MapSet.difference(urls, existing)
-        new_url = MapSet.to_list(new_urls) |> Enum.random()
-
+        new_url = Enum.random(new_urls)
         pid = RemoteChain.WSConn.start(self(), chain, new_url)
         Process.monitor(pid)
         state = %{state | connections: Map.put(connections, new_url, pid)}
+        ensure_connections(state)
+
+      fallback == nil and fallback_url != nil ->
+        pid = RemoteChain.WSConn.start(self(), chain, fallback_url)
+        Process.monitor(pid)
+        state = %{state | fallback: pid, fallback_url: fallback_url}
         ensure_connections(state)
 
       true ->

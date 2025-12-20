@@ -12,7 +12,12 @@ defmodule RemoteChain do
     do: chainimpl(chain_id).epoch(number || peaknumber(chain_id))
 
   def epoch_progress(chain_id, number), do: chainimpl(chain_id).epoch_progress(number)
-  def block(chain_id, number), do: RemoteChain.RPCCache.get_block_by_number(chain_id, number)
+
+  def block(chain_id, number),
+    do:
+      RemoteChain.RPCCache.get_block_by_number(chain_id, number) ||
+        raise("Failed to get block #{number} for chain #{chain_id}. Check the RPC endpoint.")
+
   def blockhash(chain_id, number), do: block(chain_id, number)["hash"] |> Base16.decode()
   def blocktime(chain_id, number), do: block(chain_id, number)["timestamp"] |> Base16.decode_int()
   def peaknumber(chain_id), do: RemoteChain.RPCCache.block_number(chain_id)
