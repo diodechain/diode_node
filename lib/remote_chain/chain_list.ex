@@ -25,7 +25,7 @@ defmodule RemoteChain.ChainList do
 
     Enum.map(rpc, fn rpc -> rpc["url"] end)
     |> Enum.concat(additional_endpoints)
-    |> filter_endpoints()
+    |> filter_endpoints(chain)
     |> Enum.group_by(fn endpoint ->
       cond do
         String.ends_with?(endpoint, "/http") -> :rpc
@@ -36,10 +36,13 @@ defmodule RemoteChain.ChainList do
     end)
   end
 
-  def filter_endpoints(endpoints) do
+  def filter_endpoints(endpoints, chain) do
     endpoints
     |> Enum.uniq()
-    |> Task.async_stream(fn url -> {url, test?(url)} end, timeout: :infinity, max_concurrency: 10)
+    |> Task.async_stream(fn url -> {url, test?(url, chain)} end,
+      timeout: :infinity,
+      max_concurrency: 10
+    )
     |> Enum.to_list()
     |> Enum.filter(fn {:ok, {_, result}} -> result end)
     |> Enum.map(fn {:ok, {url, _}} -> url end)
@@ -48,19 +51,58 @@ defmodule RemoteChain.ChainList do
     end)
   end
 
-  def test?("ws" <> _url) do
-    true
-  end
-
-  def test?(url) do
+  def test?(url, chain) do
     Globals.cache(
       {__MODULE__, :test, url},
       fn ->
-        RemoteChain.HTTP.rpc(url, "eth_chainId", [])
+        Logger.info("Testing #{url} for #{chain}")
+        ret = do_test?(url, chain)
+        Logger.info("Tested #{url} for #{chain} and got #{ret}")
+        ret
       end,
       :infinity
     )
-    |> case do
+  end
+
+  def do_test?("ws" <> _ = ws_endpoint, chain) do
+    pid = RemoteChain.WSConn.start(self(), chain, ws_endpoint)
+
+    ret =
+      if :ok ==
+           RemoteChain.WSConn.send_request(
+             pid,
+             %{
+               "jsonrpc" => "2.0",
+               "id" => 99,
+               "method" => "eth_chainId",
+               "params" => []
+             }
+             |> Poison.encode!(),
+             10_000
+           ) do
+        receive do
+          {:response, _ws_url, %{"id" => 99, "result" => _chain_id}} ->
+            true
+
+          {:DOWN, _ref, :process, ^pid, _reason} ->
+            false
+        after
+          3_000 ->
+            false
+        end
+      else
+        false
+      end
+
+    RemoteChain.WSConn.close(pid)
+    Logger.info("Tested #{ws_endpoint} for #{chain} and got #{ret}")
+    ret
+  after
+    false
+  end
+
+  def do_test?(url, _chain) do
+    case RemoteChain.HTTP.rpc(url, "eth_chainId", []) do
       {:ok, _} -> true
       {:error, _} -> false
     end

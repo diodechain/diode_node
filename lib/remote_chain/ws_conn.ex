@@ -34,6 +34,15 @@ defmodule RemoteChain.WSConn do
     pid
   end
 
+  def close(pid) do
+    WebSockex.cast(pid, :close)
+  end
+
+  @impl true
+  def handle_cast(:close, state) do
+    {:close, state}
+  end
+
   @impl true
   def handle_connect(conn, state) do
     Process.monitor(state.owner)
@@ -115,8 +124,14 @@ defmodule RemoteChain.WSConn do
     {:ok, state}
   end
 
-  def send_request(pid, request) when is_pid(pid) and is_binary(request) do
-    conn = Globals.get({__MODULE__, pid})
+  def send_request(pid, request, timeout \\ 500) when is_pid(pid) and is_binary(request) do
+    conn =
+      try do
+        Globals.await({__MODULE__, pid}, timeout)
+      catch
+        :exit, {:timeout, _} ->
+          nil
+      end
 
     if conn == nil do
       {:error, :not_connected}
