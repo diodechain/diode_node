@@ -62,7 +62,8 @@ defmodule Diode do
         Network.Stats,
         Cron,
         supervisor(Channels),
-        {PubSub, args}
+        {PubSub, args},
+        Network.PortManager
       ]
 
     with {:ok, pid} <-

@@ -85,8 +85,6 @@ defmodule KademliaSearch do
         {:kadret, {:value, value}, node, task},
         state = %KademliaSearch{best: best, finisher: fin}
       ) do
-    # IO.puts("Found #{inspect(value)} on node #{inspect (node)}")
-
     obj_block_num =
       Object.decode!(value)
       |> Object.block_number()

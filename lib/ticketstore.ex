@@ -16,6 +16,7 @@ defmodule TicketStore do
 
   def init([]) do
     Ets.init(__MODULE__)
+    Ets.init(:device_usage_tracker)
     ETSLru.new(@ticket_value_cache, 1024)
 
     for tck <- TicketSql.tickets() do
@@ -25,6 +26,35 @@ defmodule TicketStore do
     end
 
     {:ok, nil}
+  end
+
+  def increase_device_usage(device, value) do
+    Debouncer.apply({:device_usage, device}, fn ->
+      PubSub.publish({:edge, device}, {:device_usage, device})
+    end)
+
+    epoch = epoch()
+    :ets.update_counter(:device_usage_tracker, {device, epoch}, value, {:key, 0})
+  end
+
+  def device_usage(device) do
+    epoch = epoch()
+
+    case :ets.lookup(:device_usage_tracker, {device, epoch}) do
+      [{_, count}] -> count
+      [] -> 0
+    end
+  end
+
+  def device_paid_bytes(device, fleet) do
+    case find(device, fleet, epoch()) do
+      nil -> 0
+      tck -> Ticket.total_bytes(tck)
+    end
+  end
+
+  def device_unpaid_bytes(device, fleet) do
+    device_usage(device) - device_paid_bytes(device, fleet)
   end
 
   def clear() do
@@ -46,6 +76,12 @@ defmodule TicketStore do
         for tck <- TicketSql.tickets(epoch) do
           key = {Ticket.device_address(tck), Ticket.fleet_contract(tck), epoch}
           Ets.put(__MODULE__, key, tck)
+
+          Ets.put(
+            :device_usage_tracker,
+            {Ticket.device_address(tck), epoch},
+            Ticket.total_bytes(tck)
+          )
         end
 
         Ets.put(__MODULE__, {:meta, epoch, chain_id}, true)
@@ -171,6 +207,7 @@ defmodule TicketStore do
     address = Wallet.address!(wallet)
     fleet = Ticket.fleet_contract(tck)
     last = find(address, fleet, tepoch)
+    usage = device_usage(address)
 
     cond do
       tepoch not in recent_epochs(chain_id) ->
@@ -180,12 +217,17 @@ defmodule TicketStore do
         put_ticket(tck, address, fleet, tepoch)
         {:ok, Ticket.total_bytes(tck)}
 
-      Ticket.total_bytes(tck) - Ticket.total_bytes(last) > 100_000_000 ->
+      Ticket.total_bytes(tck) - usage > 100_000_000 ->
         {:too_big_jump, epoch - 1}
 
       Ticket.score(last) < Ticket.score(tck) ->
         put_ticket(tck, address, fleet, tepoch)
-        {:ok, max(0, Ticket.total_bytes(tck) - Ticket.total_bytes(last))}
+
+        if Ticket.total_bytes(tck) < usage do
+          {:too_low, tck}
+        else
+          {:ok, max(0, Ticket.total_bytes(tck) - usage)}
+        end
 
       address != Ticket.device_address(last) ->
         Logger.warning("Ticked Signed on Fork RemoteChain")

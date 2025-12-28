@@ -465,7 +465,12 @@ defmodule KademliaLight do
   @max_key 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF
   def node_range(node, network \\ network()) do
     online = Network.Server.get_connections(PeerHandlerV2)
-    node = %KBuckets.Item{} = KBuckets.item(network, node)
+
+    node =
+      case node do
+        %KBuckets.Item{} -> node
+        _key -> KBuckets.item(network, node)
+      end
 
     previ =
       case filter_online(KBuckets.prev(network, node), online) do

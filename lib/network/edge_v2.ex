@@ -19,14 +19,14 @@ defmodule Network.EdgeV2 do
           inbuffer: nil | {integer(), binary()},
           last_message: Time.t(),
           last_ticket: Time.t(),
+          last_warning: Time.t(),
           node_address: :inet.ip_address(),
           node_id: Wallet.t(),
+          version: integer(),
           pid: pid(),
           ports: PortCollection.t(),
           sender: pid(),
-          socket: any(),
-          unpaid_bytes: integer(),
-          unpaid_rx_bytes: integer()
+          socket: any()
         }
 
   def do_init(state) do
@@ -41,20 +41,39 @@ defmodule Network.EdgeV2 do
         inbuffer: nil,
         last_message: Time.utc_now(),
         last_ticket: nil,
+        last_warning: nil,
+        version: 0,
         pid: self(),
         ports: %PortCollection{pid: self()},
-        sender: Network.Sender.new(state.socket),
-        unpaid_bytes: 0,
-        unpaid_rx_bytes: 0
+        sender: Network.Sender.new(state.socket)
       })
 
     log(state, "accepted connection")
     {:noreply, must_have_ticket(state)}
   end
 
-  defp must_have_ticket(state = %{last_ticket: last}) do
-    Process.send_after(self(), {:must_have_ticket, last}, 20_000)
-    state
+  defp must_have_ticket(
+         state = %{last_ticket: last, version: _version, last_warning: last_warning}
+       ) do
+    if last_warning != {:ticket, last} do
+      Process.send_after(self(), {:must_have_ticket, last}, 20_000)
+
+      %{state | last_warning: {:ticket, last}}
+      |> send_ticket_request()
+    else
+      state
+    end
+  end
+
+  defp send_ticket_request(state) do
+    msg =
+      encode_request(random_ref(), [
+        "ticket_request",
+        TicketStore.device_usage(device_address(state))
+      ])
+
+    :ok = do_send_socket(state, :ticket, msg, nil)
+    account_outgoing(state, msg)
   end
 
   def ssl_options(opts) do
@@ -72,6 +91,29 @@ defmodule Network.EdgeV2 do
 
   def handle_cast({:pccb_portclose, %Port{ref: ref}}, state) do
     state = send_socket(state, {:port, ref}, random_ref(), ["portclose", ref])
+    {:noreply, state}
+  end
+
+  def handle_cast(
+        {:pccb2_portopen, portname, physical_port, source_device_address, flags},
+        state
+      ) do
+    state =
+      send_socket(state, {:port, physical_port}, random_ref(), [
+        "portopen2",
+        portname,
+        physical_port,
+        source_device_address,
+        flags
+      ])
+
+    {:noreply, state}
+  end
+
+  def handle_cast({:pccb2_portclose, physical_port}, state) do
+    state =
+      send_socket(state, {:port, physical_port}, random_ref(), ["portclose2", physical_port])
+
     {:noreply, state}
   end
 
@@ -126,7 +168,9 @@ defmodule Network.EdgeV2 do
   def handle_msg(msg, state) do
     case msg do
       ["hello", vsn | flags] when is_binary(vsn) ->
-        if to_num(vsn) != 1_000 do
+        vsn = to_num(vsn)
+
+        if vsn < 1_000 do
           {error("version not supported"), state}
         else
           state1 =
@@ -138,7 +182,13 @@ defmodule Network.EdgeV2 do
             end)
 
           # If compression has been enabled then on the next frame
-          state = %{state | compression: state1.compression, extra_flags: state1.extra_flags}
+          state = %{
+            state
+            | compression: state1.compression,
+              extra_flags: state1.extra_flags,
+              version: vsn
+          }
+
           {response("ok"), state}
         end
 
@@ -169,7 +219,7 @@ defmodule Network.EdgeV2 do
 
       ["bytes"] ->
         # This is an exception as unpaid_bytes can be negative
-        {response(Rlpx.int2bin(state.unpaid_bytes)), state}
+        {response(Rlpx.int2bin(unpaid_bytes(state))), state}
 
       ["portsend", ref, data] ->
         case PortCollection.portsend(state.ports, ref, data) do
@@ -179,19 +229,40 @@ defmodule Network.EdgeV2 do
 
       # "portopen" response
       ["response", ref, "ok"] ->
-        case PortCollection.confirm_portopen(state.ports, ref) do
-          {:ok, ports} ->
-            {nil, %{state | ports: ports}}
+        int_ref = Rlpx.bin2uint(ref)
+        pid = Network.PortManager.port_find(int_ref)
 
-          {:error, reason} ->
-            log(state, "ignoring response for #{inspect(reason)} from #{Base16.encode(ref)}")
-            {nil, state}
+        if pid do
+          Network.PortManager.confirm_portopen(pid)
+          {nil, state}
+        else
+          case PortCollection.confirm_portopen(state.ports, ref) do
+            {:ok, ports} ->
+              {nil, %{state | ports: ports}}
+
+            {:error, reason} ->
+              log(state, "ignoring response for #{inspect(reason)} from #{Base16.encode(ref)}")
+              {nil, state}
+          end
         end
 
       # "portopen" error
       ["error", ref, reason] ->
-        {:ok, ports} = PortCollection.deny_portopen(state.ports, ref, reason)
-        {nil, %{state | ports: ports}}
+        int_ref = Rlpx.bin2uint(ref)
+        pid = Network.PortManager.port_find(int_ref)
+
+        if pid do
+          Network.PortManager.deny_portopen(pid, reason)
+          {nil, state}
+        else
+          {:ok, ports} = PortCollection.deny_portopen(state.ports, ref, reason)
+          {nil, %{state | ports: ports}}
+        end
+
+      ["portclose2", physical_port] ->
+        int_physical_port = Rlpx.bin2uint(physical_port)
+        Network.PortManager.port_close(int_physical_port)
+        {response("ok"), state}
 
       ["portclose", ref] ->
         case PortCollection.portclose(state.ports, ref) do
@@ -323,6 +394,13 @@ defmodule Network.EdgeV2 do
         ["portopen", device_id, port] ->
           portopen(state, device_id, to_num(port), "rw")
 
+        ["portopen2", device_id, port, flags | _] ->
+          Network.PortManager.request_portopen(port, device_address(state), device_id, flags)
+          |> case do
+            {:error, reason} -> error(reason)
+            {:ok, physical_port} -> response("ok", physical_port)
+          end
+
         _ ->
           log(state, "Unhandled message: #{truncate(msg)}")
           error(401, "bad input")
@@ -400,6 +478,17 @@ defmodule Network.EdgeV2 do
   end
 
   @impl true
+  def handle_info({:device_usage, _device}, state) do
+    state =
+      if unpaid_bytes(state) > send_threshold() do
+        must_have_ticket(state)
+      else
+        state
+      end
+
+    {:noreply, state}
+  end
+
   def handle_info({:check_activity, then_last_message}, state = %{last_message: now_last_message}) do
     if then_last_message == now_last_message do
       {:stop, :no_activity_timeout, state}
@@ -412,8 +501,8 @@ defmodule Network.EdgeV2 do
     handle_data(data, %{state | last_message: Time.utc_now()})
   end
 
-  def handle_info({:stop_unpaid, b0}, state = %{unpaid_bytes: b}) do
-    log(state, "connection closed because unpaid #{b0}(#{b}) bytes.")
+  def handle_info({:stop_unpaid, b0}, state) do
+    log(state, "connection closed because unpaid #{b0}(#{unpaid_bytes(state)}) bytes.")
     {:stop, :normal, state}
   end
 
@@ -522,12 +611,7 @@ defmodule Network.EdgeV2 do
             Diode.broadcast_self()
 
             {response("thanks!", bytes),
-             %{
-               state
-               | unpaid_bytes: state.unpaid_bytes - bytes,
-                 last_ticket: Time.utc_now(),
-                 fleet: Ticket.fleet_contract(dl)
-             }}
+             %{state | last_ticket: Time.utc_now(), fleet: Ticket.fleet_contract(dl)}}
 
           {:too_old, min} ->
             response("too_old", min)
@@ -662,58 +746,36 @@ defmodule Network.EdgeV2 do
     msg
   end
 
-  defp is_portsend({:port, _}), do: true
-  defp is_portsend(_), do: false
+  # defp is_portsend({:port, _}), do: true
+  # defp is_portsend(_), do: false
 
   defp send_threshold() do
     Diode.ticket_grace() - Diode.ticket_grace() / 4
   end
 
-  defp send_socket(
-         state = %{unpaid_bytes: unpaid},
-         partition,
-         request_id,
-         data,
-         trace \\ nil
-       ) do
-    cond do
-      # early exit
-      unpaid > Diode.ticket_grace() ->
-        send(self(), {:stop_unpaid, unpaid})
+  defp send_socket(state, partition, request_id, data, trace \\ nil) do
+    if data == nil do
+      account_outgoing(state)
+    else
+      %{state | blocked: :queue.in({partition, request_id, data}, state.blocked)}
+    end
+    |> flush_blocked(trace)
+  end
 
-        msg =
-          encode_request(random_ref(), ["goodbye", "ticket expected", "you might get blocked"])
-
-        :ok = do_send_socket(state, partition, msg)
-        account_outgoing(state, msg)
-
-      # stopping port data, and ensure there is a ticket within 20s
-      unpaid > send_threshold() and is_portsend(partition) ->
-        %{state | blocked: :queue.in({partition, request_id, data}, state.blocked)}
-        |> account_outgoing()
-        |> must_have_ticket()
-
-      true ->
-        state =
-          if data == nil do
-            account_outgoing(state)
-          else
-            msg = encode_request(request_id, data)
-            :ok = do_send_socket(state, partition, msg, trace)
-            account_outgoing(state, msg)
-          end
-
-        # continue port data sending?
-        if state.unpaid_bytes < send_threshold() and not :queue.is_empty(state.blocked) do
-          {{:value, {partition, request_id, data}}, blocked} = :queue.out(state.blocked)
-          send_socket(%{state | blocked: blocked}, partition, request_id, data)
-        else
-          state
-        end
+  defp flush_blocked(state, trace) do
+    if not :queue.is_empty(state.blocked) do
+      {{:value, {partition, request_id, data}}, blocked} = :queue.out(state.blocked)
+      state = %{state | blocked: blocked}
+      msg = encode_request(request_id, data)
+      :ok = do_send_socket(state, partition, msg, trace)
+      account_outgoing(state, msg)
+      flush_blocked(state, trace)
+    else
+      state
     end
   end
 
-  defp do_send_socket(state, partition, msg, trace \\ nil) do
+  defp do_send_socket(state, partition, msg, trace) do
     msg =
       case state.compression do
         nil -> msg
@@ -733,8 +795,10 @@ defmodule Network.EdgeV2 do
   @spec device_id(state()) :: Wallet.t()
   def device_id(%{node_id: id}), do: id
   def device_address(%{node_id: id}), do: Wallet.address!(id)
+  @default_fleet DiodeClient.Base16.decode("0x8afe08d333f785c818199a5bdc7a52ac6ffc492a")
+  def device_fleet(%{fleet: fleet}), do: fleet || @default_fleet
 
-  defp account_incoming(state = %{unpaid_rx_bytes: unpaid_rx}, msg) do
+  defp account_incoming(state, msg) do
     [
       {:fleet_traffic_in, state.fleet},
       {:device_traffic_in, device_address(state)},
@@ -743,10 +807,11 @@ defmodule Network.EdgeV2 do
     |> Enum.map(&{&1, byte_size(msg)})
     |> Network.Stats.batch_incr()
 
-    %{state | unpaid_rx_bytes: unpaid_rx + byte_size(msg)}
+    TicketStore.increase_device_usage(device_address(state), byte_size(msg))
+    state
   end
 
-  defp account_outgoing(state = %{unpaid_bytes: unpaid, unpaid_rx_bytes: unpaid_rx}, msg \\ "") do
+  defp account_outgoing(state, msg \\ "") do
     [
       {:fleet_traffic_out, state.fleet},
       {:device_traffic_out, device_address(state)},
@@ -755,7 +820,8 @@ defmodule Network.EdgeV2 do
     |> Enum.map(&{&1, byte_size(msg)})
     |> Network.Stats.batch_incr()
 
-    %{state | unpaid_bytes: unpaid + unpaid_rx + byte_size(msg), unpaid_rx_bytes: 0}
+    TicketStore.increase_device_usage(device_address(state), byte_size(msg))
+    state
   end
 
   def on_nodeid(edge) do
@@ -809,5 +875,9 @@ defmodule Network.EdgeV2 do
   defp random_ref() do
     Random.uint31h()
     |> to_bin()
+  end
+
+  defp unpaid_bytes(state) do
+    TicketStore.device_unpaid_bytes(device_address(state), device_fleet(state))
   end
 end
