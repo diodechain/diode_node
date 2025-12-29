@@ -591,7 +591,7 @@ defmodule Network.EdgeV2 do
         dl = Ticket.server_sign(dl, Wallet.privkey!(Diode.wallet()))
         ret = TicketStore.add(dl, device_id(state))
         total = Ticket.total_bytes(dl)
-        log(state, "ticket total: #{total} ret => #{inspect(ret)}")
+        log(state, "ticket total: #{total} ret => #{inspect(ret, limit: 32)}")
 
         case ret do
           {:ok, bytes} ->
