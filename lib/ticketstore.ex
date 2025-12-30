@@ -200,20 +200,20 @@ defmodule TicketStore do
   @doc """
     Handling a ConnectionTicket
   """
-  def add(tck, wallet) do
+  def add(tck, wallet, version \\ 1000) do
     chain_id = Ticket.chain_id(tck)
     tepoch = Ticket.epoch(tck)
     epoch = RemoteChain.epoch(chain_id)
     address = Wallet.address!(wallet)
     fleet = Ticket.fleet_contract(tck)
     last = find(address, fleet, tepoch)
-    usage = device_usage(address)
+    ticket_usage = if last == nil, do: 0, else: Ticket.total_bytes(last)
 
     usage =
-      if last == nil do
-        usage
+      if version > 1_000 do
+        max(ticket_usage, device_usage(address))
       else
-        max(usage, Ticket.total_bytes(last))
+        ticket_usage
       end
 
     cond do

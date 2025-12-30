@@ -66,14 +66,18 @@ defmodule Network.EdgeV2 do
   end
 
   defp send_ticket_request(state) do
-    msg =
-      encode_request(random_ref(), [
-        "ticket_request",
-        TicketStore.device_usage(device_address(state))
-      ])
+    if state.version > 1_000 do
+      msg =
+        encode_request(random_ref(), [
+          "ticket_request",
+          TicketStore.device_usage(device_address(state))
+        ])
 
-    :ok = do_send_socket(state, :ticket, msg, nil)
-    account_outgoing(state, msg)
+      :ok = do_send_socket(state, :ticket, msg, nil)
+      account_outgoing(state, msg)
+    else
+      state
+    end
   end
 
   def ssl_options(opts) do
@@ -589,7 +593,7 @@ defmodule Network.EdgeV2 do
 
       true ->
         dl = Ticket.server_sign(dl, Wallet.privkey!(Diode.wallet()))
-        ret = TicketStore.add(dl, device_id(state))
+        ret = TicketStore.add(dl, device_id(state), state.version)
         total = Ticket.total_bytes(dl)
         log(state, "ticket total: #{total} ret => #{inspect(ret, limit: 32)}")
 
