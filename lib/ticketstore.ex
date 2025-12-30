@@ -209,6 +209,13 @@ defmodule TicketStore do
     last = find(address, fleet, tepoch)
     usage = device_usage(address)
 
+    usage =
+      if last == nil do
+        usage
+      else
+        max(usage, Ticket.total_bytes(last))
+      end
+
     cond do
       tepoch not in recent_epochs(chain_id) ->
         {:too_old, epoch - 1}
