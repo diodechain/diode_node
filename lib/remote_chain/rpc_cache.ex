@@ -263,14 +263,18 @@ defmodule RemoteChain.RPCCache do
     block = resolve_block(chain, block)
     msg = Rlp.encode!(["getaccount", block, Base16.decode(address)]) |> Base16.encode()
 
-    ["response", ret, _proofs] =
-      rpc!(chain, "dio_edgev2", [msg])
-      |> Base16.decode()
-      |> Rlp.decode!()
+    rpc!(chain, "dio_edgev2", [msg])
+    |> Base16.decode()
+    |> Rlp.decode!()
+    |> case do
+      ["response", ret, _proofs] ->
+        ret
+        |> Rlpx.list2map()
+        |> Map.get("storage_root") || throw("No storage_root in account")
 
-    ret
-    |> Rlpx.list2map()
-    |> Map.get("storage_root") || throw("No storage_root in account")
+      ["error", "account does not exist"] ->
+        "0x"
+    end
   end
 
   def get_account_root(chain, address, block) do

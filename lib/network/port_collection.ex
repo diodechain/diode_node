@@ -3,6 +3,7 @@
 # Licensed under the Diode License, Version 1.1
 defmodule Network.PortCollection do
   alias DiodeClient.Base16
+  require Logger
 
   @moduledoc """
     Port opening flow:
@@ -327,9 +328,15 @@ defmodule Network.PortCollection do
   end
 
   def deny_portopen(pc, ref, reason) do
-    port = %Port{state: :pre_open} = PortCollection.get(pc, ref)
-    send(port.from, {port.from, {:error, reason}})
-    {:ok, do_portclose(pc, port)}
+    case PortCollection.get(pc, ref) do
+      port = %Port{state: :pre_open} ->
+        send(port.from, {port.from, {:error, reason}})
+        {:ok, do_portclose(pc, port)}
+
+      nil ->
+        Logger.error("PortCollection.deny_portopen: port does not exist #{Base16.encode(ref)}")
+        {:ok, pc}
+    end
   end
 
   def portclose(pc, ref) when is_binary(ref) do
