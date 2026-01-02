@@ -19,7 +19,7 @@ defmodule Network.EdgeV2 do
           inbuffer: nil | {integer(), binary()},
           last_message: Time.t(),
           last_ticket: Time.t(),
-          last_warning: Time.t(),
+          last_warning: nil | {:ticket, Time.t()},
           node_address: :inet.ip_address(),
           node_id: Wallet.t(),
           version: integer(),
@@ -593,6 +593,20 @@ defmodule Network.EdgeV2 do
 
       true ->
         dl = Ticket.server_sign(dl, Wallet.privkey!(Diode.wallet()))
+
+        # If the version is 1000 and this is the first ticket of this session
+        # we need to reset the device usage to the last ticket
+        if state.version == 1000 and state.last_ticket == nil do
+          last_ticket =
+            TicketStore.find(device_address(state), Ticket.fleet_contract(dl), Ticket.epoch(dl))
+
+          if last_ticket != nil do
+            TicketStore.reset_device_usage(device_address(state), Ticket.total_bytes(last_ticket))
+          else
+            TicketStore.reset_device_usage(device_address(state), 0)
+          end
+        end
+
         ret = TicketStore.add(dl, device_id(state), state.version)
         total = Ticket.total_bytes(dl)
         log(state, "ticket total: #{total} ret => #{inspect(ret, limit: 32)}")

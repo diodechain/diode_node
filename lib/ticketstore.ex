@@ -37,6 +37,12 @@ defmodule TicketStore do
     :ets.update_counter(:device_usage_tracker, {device, epoch}, value, {:key, 0})
   end
 
+  def reset_device_usage(device, value) do
+    epoch = epoch()
+    key = {device, epoch}
+    :ets.insert(:device_usage_tracker, {key, value})
+  end
+
   def device_usage(device) do
     epoch = epoch()
 
@@ -47,7 +53,11 @@ defmodule TicketStore do
   end
 
   def device_paid_bytes(device, fleet) do
-    case find(device, fleet, epoch()) do
+    Enum.find_value(RemoteChain.chains(), fn chain ->
+      epoch = RemoteChain.epoch(chain)
+      find(device, fleet, epoch)
+    end)
+    |> case do
       nil -> 0
       tck -> Ticket.total_bytes(tck)
     end
@@ -200,7 +210,7 @@ defmodule TicketStore do
   @doc """
     Handling a ConnectionTicket
   """
-  def add(tck, wallet, version \\ 1000) do
+  def add(tck, wallet, _version \\ 1000) do
     chain_id = Ticket.chain_id(tck)
     tepoch = Ticket.epoch(tck)
     epoch = RemoteChain.epoch(chain_id)
@@ -208,13 +218,7 @@ defmodule TicketStore do
     fleet = Ticket.fleet_contract(tck)
     last = find(address, fleet, tepoch)
     ticket_usage = if last == nil, do: 0, else: Ticket.total_bytes(last)
-
-    usage =
-      if version > 1_000 do
-        max(ticket_usage, device_usage(address))
-      else
-        ticket_usage
-      end
+    usage = max(ticket_usage, device_usage(address))
 
     cond do
       tepoch not in recent_epochs(chain_id) ->
