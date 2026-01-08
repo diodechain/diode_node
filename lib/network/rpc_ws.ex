@@ -55,7 +55,7 @@ defmodule Network.RpcWs do
     end
   end
 
-  def execute_rpc(method, params) do
+  def execute_rpc(method, params, _opts) do
     case method do
       "eth_subscribe" ->
         case params do

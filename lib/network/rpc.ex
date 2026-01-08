@@ -123,18 +123,19 @@ defmodule Network.Rpc do
       {is_tuple(opts[:extra]), opts[:extra]}
     ]
 
-    execute(apis, [method, params])
+    execute(apis, [method, params, opts])
   end
 
-  def execute_std("eth_accounts", _params) do
+  def execute_std("eth_accounts", _params, _opts) do
     result([])
   end
 
-  def execute_std("eth_getBalance", [address | _block]) when address in ["what", "method?"] do
+  def execute_std("eth_getBalance", [address | _block], _opts)
+      when address in ["what", "method?"] do
     result(nil, 400, "Bad request")
   end
 
-  def execute_std(method, params)
+  def execute_std(method, params, opts)
       when method in [
              "dio_accounts",
              "dio_codeGroups",
@@ -169,10 +170,10 @@ defmodule Network.Rpc do
       end)
 
     RemoteChain.RPCCache.rpc(chain, method, params)
-    |> remote_rpc_result()
+    |> remote_rpc_result(method, opts)
   end
 
-  def execute_std(method, params) do
+  def execute_std(method, params, _opts) do
     case method do
       "web3_clientVersion" ->
         result("Diode Relay Node " <> Diode.Version.description())
@@ -232,7 +233,7 @@ defmodule Network.Rpc do
     end
   end
 
-  def execute_dio(method, params) do
+  def execute_dio(method, params, _opts) do
     case method do
       "dio_edgev2" ->
         hd(params)
@@ -534,7 +535,22 @@ defmodule Network.Rpc do
     {result, code, error}
   end
 
-  defp remote_rpc_result(result) do
+  defp remote_rpc_result(%{"result" => %{"nonce" => _nonce} = result}, method, opts)
+       when method in ["eth_getBlockByNumber", "eth_getBlockByHash"] do
+    if opts[:strip_nonce] do
+      result
+      |> Map.put("nonce", "0x0000000000000000")
+      |> Map.put(
+        "logsBloom",
+        "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      )
+    else
+      result
+    end
+    |> result()
+  end
+
+  defp remote_rpc_result(result, _method, _opts) do
     case result do
       %{"message" => "Not found"} -> throw(:notfound)
       %{"result" => result} -> result(result)
