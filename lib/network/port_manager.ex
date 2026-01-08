@@ -287,70 +287,67 @@ defmodule Network.PortManager do
   defp loop_udp(parent_pid, socket, nil, nil, []) do
     receive do
       msg ->
-        msg
+        case msg do
+          {:udp, _socket, peer_ip, peer_port, data} ->
+            client = {peer_ip, peer_port}
+            loop_udp(parent_pid, socket, client, nil, [data])
+        end
     after
       35_000 ->
         :gen_udp.close(socket)
         :timeout_before_first_client
-    end
-    |> case do
-      {:udp, _socket, peer_ip, peer_port, data} ->
-        client = {peer_ip, peer_port}
-        loop_udp(parent_pid, socket, client, nil, [data])
     end
   end
 
   defp loop_udp(parent_pid, socket, client1, nil, buffer) do
     receive do
       msg ->
-        msg
+        case msg do
+          {:udp, _socket, peer_ip, peer_port, data} ->
+            client = {peer_ip, peer_port}
+
+            if client == client1 do
+              loop_udp(parent_pid, socket, client1, nil, [data | buffer])
+            else
+              {host, port} = client1
+              buffer = Enum.reverse([data | buffer])
+
+              for packet <- buffer do
+                :gen_udp.send(socket, host, port, packet)
+                send(parent_pid, {:bytes_sent, byte_size(packet)})
+              end
+
+              loop_udp(parent_pid, socket, client1, client, [])
+            end
+        end
     after
       35_000 ->
         :gen_udp.close(socket)
         :timeout_before_second_client
-    end
-    |> case do
-      {:udp, _socket, peer_ip, peer_port, data} ->
-        client = {peer_ip, peer_port}
-
-        if client == client1 do
-          loop_udp(parent_pid, socket, client1, nil, [data | buffer])
-        else
-          {host, port} = client1
-          buffer = Enum.reverse([data | buffer])
-
-          for packet <- buffer do
-            :gen_udp.send(socket, host, port, packet)
-            send(parent_pid, {:bytes_sent, byte_size(packet)})
-          end
-
-          loop_udp(parent_pid, socket, client1, client, [])
-        end
     end
   end
 
   defp loop_udp(parent_pid, socket, {peer_ip_1, peer_port_1}, {peer_ip_2, peer_port_2}, []) do
     receive do
       msg ->
-        msg
+        case msg do
+          {:udp, _socket, ^peer_ip_1, ^peer_port_1, data} ->
+            :gen_udp.send(socket, peer_ip_2, peer_port_2, data)
+            send(parent_pid, {:bytes_sent, byte_size(data)})
+            loop_udp(parent_pid, socket, {peer_ip_1, peer_port_1}, {peer_ip_2, peer_port_2}, [])
+
+          {:udp, _socket, ^peer_ip_2, ^peer_port_2, data} ->
+            :gen_udp.send(socket, peer_ip_1, peer_port_1, data)
+            send(parent_pid, {:bytes_sent, byte_size(data)})
+            loop_udp(parent_pid, socket, {peer_ip_1, peer_port_1}, {peer_ip_2, peer_port_2}, [])
+
+          {:udp, _socket, _peer_ip, _peer_port, _data} ->
+            loop_udp(parent_pid, socket, {peer_ip_1, peer_port_1}, {peer_ip_2, peer_port_2}, [])
+        end
     after
       3600_000 ->
         :gen_udp.close(socket)
         :timeout_no_traffic
-    end
-    |> case do
-      {:udp, _socket, ^peer_ip_1, ^peer_port_1, data} ->
-        :gen_udp.send(socket, peer_ip_2, peer_port_2, data)
-        send(parent_pid, {:bytes_sent, byte_size(data)})
-        loop_udp(parent_pid, socket, {peer_ip_1, peer_port_1}, {peer_ip_2, peer_port_2}, [])
-
-      {:udp, _socket, ^peer_ip_2, ^peer_port_2, data} ->
-        :gen_udp.send(socket, peer_ip_1, peer_port_1, data)
-        send(parent_pid, {:bytes_sent, byte_size(data)})
-        loop_udp(parent_pid, socket, {peer_ip_1, peer_port_1}, {peer_ip_2, peer_port_2}, [])
-
-      {:udp, _socket, _peer_ip, _peer_port, _data} ->
-        loop_udp(parent_pid, socket, {peer_ip_1, peer_port_1}, {peer_ip_2, peer_port_2}, [])
     end
   end
 

@@ -1,3 +1,12 @@
+# Jan 2nd
+
+device_id = DiodeClient.Base16.decode("0x84c485c62cdd878ce795aa90f269f84b5ae4fa0e")
+pid = Network.Server.get_connections(Network.EdgeV2)[device_id]
+fleet_id = :sys.get_state(pid).fleet
+TicketStore.device_unpaid_bytes(device_id, fleet_id)
+tck = TicketStore.find(device_id, fleet_id, RemoteChain.epoch(Chains.Diode.chain_id()))
+DiodeClient.Object.Ticket.total_bytes(tck)
+
 # Nov 28th
 
 node_id = DiodeClient.Base16.decode("0x1350d3b501d6842ed881b59de4b95b27372bfae9") |> DiodeClient.Wallet.from_address()

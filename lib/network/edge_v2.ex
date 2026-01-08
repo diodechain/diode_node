@@ -18,7 +18,7 @@ defmodule Network.EdgeV2 do
           fleet: nil | binary(),
           inbuffer: nil | {integer(), binary()},
           last_message: Time.t(),
-          last_ticket: Time.t(),
+          last_ticket: nil | Time.t(),
           last_warning: nil | {:ticket, Time.t()},
           node_address: :inet.ip_address(),
           node_id: Wallet.t(),
