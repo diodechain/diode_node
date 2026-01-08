@@ -279,24 +279,37 @@ defmodule Network.PortManager do
       :init -> :ok
     end
 
+    :inet.setopts(socket, [{:active, true}])
     reason = loop_udp(parent_pid, socket, nil, nil, [])
     send(parent_pid, {:udp_down, reason})
   end
 
   defp loop_udp(parent_pid, socket, nil, nil, []) do
     receive do
-      {:udp, _socket, peer_ip, peer_port, data} ->
-        client = {peer_ip, peer_port}
-        loop_udp(parent_pid, socket, client, nil, [data])
+      msg ->
+        msg
     after
       35_000 ->
         :gen_udp.close(socket)
         :timeout_before_first_client
     end
+    |> case do
+      {:udp, _socket, peer_ip, peer_port, data} ->
+        client = {peer_ip, peer_port}
+        loop_udp(parent_pid, socket, client, nil, [data])
+    end
   end
 
   defp loop_udp(parent_pid, socket, client1, nil, buffer) do
     receive do
+      msg ->
+        msg
+    after
+      35_000 ->
+        :gen_udp.close(socket)
+        :timeout_before_second_client
+    end
+    |> case do
       {:udp, _socket, peer_ip, peer_port, data} ->
         client = {peer_ip, peer_port}
 
@@ -313,15 +326,19 @@ defmodule Network.PortManager do
 
           loop_udp(parent_pid, socket, client1, client, [])
         end
-    after
-      35_000 ->
-        :gen_udp.close(socket)
-        :timeout_before_second_client
     end
   end
 
   defp loop_udp(parent_pid, socket, {peer_ip_1, peer_port_1}, {peer_ip_2, peer_port_2}, []) do
     receive do
+      msg ->
+        msg
+    after
+      3600_000 ->
+        :gen_udp.close(socket)
+        :timeout_no_traffic
+    end
+    |> case do
       {:udp, _socket, ^peer_ip_1, ^peer_port_1, data} ->
         :gen_udp.send(socket, peer_ip_2, peer_port_2, data)
         send(parent_pid, {:bytes_sent, byte_size(data)})
@@ -334,10 +351,6 @@ defmodule Network.PortManager do
 
       {:udp, _socket, _peer_ip, _peer_port, _data} ->
         loop_udp(parent_pid, socket, {peer_ip_1, peer_port_1}, {peer_ip_2, peer_port_2}, [])
-    after
-      3600_000 ->
-        :gen_udp.close(socket)
-        :timeout_no_traffic
     end
   end
 
