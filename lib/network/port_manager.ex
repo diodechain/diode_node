@@ -193,7 +193,7 @@ defmodule Network.PortManager do
       {:ok, physical_port} ->
         GenServer.cast(
           target_pid,
-          {:pccb2_portopen, msg.portname, physical_port, target_device_address, msg.flags}
+          {:pccb2_portopen, msg.portname, physical_port, source_device_address, msg.flags}
         )
 
         GenServer.reply(from, {:ok, physical_port})
