@@ -16,7 +16,7 @@ defmodule Network.PortManager do
 
   1. Edge A send "portopen" via socket
   2. Client A receives "portopen" and calls PortManager.request_portopen -- BLOCKING
-  3. Client B receives cast: {:pccb2_portopen, worker_pid, portname, physical_port, source_device_address, target_device_address, flags}
+  3. Client B receives cast: {:pccb2_portopen, portname, physical_port, source_device_address, flags}
   4. Client B send "portopen" via socket to Edge B
   5. Client B receives "ack" or "deny" from Edge B
   6. Client B calls PortManager.confirm_portopen or PortManager.deny_portopen
@@ -25,7 +25,7 @@ defmodule Network.PortManager do
 
   Port GenServers who are sender/receiver have to implement these calls:application
 
-  - handle_cast({:pccb2_portopen, worker_pid, portname, physical_port, source_device_address, target_device_address, flags}, state)
+  - handle_cast({:pccb2_portopen, portname, physical_port, source_device_address, flags}, state)
   - handle_cast({:pccb2_portclose, physical_port}, state)
 
 
