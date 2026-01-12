@@ -312,8 +312,9 @@ defmodule KademliaLight do
   end
 
   def register_node(node_id, server) do
-    Model.KademliaSql.maybe_update_object(nil, server)
-    GenServer.cast(__MODULE__, {:register_node, node_id})
+    if Model.KademliaSql.maybe_update_object(nil, server) do
+      GenServer.cast(__MODULE__, {:register_node, node_id})
+    end
   end
 
   def drop_nodes(keys) when is_list(keys) do

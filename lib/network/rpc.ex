@@ -382,12 +382,19 @@ defmodule Network.Rpc do
               last_error: encode16(0),
               node_id: encode16(address),
               node:
-                Model.KademliaSql.object(Diode.hash(address))
-                |> Object.decode!()
-                |> Json.prepare!(big_x: false),
+                case Model.KademliaSql.object(Diode.hash(address)) do
+                  nil ->
+                    Logger.error("No object found for connected server #{encode16(address)}")
+                    nil
+
+                  object ->
+                    Object.decode!(object)
+                    |> Json.prepare!(big_x: false)
+                end,
               retries: encode16(0)
             }
           end)
+          |> Enum.filter(fn item -> item.node != nil end)
 
         KademliaLight.network()
         |> KBuckets.to_list()

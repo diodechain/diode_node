@@ -177,7 +177,10 @@ defmodule Network.PeerHandlerV2 do
     server = Object.decode!(server)
     id = Wallet.address!(state.node_id)
     ^id = Object.key(server)
-    KademliaLight.register_node(state.node_id, server)
+
+    if KademliaLight.register_node(state.node_id, server) == nil do
+      raise "Failed to register node #{Wallet.printable(state.node_id)} with stale block_number=#{Object.block_number(server)}"
+    end
 
     if Map.has_key?(state, :peer_port) do
       {:noreply, state}

@@ -82,7 +82,7 @@ defmodule Model.KademliaSql do
     hkey = KademliaLight.hash(Object.key(object))
     # Checking that we got a valid object
     if key == nil or key == hkey do
-      # querying stale objects too ensure we won't re-store a stale object
+      # querying stale objects to ensure we won't re-store a stale object
       case stale_object_ext(hkey) do
         nil ->
           put_object(hkey, Object.encode!(object))
