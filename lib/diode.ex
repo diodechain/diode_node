@@ -31,8 +31,10 @@ defmodule Diode do
     puts("Peer2   Port: #{peer2_port()}")
     puts("RPC     Port: #{rpc_port()}")
     puts("RPC SSL Port: #{rpcs_port()}")
-
     puts("Data Dir : #{data_dir()}")
+
+    # Ensure data directory exists
+    File.mkdir_p(data_dir())
 
     if System.get_env("COOKIE") do
       :erlang.set_cookie(String.to_atom(System.get_env("COOKIE")))
