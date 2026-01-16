@@ -1,5 +1,32 @@
 # Jan 2nd
 
+extended_member_info_type = "(address,uint256,address[])"
+member_info_type = "(address,uint256)"
+
+chat_group_info_type =
+  "(address,address,#{member_info_type}[],uint256,uint256,address[],bytes32,bytes32)"
+
+join_code_info_type = "(address,uint256,uint256,uint256,uint256)"
+
+type =
+  "(#{extended_member_info_type}[],uint256,#{chat_group_info_type}[],uint256,#{join_code_info_type}[],uint256,string,int256,address,uint256,uint256,uint256,uint256)"
+
+wallet = DiodeClient.Wallet.from_address(DiodeClient.Base16.decode("0x26927714e1f3d76baaa884fb243534dba659c360"))
+address = DiodeClient.Base16.decode("0xecbec63c8007fd78b244155139df38a6276dccb7")
+block = 10303966
+ret = Shell.call_from(Chains.Diode, wallet, address, "StatusAggregateV1", ["uint256"], [100], blockRef: block)
+
+DiodeClient.ABI.decode_types([type], DiodeClient.Base16.decode(ret))
+
+{tx, _blockRef} = Shell.tx_from(Chains.Diode, wallet, address, "StatusAggregateV1", ["uint256"], [100])
+data = DiodeClient.Transaction.payload(tx) |> DiodeClient.Base16.encode()
+RemoteChain.RPCCache.call_cache(
+  Chains.Diode, "0xecbec63c8007fd78b244155139df38a6276dccb7",
+  "0x26927714e1f3d76baaa884fb243534dba659c360",
+  data, block-2)
+
+# Jan 2nd
+
 device_id = DiodeClient.Base16.decode("0x84c485c62cdd878ce795aa90f269f84b5ae4fa0e")
 pid = Network.Server.get_connections(Network.EdgeV2)[device_id]
 fleet_id = :sys.get_state(pid).fleet

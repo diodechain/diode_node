@@ -134,10 +134,6 @@ defmodule RemoteChain.RPCCache do
 
   def call_cache(chain, to, from, data, block \\ "latest") do
     block = resolve_block(chain, block)
-
-    # for call_cache requests we use the last change block as the base
-    # any contract not using change tracking will suffer 240 blocks (one hour) of caching
-    block = get_last_change(chain, to, block)
     rpc(chain, "eth_call", [%{to: to, data: data, from: from}, block])
   end
 
