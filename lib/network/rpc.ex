@@ -261,13 +261,21 @@ defmodule Network.Rpc do
         end
 
       "dio_traffic" ->
-        chain_id = Base16.decode_int(hd(params))
+        chain_id_param =
+          case params do
+            [] -> throw(:badrequest)
+            [nil | _] -> throw(:badrequest)
+            [param | _] -> param
+          end
+
+        chain_id = Base16.decode_int(chain_id_param)
         peak = RemoteChain.peaknumber(chain_id)
         peak_epoch = RemoteChain.epoch(chain_id, peak)
 
         epoch =
           case params do
-            [_chain_id, epoch] -> Base16.decode_int(epoch)
+            [_chain_id, epoch] when epoch != nil -> Base16.decode_int(epoch)
+            [_chain_id, _epoch] -> peak_epoch
             [_chain_id] -> peak_epoch
           end
 
@@ -303,7 +311,14 @@ defmodule Network.Rpc do
         })
 
       "dio_tickets" ->
-        chain_id = Base16.decode_int(hd(params))
+        chain_id_param =
+          case params do
+            [] -> throw(:badrequest)
+            [nil | _] -> throw(:badrequest)
+            [param | _] -> param
+          end
+
+        chain_id = Base16.decode_int(chain_id_param)
         peak = RemoteChain.peaknumber(chain_id)
         peak_epoch = RemoteChain.epoch(chain_id, peak)
 
@@ -311,6 +326,7 @@ defmodule Network.Rpc do
           case params do
             [_chain_id, epoch] when is_integer(epoch) -> epoch
             [_chain_id, epoch] when is_binary(epoch) -> Base16.decode_int(epoch)
+            [_chain_id, epoch] when epoch == nil -> peak_epoch
             [_chain_id] -> peak_epoch
           end
 
@@ -435,10 +451,34 @@ defmodule Network.Rpc do
   end
 
   defp handle_proxy(method, params, opts) do
-    [node | params] = params
-    node = Base16.decode(node)
-    server = KademliaLight.find_node_object(node)
+    case params do
+      [] ->
+        result(nil, 400)
 
+      [nil | _] ->
+        result(nil, 400)
+
+      [node | params] ->
+        # Validate that params don't contain nil values for methods that require them
+        invalid_params =
+          method in ["dio_traffic", "dio_tickets"] and
+            params != [] and
+            case params do
+              [nil | _] -> true
+              _ -> false
+            end
+
+        if invalid_params do
+          result(nil, 400)
+        else
+          node = Base16.decode(node)
+          server = KademliaLight.find_node_object(node)
+          handle_proxy_continue(method, params, opts, node, server)
+        end
+    end
+  end
+
+  defp handle_proxy_continue(method, params, opts, node, server) do
     cond do
       method not in [
         "dio_checkConnectivity",
