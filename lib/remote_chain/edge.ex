@@ -22,32 +22,15 @@ defmodule RemoteChain.Edge do
         |> response()
 
       ["getblockheader2", index] when is_binary(index) ->
-        block = get_block_header(chain, index)
-
-        egg =
-          [
-            block["previous_block"],
-            block["state_hash"],
-            block["transaction_hash"],
-            block["timestamp"],
-            block["number"],
-            block["nonce"]
-          ]
-          |> :erlang.term_to_binary(minor_version: 1)
-
-        miner_signature =
-          block["miner_signature"] ||
-            raise "block header missing miner signature #{inspect(block)}"
-
-        miner = Secp256k1.recover!(miner_signature, egg) |> Wallet.from_pubkey()
-        pubkey = Wallet.pubkey!(miner)
-
-        if block["miner"] != Wallet.address!(miner) do
-          raise "invalid miner"
-        end
-
-        block = Map.delete(block, "miner")
+        {block, pubkey} = get_block_header2(chain, index)
         response(block, pubkey)
+
+      ["getblockheader3" | indexes] ->
+        Enum.map(indexes, fn index ->
+          {block, pubkey} = get_block_header2(chain, index)
+          [block, pubkey]
+        end)
+        |> response()
 
       ["getblockquick", last_block, window_size]
       when is_binary(last_block) and
@@ -341,6 +324,35 @@ defmodule RemoteChain.Edge do
     for endpoint <- Enum.shuffle(chain.rpc_endpoints()) do
       RemoteChain.HTTP.send_raw_transaction(endpoint, payload)
     end
+  end
+
+  defp get_block_header2(chain, index) do
+    block = get_block_header(chain, index)
+
+    egg =
+      [
+        block["previous_block"],
+        block["state_hash"],
+        block["transaction_hash"],
+        block["timestamp"],
+        block["number"],
+        block["nonce"]
+      ]
+      |> :erlang.term_to_binary(minor_version: 1)
+
+    miner_signature =
+      block["miner_signature"] ||
+        raise "block header missing miner signature #{inspect(block)}"
+
+    miner = Secp256k1.recover!(miner_signature, egg) |> Wallet.from_pubkey()
+    pubkey = Wallet.pubkey!(miner)
+
+    if block["miner"] != Wallet.address!(miner) do
+      raise "invalid miner"
+    end
+
+    block = Map.delete(block, "miner")
+    {block, pubkey}
   end
 
   defp get_block_header(chain, index) do
