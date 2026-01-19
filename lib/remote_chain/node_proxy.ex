@@ -32,7 +32,7 @@ defmodule RemoteChain.NodeProxy do
   end
 
   @impl true
-  def init(state) do
+  def init(%NodeProxy{} = state) do
     File.mkdir_p!("logs")
     {:ok, log} = RotatingFile.start_link(file: "logs/#{state.chain}.log", name: nil)
     state = %NodeProxy{state | log: log}

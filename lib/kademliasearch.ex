@@ -37,7 +37,7 @@ defmodule KademliaSearch do
     GenServerDbg.call(pid, {:find_nodes, key, nearest, k, cmd}, 20_000)
   end
 
-  def handle_call({:find_nodes, key, nearest, k, cmd}, from, state) do
+  def handle_call({:find_nodes, key, nearest, k, cmd}, from, %KademliaSearch{} = state) do
     state = %KademliaSearch{
       state
       | from: from,

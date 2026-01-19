@@ -235,7 +235,7 @@ defmodule KademliaLight do
       |> Enum.reject(fn n -> KBuckets.is_self(n) end)
       |> Enum.reject(fn n -> is_integer(n.last_connected) and n.last_connected > deadline end)
 
-    if length(stale) > 0 do
+    if not Enum.empty?(stale) do
       network =
         Enum.reduce(stale, network, fn stale_node, network ->
           KBuckets.delete_item(network, stale_node)
@@ -281,7 +281,7 @@ defmodule KademliaLight do
       end)
 
     network =
-      Enum.reduce(online, network, fn item, network ->
+      Enum.reduce(online, network, fn %KBuckets.Item{} = item, network ->
         KBuckets.update_item(network, %KBuckets.Item{item | last_connected: now})
       end)
 

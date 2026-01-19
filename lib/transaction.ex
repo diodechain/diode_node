@@ -30,7 +30,7 @@ defmodule Diode.Transaction do
           end
         else
           nonce = RemoteChain.NonceProvider.nonce(chain_id)
-          tx = %DiodeClient.Transaction{tx | nonce: nonce}
+          tx = %{tx | nonce: nonce}
           txhash = Shell.submit_tx(tx)
 
           if is_binary(txhash) do

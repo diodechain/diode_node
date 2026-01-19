@@ -5,7 +5,7 @@ defmodule CacheChain do
     %__MODULE__{a: a, b: b}
   end
 
-  def put(cache, key, value) do
+  def put(%CacheChain{} = cache, key, value) do
     %CacheChain{cache | a: RemoteChain.Cache.put(cache.a, key, value)}
   end
 
@@ -27,7 +27,7 @@ defmodule CacheChain do
     end
   end
 
-  def delete(cache, key) do
+  def delete(%CacheChain{} = cache, key) do
     %CacheChain{
       cache
       | a: RemoteChain.Cache.delete(cache.a, key),

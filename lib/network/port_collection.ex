@@ -39,14 +39,14 @@ defmodule Network.PortCollection do
   """
   defmodule PortClient do
     @enforce_keys [:ref]
-    defstruct pid: nil, mon: nil, ref: nil, write: true, trace: false
+    defstruct pid: nil, mon: nil, ref: nil, write: true, trace: nil
 
     @type t :: %PortClient{
             pid: pid(),
             mon: reference(),
             ref: reference(),
             write: boolean(),
-            trace: boolean()
+            trace: nil | pid()
           }
   end
 
@@ -58,7 +58,7 @@ defmodule Network.PortCollection do
               portname: nil,
               shared: false,
               mailbox: :queue.new(),
-              trace: false
+              trace: nil
 
     @type ref :: binary()
     @type t :: %Port{
@@ -68,8 +68,9 @@ defmodule Network.PortCollection do
             clients: [PortClient.t()],
             portname: any(),
             shared: true | false,
-            mailbox: :queue.queue(binary()),
-            trace: boolean()
+            # mailbox: :queue.queue(binary()),
+            mailbox: {[], []},
+            trace: nil | pid()
           }
   end
 
@@ -279,7 +280,7 @@ defmodule Network.PortCollection do
             GenServer.cast(self(), {:pccb_portopen, port, device_address})
             {:noreply, pc}
 
-          existing_port ->
+          %Port{} = existing_port ->
             port = %Port{existing_port | clients: [client | existing_port.clients]}
             pc = PortCollection.put(pc, port)
             {:reply, {:ok, client.ref}, pc}
