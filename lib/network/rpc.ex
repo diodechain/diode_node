@@ -444,17 +444,21 @@ defmodule Network.Rpc do
 
   defp handle_proxy(method, params, opts) do
     case params do
-      [] -> result(nil, 400)
-      [nil | _] -> result(nil, 400)
+      [] ->
+        result(nil, 400)
+
+      [nil | _] ->
+        result(nil, 400)
+
       [node | params] ->
         # Validate that params don't contain nil values for methods that require them
         invalid_params =
           method in ["dio_traffic", "dio_tickets"] and
-          params != [] and
-          case params do
-            [nil | _] -> true
-            _ -> false
-          end
+            params != [] and
+            case params do
+              [nil | _] -> true
+              _ -> false
+            end
 
         if invalid_params do
           result(nil, 400)
@@ -467,7 +471,6 @@ defmodule Network.Rpc do
   end
 
   defp handle_proxy_continue(method, params, opts, node, server) do
-
     cond do
       method not in [
         "dio_checkConnectivity",
