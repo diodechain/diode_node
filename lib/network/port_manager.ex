@@ -180,8 +180,8 @@ defmodule Network.PortManager do
           end
 
           reason = await_down(target_device_address, source_device_address)
-          send(target_pid, {:pccb2_portclose, physical_port})
-          send(source_pid, {:pccb2_portclose, physical_port})
+          GenServer.cast(target_pid, {:pccb2_portclose, physical_port})
+          GenServer.cast(source_pid, {:pccb2_portclose, physical_port})
           exit({:shutdown, reason})
         else
           {:error, reason} ->
