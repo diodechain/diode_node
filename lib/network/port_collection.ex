@@ -215,12 +215,6 @@ defmodule Network.PortCollection do
         pc
 
       {:error, reason} ->
-        # Debouncer.apply(
-        #   self(),
-        #   fn -> send(state.pid, {:check_activity, state.last_message}) end,
-        #   15_000
-        # )
-
         send(req_id, {req_id, {:error, reason}})
         pc
     end

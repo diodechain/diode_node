@@ -10,6 +10,7 @@ defmodule Network.EdgeV2 do
   import DiodeClient.Object.TicketV1, only: :macros
   import DiodeClient.Object.TicketV2, only: :macros
   import DiodeClient.Object.Channel, only: :macros
+  @refresh_interval :timer.hours(8)
 
   @type state :: %{
           blocked: :queue.queue(tuple()),
@@ -17,9 +18,9 @@ defmodule Network.EdgeV2 do
           extra_flags: [],
           fleet: nil | binary(),
           inbuffer: nil | {integer(), binary()},
-          last_message: Time.t(),
-          last_ticket: nil | Time.t(),
-          last_warning: nil | {:ticket, Time.t()},
+          last_message: DateTime.t(),
+          last_ticket: nil | DateTime.t(),
+          last_warning: nil | {:ticket, DateTime.t()},
           node_address: :inet.ip_address(),
           node_id: Wallet.t(),
           version: integer(),
@@ -39,7 +40,7 @@ defmodule Network.EdgeV2 do
         extra_flags: [],
         fleet: nil,
         inbuffer: nil,
-        last_message: Time.utc_now(),
+        last_message: DateTime.utc_now(),
         last_ticket: nil,
         last_warning: nil,
         version: 0,
@@ -493,16 +494,12 @@ defmodule Network.EdgeV2 do
     {:noreply, state}
   end
 
-  def handle_info({:check_activity, then_last_message}, state = %{last_message: now_last_message}) do
-    if then_last_message == now_last_message do
-      {:stop, :no_activity_timeout, state}
-    else
-      {:noreply, state}
-    end
+  def handle_info(:ticket_refresh, state) do
+    {:noreply, must_have_ticket(state)}
   end
 
   def handle_info({:ssl, _socket, data}, state) do
-    handle_data(data, %{state | last_message: Time.utc_now()})
+    handle_data(data, %{state | last_message: DateTime.utc_now()})
   end
 
   def handle_info({:stop_unpaid, b0}, state) do
@@ -627,9 +624,18 @@ defmodule Network.EdgeV2 do
 
             # Storing the updated ticket of this device, debounce is 10 sec
             Diode.broadcast_self()
+            pid = self()
+
+            Debouncer.delay(
+              {__MODULE__, :ticket_refresh, key},
+              fn ->
+                send(pid, :ticket_refresh)
+              end,
+              @refresh_interval
+            )
 
             {response("thanks!", bytes),
-             %{state | last_ticket: Time.utc_now(), fleet: Ticket.fleet_contract(dl)}}
+             %{state | last_ticket: DateTime.utc_now(), fleet: Ticket.fleet_contract(dl)}}
 
           {:too_old, min} ->
             response("too_old", min)
