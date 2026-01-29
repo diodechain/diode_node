@@ -40,7 +40,9 @@ def cache():
 def flush_cache():
   run("/opt/diode_node/bin/diode_node rpc 'IO.inspect(Diode.Cmd.flush_cache())'")
 
+# fab reload:Network.EdgeV2 --host=root@eu1.prenet.diode.io
 def reload(module):
+  local("scp ../_build/dev/lib/diode/ebin/Elixir.{}.beam root@{}:/opt/diode_node/".format(module, env.host))
   run("/opt/diode_node/bin/diode_node rpc 'IO.inspect(Shell.reload({}))'".format(module))
 
 @parallel

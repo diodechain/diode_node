@@ -187,12 +187,14 @@ defmodule Network.EdgeV2 do
             end)
 
           # If compression has been enabled then on the next frame
-          state = %{
-            state
-            | compression: state1.compression,
-              extra_flags: state1.extra_flags,
-              version: vsn
-          }
+          state =
+            %{
+              state
+              | compression: state1.compression,
+                extra_flags: state1.extra_flags,
+                version: vsn
+            }
+            |> send_ticket_request()
 
           {response("ok"), state}
         end
@@ -606,7 +608,8 @@ defmodule Network.EdgeV2 do
 
         ret = TicketStore.add(dl, device_id(state), state.version)
         total = Ticket.total_bytes(dl)
-        log(state, "ticket total: #{total} ret => #{inspect(ret, limit: 32)}")
+        usage = TicketStore.device_usage(device_address(state))
+        log(state, "ticket total: #{total} usage: #{usage} ret => #{inspect(ret, limit: 32)}")
 
         case ret do
           {:ok, bytes} ->
