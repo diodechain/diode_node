@@ -355,7 +355,7 @@ defmodule RemoteChain.Edge do
     {block, pubkey}
   end
 
-  defp get_block_header(chain, index) do
+  def get_block_header(chain, index) do
     index = Rlpx.bin2uint(index)
 
     %{

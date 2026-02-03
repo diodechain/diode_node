@@ -174,6 +174,7 @@ defmodule Network.EdgeV2 do
     case msg do
       ["hello", vsn | flags] when is_binary(vsn) ->
         vsn = to_num(vsn)
+        log(state, "hello #{vsn} #{inspect(flags)}")
 
         if vsn < 1_000 do
           {error("version not supported"), state}
@@ -278,6 +279,30 @@ defmodule Network.EdgeV2 do
 
           {:ok, ports} ->
             {response("ok"), %{state | ports: ports}}
+        end
+
+      [subscribe] ->
+        chain =
+          case String.split(subscribe, ":") do
+            ["subscribe"] ->
+              RemoteChain.diode_l1_fallback()
+
+            [prefix, "subscribe"] ->
+              Enum.find_value(RemoteChain.chains(), fn chain ->
+                if prefix == chain.chain_prefix() do
+                  chain
+                end
+              end)
+
+            _ ->
+              :async
+          end
+
+        if chain do
+          RemoteChain.NodeProxy.subscribe_block(chain, trigger: true)
+          response("ok")
+        else
+          error("invalid chain")
         end
 
       _other ->
@@ -485,6 +510,19 @@ defmodule Network.EdgeV2 do
   end
 
   @impl true
+  def handle_info({{RemoteChain.NodeProxy, chain}, :block_number, block_number}, state) do
+    msg =
+      encode_request(random_ref(), [
+        "blockheader",
+        chain.chain_id(),
+        RemoteChain.Edge.get_block_header(chain, Rlpx.uint2bin(block_number))
+      ])
+
+    :ok = do_send_socket(state, :block_number, msg, nil)
+    account_outgoing(state, msg)
+    {:noreply, state}
+  end
+
   def handle_info({:device_usage, _device}, state) do
     state =
       if unpaid_bytes(state) > send_threshold() do

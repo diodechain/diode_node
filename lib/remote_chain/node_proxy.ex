@@ -43,8 +43,8 @@ defmodule RemoteChain.NodeProxy do
     GenServerDbg.call(name(chain), {:rpc, method, params}, @default_timeout)
   end
 
-  def subscribe_block(chain) do
-    GenServer.cast(name(chain), {:subscribe_block, self()})
+  def subscribe_block(chain, opts \\ []) do
+    GenServer.cast(name(chain), {:subscribe_block, self(), opts})
   end
 
   def unsubscribe_block(chain) do
@@ -65,7 +65,14 @@ defmodule RemoteChain.NodeProxy do
     {:noreply, ensure_connections(state)}
   end
 
-  def handle_cast({:subscribe_block, pid}, state = %NodeProxy{subscriptions: subs}) do
+  def handle_cast(
+        {:subscribe_block, pid, opts},
+        state = %NodeProxy{subscriptions: subs, lastblock: lastblock}
+      ) do
+    if opts[:trigger] == true and lastblock > 0 do
+      send(pid, {{__MODULE__, state.chain}, :block_number, lastblock})
+    end
+
     if Map.has_key?(subs, pid) do
       {:noreply, state}
     else
