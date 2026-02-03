@@ -282,31 +282,33 @@ defmodule Network.EdgeV2 do
         end
 
       [subscribe] ->
-        chain =
-          case String.split(subscribe, ":") do
-            ["subscribe"] ->
-              RemoteChain.diode_l1_fallback()
+        case String.split(subscribe, ":") do
+          ["subscribe"] ->
+            handle_subscribe(RemoteChain.diode_l1_fallback())
 
-            [prefix, "subscribe"] ->
-              Enum.find_value(RemoteChain.chains(), fn chain ->
-                if prefix == chain.chain_prefix() do
-                  chain
-                end
-              end)
+          [prefix, "subscribe"] ->
+            Enum.find_value(RemoteChain.chains(), fn chain ->
+              if prefix == chain.chain_prefix() do
+                chain
+              end
+            end)
+            |> handle_subscribe()
 
-            _ ->
-              :async
-          end
-
-        if chain do
-          RemoteChain.NodeProxy.subscribe_block(chain, trigger: true)
-          response("ok")
-        else
-          error("invalid chain")
+          _ ->
+            :async
         end
 
       _other ->
         :async
+    end
+  end
+
+  defp handle_subscribe(chain) do
+    if chain do
+      RemoteChain.NodeProxy.subscribe_block(chain, trigger: true)
+      response("ok")
+    else
+      error("invalid chain")
     end
   end
 
