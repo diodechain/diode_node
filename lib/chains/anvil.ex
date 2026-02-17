@@ -14,10 +14,12 @@ defmodule Chains.Anvil do
   def chain_prefix(), do: "av"
 
   def rpc_endpoints(),
-    do: ["http://localhost:8545"]
+    do: ["http://localhost:#{port()}"]
 
   def ws_endpoints(),
-    do: ["ws://localhost:8545"]
+    do: ["ws://localhost:#{port()}"]
+
+  def port(), do: 28822
 
   def registry_address(),
     do:
@@ -95,7 +97,7 @@ defmodule Chains.Anvil do
               "create",
               "--broadcast",
               "--rpc-url",
-              "http://localhost:8545",
+              "http://localhost:#{port()}",
               "--private-key",
               key,
               "test/contract_src/#{name}.sol:#{name}",

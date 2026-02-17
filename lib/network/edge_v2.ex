@@ -143,6 +143,14 @@ defmodule Network.EdgeV2 do
     {:stop, :normal, state}
   end
 
+  def handle_cast({:send_message, payload, metadata}, state) do
+    # Send the received message back to the client
+    msg = encode_request(random_ref(), ["message_received", payload, metadata])
+    :ok = do_send_socket(state, :message, msg, nil)
+    account_outgoing(state, msg)
+    {:noreply, state}
+  end
+
   @impl true
   def terminate(reason, state = %{sender: sender}) do
     if reason == :normal do
@@ -372,6 +380,10 @@ defmodule Network.EdgeV2 do
         ["ping"] ->
           response("pong")
 
+        ["message", destination, payload, metadata] ->
+          send_message(state, destination, payload, metadata)
+          nil
+
         ["channel", chain_id, block_number, fleet, type, name, params, signature] ->
           obj =
             channel(
@@ -600,8 +612,11 @@ defmodule Network.EdgeV2 do
 
         spawn_link(fn ->
           result = handle_async_msg(method_params, state)
-          result = encode_request(request_id, result)
-          GenServer.cast(pid, {:send_socket, request_id, request_id, result})
+
+          if result != nil do
+            result = encode_request(request_id, result)
+            GenServer.cast(pid, {:send_socket, request_id, request_id, result})
+          end
         end)
 
         {:noreply, state}
@@ -725,6 +740,49 @@ defmodule Network.EdgeV2 do
     |> truncate()
   end
 
+  def send_message(device_id, payload, metadata) do
+    if pid = local_pid(device_id) do
+      GenServer.cast(pid, {:send_message, payload, metadata})
+      :ok
+    else
+      :error
+    end
+  end
+
+  defp send_message(state, device_id, payload, metadata) do
+    address = device_address(state)
+
+    with {:self, false} <- {:self, device_id == address},
+         {:device_id, <<_::binary-size(20)>>} <- {:device_id, device_id} do
+      if pid = local_pid(device_id) do
+        GenServer.cast(pid, {:send_message, payload, metadata})
+        :ok
+      else
+        forward_message(device_id, payload, metadata, candidate_nodes(device_id))
+      end
+    else
+      {:device_id, _} -> error("invalid device id")
+      {:valid_flags, false} -> error("invalid flags")
+      {:self, true} -> error("can't connect to yourself")
+    end
+  end
+
+  defp forward_message(_device_id, _payload, _metadata, []) do
+    error("no nodes to forward message to")
+  end
+
+  defp forward_message(device_id, payload, metadata, [node | nodes]) do
+    node_pid = ensure_node_connection(node)
+
+    case Network.PeerHandlerV2.forward_message(node_pid, payload, metadata) do
+      :ok ->
+        :ok
+
+      {:error, _reason} ->
+        forward_message(device_id, payload, metadata, nodes)
+    end
+  end
+
   defp portopen(state, <<channel_id::binary-size(32)>>, portname, flags) do
     ref = random_ref()
     trace = if String.contains?(flags, "t"), do: state.pid
@@ -793,7 +851,43 @@ defmodule Network.EdgeV2 do
           error("invalid ticket")
         else
           node_id = Wallet.from_address(Ticket.server_id(tck))
-          server = KademliaLight.find_value(device_id) |> Object.decode!()
+          ensure_node_connection(node_id)
+        end
+    end
+  end
+
+  defp candidate_nodes(device_id) do
+    default_nodes = Diode.default_peer_ids()
+
+    device_nodes =
+      case KademliaLight.find_value(device_id) do
+        nil ->
+          []
+
+        binary ->
+          tck = Object.decode!(binary)
+
+          if Ticket.device_address(tck) != device_id do
+            Logger.error("invalid ticket for device #{device_id}: #{inspect(tck)}")
+            []
+          else
+            Ticket.preferred_server_ids(tck)
+          end
+      end
+
+    Enum.uniq(default_nodes ++ device_nodes) -- [Diode.address()]
+  end
+
+  defp ensure_node_connection(node_id) do
+    if pid = Network.Server.get_connections(Network.PeerHandlerV2)[node_id] do
+      pid
+    else
+      case KademliaLight.find_value(node_id) do
+        nil ->
+          error("not found")
+
+        binary ->
+          server = Object.decode!(binary)
 
           Network.Server.ensure_node_connection(
             Network.PeerHandlerV2,
@@ -801,7 +895,7 @@ defmodule Network.EdgeV2 do
             Object.Server.host(server),
             Object.Server.peer_port(server)
           )
-        end
+      end
     end
   end
 

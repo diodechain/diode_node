@@ -305,6 +305,41 @@ defmodule Edge2Client do
     end
   end
 
+  def wait_for_message(pid, expected_payload, timeout \\ 5000) do
+    start_time = System.monotonic_time(:millisecond)
+
+    case cpeek(pid) do
+      {:ok, messages} ->
+        # Look for message_received with the expected payload
+        message_received =
+          Enum.find(messages, fn
+            [_req, "message_received", ^expected_payload, _metadata] -> true
+            _ -> false
+          end)
+
+        if message_received do
+          # Remove the message from the queue by receiving it
+          case crecv(pid) do
+            {:ok, ^message_received} -> {:ok, message_received}
+            _ -> wait_for_message(pid, expected_payload, timeout)
+          end
+        else
+          # Wait a bit and try again
+          Process.sleep(100)
+          elapsed = System.monotonic_time(:millisecond) - start_time
+
+          if elapsed < timeout do
+            wait_for_message(pid, expected_payload, timeout - elapsed)
+          else
+            {:error, :timeout}
+          end
+        end
+
+      {:error, _} ->
+        {:error, :no_messages}
+    end
+  end
+
   def call(pid, cmd, timeout \\ 5000) do
     send(pid, {self(), cmd})
 
@@ -333,8 +368,12 @@ defmodule Edge2Client do
   end
 
   def client(n) do
+    client(n, hd(Diode.edge2_ports()))
+  end
+
+  def client(n, port) do
     cert = "./test/pems/device#{n}_certificate.pem"
-    {:ok, socket} = :ssl.connect(~c"localhost", hd(Diode.edge2_ports()), options(cert), 5000)
+    {:ok, socket} = :ssl.connect(~c"localhost", port, options(cert), 5000)
     wallet = clientid(n)
     key = Wallet.privkey!(wallet)
     fleet = RemoteChain.developer_fleet_address(@chain)

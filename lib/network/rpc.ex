@@ -446,6 +446,96 @@ defmodule Network.Rpc do
       "dio_proxy2|" <> method ->
         handle_proxy(method, params, validate: true)
 
+      "dio_ticket" ->
+        [ticket_data] = params
+
+        try do
+          ticket_binary = Base16.decode(ticket_data)
+          ticket_rlp = Rlp.decode!(ticket_binary)
+
+          # Basic ticket validation
+          cond do
+            Ticket.epoch(ticket_rlp) + 1 < RemoteChain.epoch(Ticket.chain_id(ticket_rlp)) ->
+              result(nil, 400, %{"code" => -32001, "message" => "epoch number too low"})
+
+            Ticket.epoch(ticket_rlp) > RemoteChain.epoch(Ticket.chain_id(ticket_rlp)) ->
+              result(nil, 400, %{"code" => -32001, "message" => "epoch number too high"})
+
+            Ticket.too_many_bytes?(ticket_rlp) ->
+              result(nil, 400, %{"code" => -32001, "message" => "too many bytes"})
+
+            true ->
+              # Extract device address from ticket
+              device_address = Ticket.device_address(ticket_rlp)
+              # Store in process dictionary for this websocket connection
+              Process.put({:websocket_device, self()}, device_address)
+              result(nil)
+          end
+        rescue
+          _ -> result(nil, 400, %{"code" => -32001, "message" => "invalid ticket"})
+        end
+
+      "dio_message" ->
+        # Check if device is authenticated
+        device_address = Process.get({:websocket_device, self()})
+
+        if device_address == nil do
+          result(nil, 400, %{"code" => -32000, "message" => "not authenticated"})
+        else
+          case params do
+            [destination_b32, payload_b32] ->
+              metadata = %{}
+
+              try do
+                destination = Base16.decode(destination_b32)
+                payload = Base16.decode(payload_b32)
+
+                # Validate destination is 20 bytes
+                if byte_size(destination) != 20 do
+                  result(nil, 400, %{"code" => -32602, "message" => "invalid params"})
+                else
+                  # Send message using existing EdgeV2 functionality
+                  case Network.EdgeV2.send_message(device_address, payload, metadata) do
+                    :ok ->
+                      result(nil)
+
+                    :error ->
+                      result(nil, 400, %{"code" => -32003, "message" => "insufficient balance"})
+                  end
+                end
+              rescue
+                ArgumentError ->
+                  result(nil, 400, %{"code" => -32602, "message" => "invalid params"})
+              end
+
+            [destination_b32, payload_b32, metadata] when is_map(metadata) ->
+              try do
+                destination = Base16.decode(destination_b32)
+                payload = Base16.decode(payload_b32)
+
+                # Validate destination is 20 bytes
+                if byte_size(destination) != 20 do
+                  result(nil, 400, %{"code" => -32602, "message" => "invalid params"})
+                else
+                  # Send message using existing EdgeV2 functionality
+                  case Network.EdgeV2.send_message(device_address, payload, metadata) do
+                    :ok ->
+                      result(nil)
+
+                    :error ->
+                      result(nil, 400, %{"code" => -32003, "message" => "insufficient balance"})
+                  end
+                end
+              rescue
+                ArgumentError ->
+                  result(nil, 400, %{"code" => -32602, "message" => "invalid params"})
+              end
+
+            _ ->
+              result(nil, 400, %{"code" => -32602, "message" => "invalid params"})
+          end
+        end
+
       _ ->
         nil
     end

@@ -38,7 +38,8 @@ defmodule ChainAgent do
         :hide,
         :use_stdio,
         :binary,
-        :stderr_to_stdout
+        :stderr_to_stdout,
+        {:args, ["--port", "#{Chains.Anvil.port()}"]}
       ])
 
     await(%{state | port: port, out: ""})
@@ -46,6 +47,15 @@ defmodule ChainAgent do
 
   defp await(state = %{port: port, out: out, log: log}) do
     if String.contains?(out, "Listening on") do
+      hostport =
+        Regex.run(~r/Listening on (.*)/, out)
+        |> hd()
+        |> String.split(":")
+        |> tl()
+        |> Enum.join(":")
+
+      IO.puts(log, "Anvil started on #{hostport}")
+
       wallets =
         for n <- 0..9 do
           [_, privkey] = Regex.run(~r/\(#{n}\) (0x[a-f0-9]{64})/, out)
