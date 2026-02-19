@@ -59,8 +59,9 @@ defmodule Network.Rpc do
 
           {nil, 400, %{"message" => "Bad Request"}}
       catch
-        :notfound -> {nil, 404, %{"message" => "Not found"}}
-        :badrequest -> {nil, 400, %{"message" => "Bad request"}}
+        :block_not_found -> {nil, 404, %{"message" => "Block not found"}}
+        :not_found -> {nil, 404, %{"message" => "Not found"}}
+        :bad_request -> {nil, 400, %{"message" => "Bad request"}}
       end
 
     if Diode.dev_mode?() do
@@ -113,7 +114,7 @@ defmodule Network.Rpc do
   end
 
   def execute_rpc("", _params, _opts) do
-    throw(:badrequest)
+    throw(:bad_request)
   end
 
   def execute_rpc(method, params, opts) do
@@ -263,8 +264,8 @@ defmodule Network.Rpc do
       "dio_traffic" ->
         chain_id_param =
           case params do
-            [] -> throw(:badrequest)
-            [nil | _] -> throw(:badrequest)
+            [] -> throw(:bad_request)
+            [nil | _] -> throw(:bad_request)
             [param | _] -> param
           end
 
@@ -313,8 +314,8 @@ defmodule Network.Rpc do
       "dio_tickets" ->
         chain_id_param =
           case params do
-            [] -> throw(:badrequest)
-            [nil | _] -> throw(:badrequest)
+            [] -> throw(:bad_request)
+            [nil | _] -> throw(:bad_request)
             [param | _] -> param
           end
 
@@ -599,7 +600,7 @@ defmodule Network.Rpc do
 
   defp remote_rpc_result(result, _method, _opts) do
     case result do
-      %{"message" => "Not found"} -> throw(:notfound)
+      %{"message" => "Not found"} -> throw(:not_found)
       %{"result" => result} -> result(result)
       %{"error" => error} -> result(nil, 400, error)
     end

@@ -312,7 +312,15 @@ defmodule Network.EdgeV2 do
     end
   end
 
-  def handle_async_msg([cmd | rest] = msg, state) do
+  def handle_async_msg(msg, state) do
+    try do
+      do_handle_async_msg(msg, state)
+    catch
+      :block_not_found -> error("block not found")
+    end
+  end
+
+  defp do_handle_async_msg([cmd | rest] = msg, state) do
     chain =
       Enum.find(RemoteChain.chains(), fn chain ->
         prefix = chain.chain_prefix() <> ":"
@@ -324,22 +332,28 @@ defmodule Network.EdgeV2 do
       cmd = binary_part(cmd, byte_size(prefix), byte_size(cmd) - byte_size(prefix))
       RemoteChain.Edge.handle_async_msg(chain, [cmd | rest], state)
     else
+      chain = RemoteChain.diode_l1_fallback()
+
       case msg do
         [cmd | _rest]
         when cmd in [
                "getblock",
                "getblockquick",
                "getstateroots",
-               "getaccount",
                "getaccountroot",
+               "getaccount",
                "getaccountroots",
                "getaccountvalue",
                "getaccountvalues",
                "sendtransaction"
              ] ->
+          with ["get" <> _, blocknum | _] <- msg do
+            RemoteChain.Edge.check_block_number(chain, blocknum)
+          end
+
           msg = Rlp.encode!(msg) |> Base16.encode()
 
-          RemoteChain.RPCCache.rpc!(RemoteChain.diode_l1_fallback(), "dio_edgev2", [msg])
+          RemoteChain.RPCCache.rpc!(chain, "dio_edgev2", [msg])
           |> Base16.decode()
           |> Rlp.decode!()
 
@@ -347,12 +361,13 @@ defmodule Network.EdgeV2 do
         when cmd in ["getblockquick2"] ->
           msg = Rlp.encode!(msg) |> Base16.encode()
 
-          RemoteChain.RPC.rpc!(RemoteChain.diode_l1_fallback(), "dio_edgev2", [msg])
+          RemoteChain.RPC.rpc!(chain, "dio_edgev2", [msg])
           |> Base16.decode()
           |> Rlp.decode!()
 
-        [cmd | _] when cmd in ["getblockheader", "getblockheader2", "getblockpeak", "rpc"] ->
-          RemoteChain.Edge.handle_async_msg(RemoteChain.diode_l1_fallback(), msg, state)
+        [cmd | _]
+        when cmd in ["getblockheader", "getblockheader2", "getblockpeak", "rpc"] ->
+          RemoteChain.Edge.handle_async_msg(chain, msg, state)
 
         ["ping"] ->
           response("pong")
@@ -442,7 +457,7 @@ defmodule Network.EdgeV2 do
     end
   end
 
-  def handle_async_msg(msg, state) do
+  defp do_handle_async_msg(msg, state) do
     log(state, "Unhandled message: #{truncate(msg)}")
     error(401, "bad input")
   end
@@ -464,7 +479,11 @@ defmodule Network.EdgeV2 do
   end
 
   def error(message) do
-    ["error", inspect(message)]
+    if is_binary(message) do
+      ["error", message]
+    else
+      ["error", inspect(message)]
+    end
   end
 
   defp handle_packet(raw_msg, state) do

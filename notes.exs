@@ -1,3 +1,14 @@
+# Feb 19th
+alias DiodeClient.Base16
+
+token = "0x434116a99619f2B465A137199C38c1Aab0353913" |> Base16.decode()
+tx = Shell.create_transaction(Diode.wallet(),
+  nil, %{
+    "to" => Base16.decode("0x937c492a77ae90de971986d003ffbc5f8bb2232c"),
+    "chainId" => Chains.Moonbeam.chain_id(),
+    "value" => Shell.ether(350)
+})
+
 # Jan 2nd
 
 extended_member_info_type = "(address,uint256,address[])"
@@ -405,6 +416,7 @@ Model.KademliaSql.object("ABC") |> Object.decode!()
 token = "0x434116a99619f2B465A137199C38c1Aab0353913" |> Base16.decode()
 Shell.call(Chains.Moonbeam.chain_id(), token, "name")
 Shell.call(Chains.Moonbeam.chain_id(), token, "decimals")
+Shell.call(Chains.Moonbeam.chain_id(), token, "balanceOf", ["address"], [Diode.address()])
 
 # Jul 10th
 chain_id = Chains.Moonbeam.chain_id()

@@ -49,24 +49,21 @@ defmodule RemoteChain.Edge do
         RemoteChain.RPCCache.get_account_root(
           chain,
           hex_address(address),
-          hex_blockref(block)
+          hex_blockref(chain, block)
         )
         |> Base16.decode()
         |> response()
 
       ["getaccount", block, address] ->
-        # requires https://eips.ethereum.org/EIPS/eip-1186
-        # response(Moonbeam.proof(address, [0], blockref(block)))
-
         code =
-          RemoteChain.RPCCache.get_code(chain, hex_address(address), hex_blockref(block))
+          RemoteChain.RPCCache.get_code(chain, hex_address(address), hex_blockref(chain, block))
           |> Base16.decode()
 
         storage_root =
           RemoteChain.RPCCache.get_account_root(
             chain,
             hex_address(address),
-            hex_blockref(block)
+            hex_blockref(chain, block)
           )
           |> Base16.decode()
 
@@ -75,11 +72,15 @@ defmodule RemoteChain.Edge do
             RemoteChain.RPCCache.get_transaction_count(
               chain,
               hex_address(address),
-              hex_blockref(block)
+              hex_blockref(chain, block)
             )
             |> Base16.decode(),
           balance:
-            RemoteChain.RPCCache.get_balance(chain, hex_address(address), hex_blockref(block))
+            RemoteChain.RPCCache.get_balance(
+              chain,
+              hex_address(address),
+              hex_blockref(chain, block)
+            )
             |> Base16.decode(),
           storage_root: storage_root,
           code: Hash.keccak_256(code)
@@ -95,7 +96,7 @@ defmodule RemoteChain.Edge do
           chain,
           hex_address(address),
           hex_slot(key),
-          hex_blockref(block)
+          hex_blockref(chain, block)
         )
         |> Base16.decode()
         |> response()
@@ -107,7 +108,7 @@ defmodule RemoteChain.Edge do
           chain,
           hex_address(address),
           Enum.map(keys, &hex_slot/1),
-          hex_blockref(block)
+          hex_blockref(chain, block)
         )
         |> Enum.map(&Base16.decode/1)
         |> response()
@@ -124,7 +125,7 @@ defmodule RemoteChain.Edge do
           chain,
           to: Base16.encode(CallPermit.address()),
           data: Base16.encode(CallPermit.nonces(address)),
-          block: hex_blockref(block)
+          block: hex_blockref(chain, block)
         )
         |> Base16.decode_int()
         |> response()
@@ -178,14 +179,27 @@ defmodule RemoteChain.Edge do
     Network.EdgeV2.handle_async_msg(msg, state)
   end
 
-  defp hex_blockref(ref) when ref in ["latest", "earliest"], do: ref
+  def check_block_number(chain, ref) do
+    # will throw :block_not_found if the block number is not found
+    _ = hex_blockref(chain, ref)
+  end
 
-  defp hex_blockref(ref) do
-    case Base16.encode(ref) do
-      "0x" -> "0x0"
-      "0x0" <> rest -> "0x" <> rest
-      other -> other
+  defp hex_blockref(chain, "latest"),
+    do: Base16.encode(RemoteChain.peaknumber(chain), short: true)
+
+  defp hex_blockref(_chain, "earliest"), do: "earliest"
+
+  defp hex_blockref(chain, ref) when is_binary(ref) do
+    ref = :binary.decode_unsigned(ref)
+    hex_blockref(chain, ref)
+  end
+
+  defp hex_blockref(chain, ref) when is_integer(ref) do
+    if ref > RemoteChain.peaknumber(chain) do
+      throw(:block_not_found)
     end
+
+    Base16.encode(ref, short: true)
   end
 
   defp hex_address(<<_::binary-size(20)>> = address) do
@@ -367,7 +381,7 @@ defmodule RemoteChain.Edge do
       "stateRoot" => state_hash,
       "timestamp" => timestamp,
       "transactionsRoot" => transaction_hash
-    } = block = RemoteChain.RPCCache.get_block_by_number(chain, hex_blockref(index))
+    } = block = RemoteChain.RPCCache.get_block_by_number(chain, hex_blockref(chain, index))
 
     miner_signature =
       case block["minerSignature"] do

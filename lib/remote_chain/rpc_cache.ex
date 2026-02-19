@@ -266,7 +266,8 @@ defmodule RemoteChain.RPCCache do
       ["response", ret, _proofs] ->
         ret
         |> Rlpx.list2map()
-        |> Map.get("storage_root") || throw("No storage_root in account")
+        |> Map.get("storage_root")
+        |> Base16.encode() || throw("No storage_root in account")
 
       ["error", "account does not exist"] ->
         "0x"
