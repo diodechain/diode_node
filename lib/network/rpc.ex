@@ -108,7 +108,7 @@ defmodule Network.Rpc do
     execute(rest, args)
   end
 
-  defp execute([], [method, params]) do
+  defp execute([], [method | params]) do
     Logger.info("Unhandled RPC: #{inspect({method, params})}")
     result(nil, 422, "Unsupported method")
   end
