@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "hooks": {
+    "postToolUse": [
+      {
+        "command": ".cursor/hooks/post-agent-change.sh"
+      }
+    ]
+  }
+}
