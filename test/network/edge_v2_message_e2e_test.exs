@@ -4,6 +4,8 @@
 defmodule Network.EdgeV2MessageE2ETest do
   use ExUnit.Case, async: false
   import TestHelper
+  alias Edge2Client
+  alias RpcClient
 
   setup_all do
     # Start two clone nodes for cross-node testing
@@ -14,13 +16,25 @@ defmodule Network.EdgeV2MessageE2ETest do
   setup context do
     # Only run client setup for message delivery tests, not RPC validation tests
     test_name = Atom.to_string(context.test)
+    tags = Map.get(context, :tags, %{})
 
-    if String.contains?(test_name, "websocket") do
-      :ok
-    else
-      reset()
-      Edge2Client.ensure_clients()
-      :ok
+    cond do
+      String.contains?(test_name, "websocket") ->
+        :ok
+
+      tags[:cross_node] ->
+        reset()
+        # Clones are killed by reset(); restart for cross-node test
+        start_clones(2)
+        TestHelper.wait_clones(2, 60)
+        Process.sleep(1000)
+        Edge2Client.ensure_clients_on_nodes()
+        :ok
+
+      true ->
+        reset()
+        Edge2Client.ensure_clients()
+        :ok
     end
   end
 
@@ -141,6 +155,21 @@ defmodule Network.EdgeV2MessageE2ETest do
   end
 
   @tag timeout: 30000
+  test "dio_ticket positive and dio_message via RPC" do
+    # Connect via websocket to RPC (ws://localhost:rpc_port/ws)
+    rpc_pid = RpcClient.connect(Diode.rpc_port())
+
+    # Authenticate with dio_ticket (device 1)
+    RpcClient.authenticate(rpc_pid, 1)
+
+    # Send dio_message to device 2
+    client2_address = DiodeClient.Wallet.address!(Edge2Client.clientid(2))
+    RpcClient.send_message(rpc_pid, client2_address, "test", %{})
+
+    IO.puts("✓ dio_ticket and dio_message via RPC succeeded")
+  end
+
+  @tag timeout: 30000
   test "basic message delivery functionality" do
     # Use the default setup (both clients connect to main node via Edge protocol)
     client1_pid = Process.whereis(:client_1)
@@ -179,10 +208,116 @@ defmodule Network.EdgeV2MessageE2ETest do
     end
   end
 
-  # @tag timeout: :infinity
-  # test "message delivery between devices on different nodes" do
-  #   # TODO: Implement cross-node messaging test
-  # end
+  @tag :cross_node
+  @tag timeout: 60000
+  @tag :skip
+  # TODO: Cross-node message routing requires main and clone to be in the same peer network.
+  # Currently clones use SEED=none and are isolated. For main to forward messages to a device
+  # on a clone, either: (1) clone must be in main's default_peer_list and they must establish
+  # a PeerHandlerV2 connection, or (2) device ticket's preferred_server_ids must include the
+  # clone node, and main must discover clone via KademliaLight. The device location (device_id
+  # -> node_id) is stored in each node's local KademliaLight when devices connect; these are
+  # not shared across processes. Need to configure clone as peer of main and ensure device
+  # location propagation (e.g. via shared DHT or explicit peer connection) for this test to pass.
+  test "message delivery edge2 -> edge2 on different nodes" do
+    # Client 1 on main (hd(Diode.edge2_ports())), client 2 on clone 1 (TestHelper.edge2_port(1))
+    client1_pid = Process.whereis(:client_1)
+    client2_pid = Process.whereis(:client_2)
+
+    client1_wallet = Edge2Client.clientid(1)
+    client2_wallet = Edge2Client.clientid(2)
+    _client1_address = DiodeClient.Wallet.address!(client1_wallet)
+    client2_address = DiodeClient.Wallet.address!(client2_wallet)
+
+    test_payload = "Cross-node message from main to clone"
+    test_metadata = %{"type" => "cross_node", "seq" => 1}
+
+    Edge2Client.csend(client1_pid, ["message", client2_address, test_payload, test_metadata])
+
+    Process.sleep(5000)
+
+    case Edge2Client.cpeek(client2_pid) do
+      {:ok, messages} ->
+        received_msg =
+          Enum.find(messages, fn
+            [_req, ["message_received", payload, _metadata]] -> payload == test_payload
+            _ -> false
+          end)
+
+        assert received_msg, "Client2 on clone should receive message from client1 on main"
+        IO.puts("✓ Cross-node message delivery working")
+
+      {:error, _} ->
+        flunk("Could not check device messages")
+    end
+  end
+
+  @tag timeout: 30000
+  test "message delivery rpc -> rpc on same node" do
+    # Two websocket connections, both authenticated; sender calls dio_message, receiver gets notification
+    recv_pid = RpcClient.connect(Diode.rpc_port())
+    send_pid = RpcClient.connect(Diode.rpc_port())
+    RpcClient.authenticate(recv_pid, 2)
+    RpcClient.authenticate(send_pid, 1)
+    client2_address = DiodeClient.Wallet.address!(Edge2Client.clientid(2))
+    RpcClient.send_message(send_pid, client2_address, "rpc-to-rpc test", %{"type" => "rpc"})
+
+    assert_receive {:notification,
+                    %{"method" => "dio_message_received", "params" => %{"payload" => _}}},
+                   3000
+
+    IO.puts("✓ rpc -> rpc same node working")
+  end
+
+  @tag timeout: 30000
+  test "message delivery edge2 -> rpc on same node" do
+    # Edge2 client sends, RPC client (device 2) receives notification
+    client1_pid = Process.whereis(:client_1)
+    client2_address = DiodeClient.Wallet.address!(Edge2Client.clientid(2))
+    recv_pid = RpcClient.connect(Diode.rpc_port())
+    RpcClient.authenticate(recv_pid, 2)
+
+    Edge2Client.csend(client1_pid, [
+      "message",
+      client2_address,
+      "edge2-to-rpc test",
+      %{"type" => "edge2rpc"}
+    ])
+
+    assert_receive {:notification,
+                    %{"method" => "dio_message_received", "params" => %{"payload" => _}}},
+                   3000
+
+    IO.puts("✓ edge2 -> rpc same node working")
+  end
+
+  @tag timeout: 30000
+  test "message delivery rpc -> edge2 on same node" do
+    # RPC client sends dio_message, Edge2 client receives message_received
+    client2_pid = Process.whereis(:client_2)
+    client2_address = DiodeClient.Wallet.address!(Edge2Client.clientid(2))
+    send_pid = RpcClient.connect(Diode.rpc_port())
+    RpcClient.authenticate(send_pid, 1)
+
+    RpcClient.send_message(send_pid, client2_address, "rpc-to-edge2 test", %{"type" => "rpcedge2"})
+
+    Process.sleep(2000)
+
+    case Edge2Client.cpeek(client2_pid) do
+      {:ok, messages} ->
+        received =
+          Enum.find(messages, fn
+            [_req, ["message_received", "rpc-to-edge2 test", _metadata]] -> true
+            _ -> false
+          end)
+
+        assert received, "Edge2 client should receive message from RPC sender"
+        IO.puts("✓ rpc -> edge2 same node working")
+
+      {:error, _} ->
+        flunk("Could not check device messages")
+    end
+  end
 
   # @tag timeout: :infinity
   # test "message delivery with reverse direction" do

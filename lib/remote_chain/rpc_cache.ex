@@ -57,6 +57,16 @@ defmodule RemoteChain.RPCCache do
     end
   end
 
+  @doc """
+  Resets cached block number to nil. Used when the chain is restarted (e.g. anvil in tests)
+  so the next block update from the chain reflects the fresh state.
+  """
+  def reset_block_number(chain) do
+    if pid = whereis(chain) do
+      GenServer.cast(pid, :reset_block_number)
+    end
+  end
+
   def get_block_by_number(chain, block \\ "latest", with_transactions \\ false) do
     rpc!(chain, "eth_getBlockByNumber", [block, with_transactions])
   end
@@ -420,6 +430,11 @@ defmodule RemoteChain.RPCCache do
   @impl true
   def handle_cast({:refresh, method, params}, state = %RPCCache{}) do
     {:noreply, send_request(method, params, nil, state)}
+  end
+
+  def handle_cast(:reset_block_number, state = %RPCCache{}) do
+    # Leave block_number_requests as is - they will get the new block when NodeProxy sends it
+    {:noreply, %RPCCache{state | block_number: nil}}
   end
 
   def handle_cast({:set_cache, key, value}, state = %RPCCache{chain: chain, cache: cache}) do

@@ -37,16 +37,23 @@ defmodule Network.RpcWs do
           {:reply, {:text, Poison.encode!(response)}, state}
 
         _other ->
-          pid = self()
+          if needs_connection_state?(message) do
+            # dio_ticket/dio_message: run in websocket process so Process.put/get works
+            opts = [extra: {__MODULE__, :execute_rpc}, connection_state: true]
+            {_status, response} = Network.Rpc.handle_jsonrpc(message, opts)
+            {:reply, {:text, Poison.encode!(response)}, state}
+          else
+            pid = self()
 
-          spawn_link(fn ->
-            {_status, response} =
-              Network.Rpc.handle_jsonrpc(message, extra: {__MODULE__, :execute_rpc})
+            spawn_link(fn ->
+              {_status, response} =
+                Network.Rpc.handle_jsonrpc(message, extra: {__MODULE__, :execute_rpc})
 
-            send(pid, {:reply, {:text, Poison.encode!(response)}})
-          end)
+              send(pid, {:reply, {:text, Poison.encode!(response)}})
+            end)
 
-          {:ok, state}
+            {:ok, state}
+          end
       end
     else
       error ->
@@ -54,6 +61,19 @@ defmodule Network.RpcWs do
         {:reply, {:text, Poison.encode!("what?")}, state}
     end
   end
+
+  defp needs_connection_state?(%{"method" => method})
+       when method in ["dio_ticket", "dio_message"],
+       do: true
+
+  defp needs_connection_state?(list) when is_list(list) do
+    Enum.any?(list, fn
+      %{"method" => m} when m in ["dio_ticket", "dio_message"] -> true
+      _ -> false
+    end)
+  end
+
+  defp needs_connection_state?(_), do: false
 
   def execute_rpc(method, params, _opts) do
     case method do
@@ -101,6 +121,37 @@ defmodule Network.RpcWs do
 
   def websocket_info({:reply, reply}, state) do
     {:reply, reply, state}
+  end
+
+  def websocket_info({:send_message, payload, metadata}, state) do
+    # Push JSON-RPC notification for message received
+    metadata_map =
+      case metadata do
+        nil ->
+          %{}
+
+        m when is_map(m) ->
+          m
+
+        m when is_list(m) ->
+          m
+          |> Enum.filter(&match?([_k, _v], &1))
+          |> Map.new(fn [k, v] -> {to_string(k), v} end)
+
+        _ ->
+          %{}
+      end
+
+    notification = %{
+      "jsonrpc" => "2.0",
+      "method" => "dio_message_received",
+      "params" => %{
+        "payload" => Base16.encode(payload, false),
+        "metadata" => metadata_map
+      }
+    }
+
+    {:reply, {:text, Poison.encode!(notification)}, state}
   end
 
   def websocket_info(any, state) do

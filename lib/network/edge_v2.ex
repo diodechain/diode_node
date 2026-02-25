@@ -594,6 +594,15 @@ defmodule Network.EdgeV2 do
     {:stop, :normal, state}
   end
 
+  # Plain messages from Network.EdgeV2.send_message/3 when delivering to PubSub subscribers
+  def handle_info({:send_message, payload, metadata}, state) do
+    # Same logic as handle_cast
+    msg = encode_request(random_ref(), ["message_received", payload, metadata])
+    :ok = do_send_socket(state, :message, msg, nil)
+    account_outgoing(state, msg)
+    {:noreply, state}
+  end
+
   def handle_info(msg, state) do
     case PortCollection.maybe_handle_info(msg, state.ports) do
       ports = %PortCollection{} ->
@@ -741,8 +750,10 @@ defmodule Network.EdgeV2 do
   end
 
   def send_message(device_id, payload, metadata) do
-    if pid = local_pid(device_id) do
-      GenServer.cast(pid, {:send_message, payload, metadata})
+    pids = PubSub.subscribers({:edge, device_id})
+
+    if pids != [] do
+      for pid <- pids, do: send(pid, {:send_message, payload, metadata})
       :ok
     else
       :error
@@ -754,8 +765,11 @@ defmodule Network.EdgeV2 do
 
     with {:self, false} <- {:self, device_id == address},
          {:device_id, <<_::binary-size(20)>>} <- {:device_id, device_id} do
-      if pid = local_pid(device_id) do
-        GenServer.cast(pid, {:send_message, payload, metadata})
+      pids = PubSub.subscribers({:edge, device_id})
+
+      if pids != [] do
+        # Deliver to all subscribers (EdgeV2 and RpcWs both handle {:send_message, ...})
+        for pid <- pids, do: send(pid, {:send_message, payload, metadata})
         :ok
       else
         forward_message(device_id, payload, metadata, candidate_nodes(device_id))

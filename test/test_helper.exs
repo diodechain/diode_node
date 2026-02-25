@@ -70,6 +70,10 @@ defmodule ChainAgent do
       restart_service(Network.EdgeV2)
       restart_service(Network.PeerHandlerV2)
       restart_service(KademliaLight)
+      RemoteChain.NodeProxy.reset_lastblock(Chains.Anvil)
+      RemoteChain.RPCCache.reset_block_number(Chains.Anvil)
+      Process.sleep(1000)
+      # Allow WS to send first block after reset so RPCCache gets fresh block_number
 
       wallets = Enum.map(wallets, fn w -> Base16.encode(Wallet.privkey!(w)) end) |> Enum.join(" ")
       System.put_env("WALLETS", wallets)
@@ -87,6 +91,10 @@ defmodule ChainAgent do
         {^port, {:exit_status, status}} ->
           IO.puts(log, "Anvil exited with status #{status}")
           do_restart(%{state | port: nil})
+
+        {_other_port, {:data, _}} ->
+          # Ignore data from old/different port (e.g. messages in mailbox from before restart)
+          await(state)
 
         {_other_port, {:exit_status, _status}} ->
           # this is another previously closed port
@@ -167,7 +175,7 @@ defmodule TestHelper do
       Process.whereis(RemoteChain.Anvil) ||
         elem(GenServer.start(ChainAgent, [], name: RemoteChain.Anvil), 1)
 
-    GenServerDbg.call(chaintask, :restart)
+    GenServerDbg.call(chaintask, :restart, 15_000)
   end
 
   def wait(n) do

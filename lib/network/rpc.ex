@@ -3,7 +3,8 @@
 # Licensed under the Diode License, Version 1.1
 defmodule Network.Rpc do
   require Logger
-  alias DiodeClient.{Base16, Object, Object.Ticket, Rlp, Wallet}
+  alias DiodeClient.{Base16, Object, Object.Ticket, Rlp, Rlpx, Wallet}
+  import DiodeClient.Object.TicketV2, only: [ticketv2: 1]
 
   def handle_jsonrpc(rpcs, opts \\ [])
 
@@ -12,30 +13,41 @@ defmodule Network.Rpc do
   end
 
   def handle_jsonrpc(rpcs, opts) when is_list(rpcs) do
-    [head | rest] = Enum.chunk_every(rpcs, 100)
+    if opts[:connection_state] do
+      # dio_ticket/dio_message: process all in current process so Process.put/get works
+      body =
+        Enum.map(rpcs, fn rpc ->
+          {_status, resp} = handle_jsonrpc(rpc, opts)
+          resp
+        end)
 
-    tasks =
-      Enum.map(rest, fn rpcs ->
-        Task.async(fn ->
-          Enum.map(rpcs, fn rpc ->
-            {_status, body} = handle_jsonrpc(rpc, opts)
-            body
+      {200, body}
+    else
+      [head | rest] = Enum.chunk_every(rpcs, 100)
+
+      tasks =
+        Enum.map(rest, fn rpcs ->
+          Task.async(fn ->
+            Enum.map(rpcs, fn rpc ->
+              {_status, body} = handle_jsonrpc(rpc, opts)
+              body
+            end)
           end)
         end)
-      end)
 
-    head_body =
-      Enum.map(head, fn rpc ->
-        {_status, body} = handle_jsonrpc(rpc, opts)
-        body
-      end)
+      head_body =
+        Enum.map(head, fn rpc ->
+          {_status, body} = handle_jsonrpc(rpc, opts)
+          body
+        end)
 
-    rest_body =
-      Enum.flat_map(tasks, fn taskref ->
-        Task.await(taskref, :infinity)
-      end)
+      rest_body =
+        Enum.flat_map(tasks, fn taskref ->
+          Task.await(taskref, :infinity)
+        end)
 
-    {200, head_body ++ rest_body}
+      {200, head_body ++ rest_body}
+    end
   end
 
   def handle_jsonrpc(body_params, opts) when is_map(body_params) do
@@ -452,23 +464,26 @@ defmodule Network.Rpc do
         try do
           ticket_binary = Base16.decode(ticket_data)
           ticket_rlp = Rlp.decode!(ticket_binary)
+          ticket = rlp_list_to_ticket(ticket_rlp)
 
           # Basic ticket validation
           cond do
-            Ticket.epoch(ticket_rlp) + 1 < RemoteChain.epoch(Ticket.chain_id(ticket_rlp)) ->
+            Ticket.epoch(ticket) + 1 < RemoteChain.epoch(Ticket.chain_id(ticket)) ->
               result(nil, 400, %{"code" => -32001, "message" => "epoch number too low"})
 
-            Ticket.epoch(ticket_rlp) > RemoteChain.epoch(Ticket.chain_id(ticket_rlp)) ->
+            Ticket.epoch(ticket) > RemoteChain.epoch(Ticket.chain_id(ticket)) ->
               result(nil, 400, %{"code" => -32001, "message" => "epoch number too high"})
 
-            Ticket.too_many_bytes?(ticket_rlp) ->
+            Ticket.too_many_bytes?(ticket) ->
               result(nil, 400, %{"code" => -32001, "message" => "too many bytes"})
 
             true ->
               # Extract device address from ticket
-              device_address = Ticket.device_address(ticket_rlp)
+              device_address = Ticket.device_address(ticket)
               # Store in process dictionary for this websocket connection
               Process.put({:websocket_device, self()}, device_address)
+              # Subscribe to receive messages pushed to this device
+              PubSub.subscribe({:edge, device_address})
               result(nil)
           end
         rescue
@@ -476,10 +491,8 @@ defmodule Network.Rpc do
         end
 
       "dio_message" ->
-        # Check if device is authenticated
-        device_address = Process.get({:websocket_device, self()})
-
-        if device_address == nil do
+        # Check if device is authenticated (sender); destination is from params
+        if Process.get({:websocket_device, self()}) == nil do
           result(nil, 400, %{"code" => -32000, "message" => "not authenticated"})
         else
           case params do
@@ -494,8 +507,8 @@ defmodule Network.Rpc do
                 if byte_size(destination) != 20 do
                   result(nil, 400, %{"code" => -32602, "message" => "invalid params"})
                 else
-                  # Send message using existing EdgeV2 functionality
-                  case Network.EdgeV2.send_message(device_address, payload, metadata) do
+                  # Send message to destination (first arg is recipient, not sender)
+                  case Network.EdgeV2.send_message(destination, payload, metadata) do
                     :ok ->
                       result(nil)
 
@@ -517,8 +530,8 @@ defmodule Network.Rpc do
                 if byte_size(destination) != 20 do
                   result(nil, 400, %{"code" => -32602, "message" => "invalid params"})
                 else
-                  # Send message using existing EdgeV2 functionality
-                  case Network.EdgeV2.send_message(device_address, payload, metadata) do
+                  # Send message to destination (first arg is recipient, not sender)
+                  case Network.EdgeV2.send_message(destination, payload, metadata) do
                     :ok ->
                       result(nil)
 
@@ -698,4 +711,26 @@ defmodule Network.Rpc do
 
   defp encode16(nil), do: nil
   defp encode16(value), do: Base16.encode(value, false)
+
+  defp rlp_list_to_ticket([
+         "ticketv2",
+         chain_id,
+         epoch,
+         fleet,
+         tc,
+         tb,
+         local_address,
+         device_signature
+       ]) do
+    ticketv2(
+      chain_id: Rlpx.bin2uint(chain_id),
+      server_id: Wallet.address!(Diode.wallet()),
+      fleet_contract: fleet,
+      total_connections: Rlpx.bin2uint(tc),
+      total_bytes: Rlpx.bin2uint(tb),
+      local_address: local_address,
+      epoch: Rlpx.bin2uint(epoch),
+      device_signature: device_signature
+    )
+  end
 end

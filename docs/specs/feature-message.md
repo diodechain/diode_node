@@ -22,7 +22,7 @@ This feature generates:
 - **Network.EdgeV2** - Extended with message handling and routing logic
 - **Network.Rpc** - Extended with `dio_message` and `dio_ticket` JSON-RPC methods
 - **Network.RpcWs** - Extended to maintain per-connection device authentication state
-- **test/network/edge_v2_message_e2e_test.exs** - End-to-end message delivery tests
+- **test/network/edge_v2_message_e2e_test.exs** - End-to-end message delivery tests (see E2E Test Matrix: edge2/rpc × same/different nodes; dio_ticket positive test)
 
 Does not generate:
 
@@ -190,6 +190,40 @@ Authenticates websocket connection with signed device ticket.
 
 ## Testing
 
+### E2E Test Matrix
+
+Message delivery can occur via two protocols (EdgeV2 binary, RPC websocket) and across one or two nodes. The full test matrix:
+
+| # | Sender | Receiver | Nodes | Status |
+|---|--------|----------|-------|--------|
+| 1 | edge2 | edge2 | same node | ✅ Implemented |
+| 2 | edge2 | edge2 | different nodes | ⏸️ Skipped (requires cross-node peer setup) |
+| 3 | rpc | rpc | same node | ✅ Implemented |
+| 4 | rpc | rpc | different nodes | ❌ Missing |
+| 5 | edge2 | rpc | same node | ✅ Implemented |
+| 6 | edge2 | rpc | different nodes | ❌ Missing |
+| 7 | rpc | edge2 | same node | ✅ Implemented |
+| 8 | rpc | edge2 | different nodes | ❌ Missing |
+
+**Notes:**
+- **edge2**: Device connected via EdgeV2 binary protocol (SSL)
+- **rpc**: Device connected via websocket JSON-RPC (`/ws`), authenticated with `dio_ticket`
+- **same node**: Both sender and receiver connect to the same Diode node
+- **different nodes**: Sender and receiver connect to different Diode nodes (main + clone); requires network forwarding
+
+### dio_ticket Positive Test (Prerequisite for RPC Messaging)
+
+`dio_ticket` must be positively tested before RPC message delivery tests. The websocket handler must store the validated device address in its connection state for the session lifetime; only this enables `dio_message` to identify the sender.
+
+**Required test:**
+- Connect via websocket to RPC endpoint
+- Call `dio_ticket` with valid, non-expired ticket
+- Verify success response `{"jsonrpc":"2.0","id":N,"result":null}`
+- Call `dio_message` with valid params — must succeed (not "not authenticated")
+- Concludes: device id is correctly stored and persisted for the session
+
+**Current gap:** The "websocket RPC methods validation" test only exercises invalid `dio_ticket` input. There is no positive test that verifies ticket validation and session-scoped device storage.
+
 ### Test Data Format (tests.yaml)
 
 ```yaml
@@ -232,11 +266,22 @@ test "websocket message delivery" do
 end
 ```
 
-**Integration Tests:**
+**E2E Integration Tests (test/network/edge_v2_message_e2e_test.exs):**
 ```elixir
-test "end-to-end message delivery" do
-  # Full websocket → device delivery test
+# Existing
+test "message delivery between devices on same node" do  # edge2 -> edge2, same node
+  ...
 end
+
+# Missing - to be added
+test "message delivery edge2 -> edge2 on different nodes"
+test "message delivery rpc -> rpc on same node"
+test "message delivery rpc -> rpc on different nodes"
+test "message delivery edge2 -> rpc on same node"
+test "message delivery edge2 -> rpc on different nodes"
+test "message delivery rpc -> edge2 on same node"
+test "message delivery rpc -> edge2 on different nodes"
+test "dio_ticket authenticates session and enables dio_message"  # positive auth flow
 ```
 
 ## Generated Documentation
@@ -298,16 +343,26 @@ Messages consume ticket bytes based on:
 - [x] Websocket JSON-RPC `dio_message` method
 - [x] Base16 encoding/decoding for binaries (base32 not available)
 - [x] `dio_ticket` authentication method
-- [x] Per-connection device state storage
-- [x] End-to-end delivery tests
+- [x] Per-connection device state storage (see note below)
+- [x] End-to-end delivery test: edge2 → edge2 same node
 - [x] Error handling for all edge cases
 - [x] Documentation generated
+- [x] **dio_ticket positive test** — websocket session stores device id, enabling dio_message
+- [ ] **E2E test: edge2 → edge2 different nodes** (skipped; requires cross-node peer setup)
+- [x] **E2E test: rpc → rpc same node**
+- [ ] **E2E test: rpc → rpc different nodes**
+- [x] **E2E test: edge2 → rpc same node**
+- [ ] **E2E test: edge2 → rpc different nodes**
+- [x] **E2E test: rpc → edge2 same node**
+- [ ] **E2E test: rpc → edge2 different nodes**
 - [ ] Integration with existing client libraries
 - [ ] Performance testing under load
-- [ ] Cross-node delivery verification
+
+**Note on per-connection device state:** Resolved in v0.4 — for `dio_ticket` and `dio_message`, RpcWs now runs handlers synchronously in the websocket process (no spawn), so `Process.put({:websocket_device, self()})` persists correctly across requests.
 
 ## Version History
 
 - **v0.1** - Initial implementation with local delivery only
 - **v0.2** - Added network forwarding and websocket support
 - **v0.3** - Added `dio_ticket` authentication and traffic accounting
+- **v0.4** - Documented full E2E test matrix (8 scenarios), dio_ticket positive test requirement, and RpcWs state persistence note
