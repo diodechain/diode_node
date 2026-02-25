@@ -311,8 +311,109 @@ defmodule Network.EdgeV2MessageE2ETest do
     end
   end
 
+  # Requires clone to expose RPC (TestHelper.rpc_port(1)); skip until clone RPC is enabled in test env.
+  @tag :cross_node
+  @tag timeout: 60000
+  @tag :skip
+  test "message delivery rpc -> rpc on different nodes" do
+    # Sender: RPC on main. Receiver: RPC on clone 1.
+    send_pid = RpcClient.connect(Diode.rpc_port())
+    recv_pid = connect_to_clone_rpc(1)
+    RpcClient.authenticate(send_pid, 1)
+    RpcClient.authenticate(recv_pid, 2)
+    client2_address = DiodeClient.Wallet.address!(Edge2Client.clientid(2))
+
+    RpcClient.send_message(send_pid, client2_address, "rpc-to-rpc cross-node", %{
+      "type" => "rpc_cross"
+    })
+
+    assert_receive {:notification,
+                    %{"method" => "dio_message_received", "params" => %{"payload" => _}}},
+                   10_000
+
+    IO.puts("✓ rpc -> rpc different nodes working")
+  end
+
+  # Requires clone to expose RPC (TestHelper.rpc_port(1)); skip until clone RPC is enabled in test env.
+  @tag :cross_node
+  @tag timeout: 60000
+  @tag :skip
+  test "message delivery edge2 -> rpc on different nodes" do
+    # Sender: EdgeV2 client_1 on main. Receiver: RPC on clone 1 (device 2).
+    client1_pid = Process.whereis(:client_1)
+    client2_address = DiodeClient.Wallet.address!(Edge2Client.clientid(2))
+    recv_pid = connect_to_clone_rpc(1)
+    RpcClient.authenticate(recv_pid, 2)
+
+    Edge2Client.csend(client1_pid, [
+      "message",
+      client2_address,
+      "edge2-to-rpc cross-node",
+      %{"type" => "edge2rpc_cross"}
+    ])
+
+    assert_receive {:notification,
+                    %{"method" => "dio_message_received", "params" => %{"payload" => _}}},
+                   10_000
+
+    IO.puts("✓ edge2 -> rpc different nodes working")
+  end
+
+  @tag :cross_node
+  @tag timeout: 60000
+  test "message delivery rpc -> edge2 on different nodes" do
+    # Sender: RPC on main (device 1). Receiver: EdgeV2 client_2 on clone.
+    client2_pid = Process.whereis(:client_2)
+    client2_address = DiodeClient.Wallet.address!(Edge2Client.clientid(2))
+    send_pid = RpcClient.connect(Diode.rpc_port())
+    RpcClient.authenticate(send_pid, 1)
+
+    RpcClient.send_message(send_pid, client2_address, "rpc-to-edge2 cross-node", %{
+      "type" => "rpcedge2_cross"
+    })
+
+    Process.sleep(5000)
+
+    case Edge2Client.cpeek(client2_pid) do
+      {:ok, messages} ->
+        received =
+          Enum.find(messages, fn
+            [_req, ["message_received", "rpc-to-edge2 cross-node", _metadata]] -> true
+            _ -> false
+          end)
+
+        assert received, "Edge2 client on clone should receive message from RPC on main"
+        IO.puts("✓ rpc -> edge2 different nodes working")
+
+      {:error, _} ->
+        flunk("Could not check device messages")
+    end
+  end
+
   # @tag timeout: :infinity
   # test "message delivery with reverse direction" do
   #   # TODO: Implement reverse direction test
   # end
+
+  # Clone RPC may not be ready immediately; retry connecting for up to 15s.
+  defp connect_to_clone_rpc(clone_num, attempt \\ 0) do
+    port = TestHelper.rpc_port(clone_num)
+
+    case WebSockex.start_link(
+           "ws://localhost:#{port}/ws",
+           RpcClient,
+           %{notifications: [], owner: self()}
+         ) do
+      {:ok, pid} ->
+        Process.sleep(100)
+        pid
+
+      {:error, _} when attempt < 30 ->
+        Process.sleep(500)
+        connect_to_clone_rpc(clone_num, attempt + 1)
+
+      {:error, reason} ->
+        raise "Could not connect to clone #{clone_num} RPC at port #{port} after 30 attempts: #{inspect(reason)}"
+    end
+  end
 end

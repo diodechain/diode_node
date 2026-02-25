@@ -750,13 +750,10 @@ defmodule Network.EdgeV2 do
   end
 
   def send_message(device_id, payload, metadata) do
-    pids = PubSub.subscribers({:edge, device_id})
-
-    if pids != [] do
-      for pid <- pids, do: send(pid, {:send_message, payload, metadata})
-      :ok
-    else
+    if byte_size(device_id) != 20 do
       :error
+    else
+      do_deliver_or_forward(device_id, payload, metadata)
     end
   end
 
@@ -765,14 +762,9 @@ defmodule Network.EdgeV2 do
 
     with {:self, false} <- {:self, device_id == address},
          {:device_id, <<_::binary-size(20)>>} <- {:device_id, device_id} do
-      pids = PubSub.subscribers({:edge, device_id})
-
-      if pids != [] do
-        # Deliver to all subscribers (EdgeV2 and RpcWs both handle {:send_message, ...})
-        for pid <- pids, do: send(pid, {:send_message, payload, metadata})
-        :ok
-      else
-        forward_message(device_id, payload, metadata, candidate_nodes(device_id))
+      case do_deliver_or_forward(device_id, payload, metadata) do
+        :ok -> :ok
+        :error -> error("no nodes to forward message to")
       end
     else
       {:device_id, _} -> error("invalid device id")
@@ -780,11 +772,24 @@ defmodule Network.EdgeV2 do
     end
   end
 
-  defp forward_message(_device_id, _payload, _metadata, []) do
-    error("no nodes to forward message to")
+  # Shared path: deliver to local PubSub or forward to candidate nodes. Returns :ok | :error
+  # (used by public send_message/3 and by private send_message from binary protocol).
+  defp do_deliver_or_forward(device_id, payload, metadata) do
+    pids = PubSub.subscribers({:edge, device_id})
+
+    if pids != [] do
+      for pid <- pids, do: send(pid, {:send_message, payload, metadata})
+      :ok
+    else
+      forward_message_return(device_id, payload, metadata, candidate_nodes(device_id))
+    end
   end
 
-  defp forward_message(device_id, payload, metadata, [node | nodes]) do
+  defp forward_message_return(_device_id, _payload, _metadata, []) do
+    :error
+  end
+
+  defp forward_message_return(device_id, payload, metadata, [node | nodes]) do
     node_pid = ensure_node_connection(node)
 
     case Network.PeerHandlerV2.forward_message(node_pid, device_id, payload, metadata) do
@@ -792,7 +797,7 @@ defmodule Network.EdgeV2 do
         :ok
 
       {:error, _reason} ->
-        forward_message(device_id, payload, metadata, nodes)
+        forward_message_return(device_id, payload, metadata, nodes)
     end
   end
 
