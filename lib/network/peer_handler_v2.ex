@@ -42,6 +42,25 @@ defmodule Network.PeerHandlerV2 do
     )
   end
 
+  @doc """
+  Forward message to a specific peer connection. Used by EdgeV2 when forwarding
+  to a remote node. Returns :ok or {:error, reason}.
+  """
+  def forward_message(peer_pid, device_id, payload, metadata) when is_pid(peer_pid) do
+    case GenServer.call(
+           peer_pid,
+           {:call, "forward_message",
+            %{device_id: device_id, payload: payload, metadata: metadata}},
+           30_000
+         ) do
+      %{result: _} -> :ok
+      %{"result" => _} -> :ok
+      %{error: reason} -> {:error, reason}
+      %{"error" => reason} -> {:error, reason}
+      other -> {:error, other}
+    end
+  end
+
   def do_init(state) do
     send_hello(
       Map.merge(state, %{

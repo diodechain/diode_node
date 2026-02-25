@@ -788,7 +788,7 @@ defmodule Network.EdgeV2 do
   defp forward_message(device_id, payload, metadata, [node | nodes]) do
     node_pid = ensure_node_connection(node)
 
-    case Network.PeerHandlerV2.forward_message(node_pid, payload, metadata) do
+    case Network.PeerHandlerV2.forward_message(node_pid, device_id, payload, metadata) do
       :ok ->
         :ok
 

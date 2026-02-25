@@ -197,7 +197,7 @@ Message delivery can occur via two protocols (EdgeV2 binary, RPC websocket) and 
 | # | Sender | Receiver | Nodes | Status |
 |---|--------|----------|-------|--------|
 | 1 | edge2 | edge2 | same node | ✅ Implemented |
-| 2 | edge2 | edge2 | different nodes | ⏸️ Skipped (requires cross-node peer setup) |
+| 2 | edge2 | edge2 | different nodes | ✅ Implemented |
 | 3 | rpc | rpc | same node | ✅ Implemented |
 | 4 | rpc | rpc | different nodes | ❌ Missing |
 | 5 | edge2 | rpc | same node | ✅ Implemented |
@@ -348,7 +348,7 @@ Messages consume ticket bytes based on:
 - [x] Error handling for all edge cases
 - [x] Documentation generated
 - [x] **dio_ticket positive test** — websocket session stores device id, enabling dio_message
-- [ ] **E2E test: edge2 → edge2 different nodes** (skipped; requires cross-node peer setup)
+- [x] **E2E test: edge2 → edge2 different nodes**
 - [x] **E2E test: rpc → rpc same node**
 - [ ] **E2E test: rpc → rpc different nodes**
 - [x] **E2E test: edge2 → rpc same node**

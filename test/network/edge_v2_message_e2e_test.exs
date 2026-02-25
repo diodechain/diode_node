@@ -8,7 +8,7 @@ defmodule Network.EdgeV2MessageE2ETest do
   alias RpcClient
 
   setup_all do
-    # Start two clone nodes for cross-node testing
+    # Start two clone nodes for cross-node testing (peer_wiring applied per-test for cross_node)
     start_clones(2)
     :ok
   end
@@ -24,10 +24,11 @@ defmodule Network.EdgeV2MessageE2ETest do
 
       tags[:cross_node] ->
         reset()
-        # Clones are killed by reset(); restart for cross-node test
-        start_clones(2)
-        TestHelper.wait_clones(2, 60)
+        # Clones are killed by reset(); restart with peer wiring for cross-node test
+        start_clones(2, peer_wiring: true)
+        wait_clones(2, 60)
         Process.sleep(1000)
+        TestHelper.configure_main_peer_list_for_clones(2)
         Edge2Client.ensure_clients_on_nodes()
         :ok
 
@@ -210,15 +211,6 @@ defmodule Network.EdgeV2MessageE2ETest do
 
   @tag :cross_node
   @tag timeout: 60000
-  @tag :skip
-  # TODO: Cross-node message routing requires main and clone to be in the same peer network.
-  # Currently clones use SEED=none and are isolated. For main to forward messages to a device
-  # on a clone, either: (1) clone must be in main's default_peer_list and they must establish
-  # a PeerHandlerV2 connection, or (2) device ticket's preferred_server_ids must include the
-  # clone node, and main must discover clone via KademliaLight. The device location (device_id
-  # -> node_id) is stored in each node's local KademliaLight when devices connect; these are
-  # not shared across processes. Need to configure clone as peer of main and ensure device
-  # location propagation (e.g. via shared DHT or explicit peer connection) for this test to pass.
   test "message delivery edge2 -> edge2 on different nodes" do
     # Client 1 on main (hd(Diode.edge2_ports())), client 2 on clone 1 (TestHelper.edge2_port(1))
     client1_pid = Process.whereis(:client_1)
