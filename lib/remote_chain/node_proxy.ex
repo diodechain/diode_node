@@ -116,7 +116,6 @@ defmodule RemoteChain.NodeProxy do
       end
 
       for {pid, _ref} <- subs do
-        # RemoteChain.RPCCache.set_block_number(chain, block_number)
         send(pid, {{__MODULE__, chain}, :block_number, block_number})
       end
     end

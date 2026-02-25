@@ -74,8 +74,8 @@ defmodule ChainAgent do
       wallets = Enum.map(wallets, fn w -> Base16.encode(Wallet.privkey!(w)) end) |> Enum.join(" ")
       System.put_env("WALLETS", wallets)
 
-      # IO.puts(out)
-      # RemoteChain.RPC.rpc!(Chains.Anvil, "evm_setAutomine", [true])
+      # Need to mine one block to ensure the chain is ready (NodeProxy checks block == 0)
+      RemoteChain.RPC.rpc!(Chains.Anvil, "anvil_mine", [1])
       IO.puts(log, "Anvil started")
       state
     else
