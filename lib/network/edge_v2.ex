@@ -776,7 +776,6 @@ defmodule Network.EdgeV2 do
       end
     else
       {:device_id, _} -> error("invalid device id")
-      {:valid_flags, false} -> error("invalid flags")
       {:self, true} -> error("can't connect to yourself")
     end
   end
@@ -892,11 +891,17 @@ defmodule Network.EdgeV2 do
     Enum.uniq(default_nodes ++ device_nodes) -- [Diode.address()]
   end
 
+  defp ensure_node_connection(node_id) when is_binary(node_id) do
+    ensure_node_connection(Wallet.from_address(node_id))
+  end
+
   defp ensure_node_connection(node_id) do
-    if pid = Network.Server.get_connections(Network.PeerHandlerV2)[node_id] do
+    key = Wallet.address!(node_id)
+
+    if pid = Network.Server.get_connections(Network.PeerHandlerV2)[key] do
       pid
     else
-      case KademliaLight.find_value(node_id) do
+      case KademliaLight.find_value(key) do
         nil ->
           error("not found")
 
