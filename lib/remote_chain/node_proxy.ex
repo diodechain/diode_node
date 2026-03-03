@@ -51,6 +51,14 @@ defmodule RemoteChain.NodeProxy do
     GenServer.cast(name(chain), {:unsubscribe_block, self()})
   end
 
+  @doc """
+  Resets lastblock state. Used when the chain is restarted (e.g. anvil in tests)
+  so the next block from the chain will be forwarded to RPCCache.
+  """
+  def reset_lastblock(chain) do
+    GenServer.cast(name(chain), :reset_lastblock)
+  end
+
   @impl true
   def handle_call({:rpc, method, params}, from, state) do
     state = ensure_connections(state)
@@ -86,6 +94,10 @@ defmodule RemoteChain.NodeProxy do
     {:noreply, %{state | subscriptions: Map.delete(subs, pid)}}
   end
 
+  def handle_cast(:reset_lastblock, state = %NodeProxy{}) do
+    {:noreply, %{state | lastblock: 0, lastblocks: %{}}}
+  end
+
   @security_level 1
   @impl true
   def handle_info(
@@ -116,7 +128,6 @@ defmodule RemoteChain.NodeProxy do
       end
 
       for {pid, _ref} <- subs do
-        # RemoteChain.RPCCache.set_block_number(chain, block_number)
         send(pid, {{__MODULE__, chain}, :block_number, block_number})
       end
     end

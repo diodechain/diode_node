@@ -26,8 +26,8 @@ defmodule RemoteChain do
   def transaction_hash(chain_id), do: chainimpl(chain_id).transaction_hash()
 
   if Mix.env() == :test do
-    def diode_l1_fallback(), do: Chains.DiodeStaging
-    @chains [Chains.DiodeStaging, Chains.Anvil]
+    def diode_l1_fallback(), do: Chains.Anvil
+    @chains [Chains.Anvil]
   else
     def diode_l1_fallback(), do: Chains.Diode
 

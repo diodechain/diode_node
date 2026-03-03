@@ -136,12 +136,4 @@ defmodule DiodeClient.Object.TicketV2 do
   def total_connections(ticketv2(total_connections: tc)), do: tc
   def total_bytes(ticketv2(total_bytes: tb)), do: tb
   def local_address(ticketv2(local_address: la)), do: la
-
-  def preferred_server_ids(ticketv2(server_id: id, local_address: la)) do
-    case la do
-      <<0, addr::binary-size(20)>> -> [addr, id]
-      <<1, addr::binary-size(20)>> -> [id, addr]
-      _ -> [id]
-    end
-  end
 end

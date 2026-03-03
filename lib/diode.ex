@@ -5,7 +5,7 @@ require Logger
 
 defmodule Diode do
   use Application
-  alias DiodeClient.{Hash, Object, Wallet}
+  alias DiodeClient.{Base16, Hash, Object, Wallet}
 
   def start(type, args) do
     if Application.get_env(:diode, :no_start) do
@@ -272,6 +272,16 @@ defmodule Diode do
     Diode.Config.get("DEFAULT_PEER_LIST")
     |> String.split(" ", trim: true)
     |> Enum.reject(fn item -> item == "none" end)
+  end
+
+  def default_peer_ids() do
+    for peer_server <- default_peer_list() do
+      case URI.parse(peer_server) do
+        %URI{userinfo: nil} -> nil
+        %URI{userinfo: node_id} -> Wallet.from_address(Base16.decode(node_id))
+      end
+    end
+    |> Enum.reject(fn item -> item == nil end)
   end
 
   def self() do

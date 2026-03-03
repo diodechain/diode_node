@@ -23,6 +23,8 @@ defmodule Network.PeerHandlerV2 do
   @publish :publish
   @ping :ping
   @pong :pong
+  @call :call
+  @reply :reply
 
   def find_node, do: @find_node
   def find_value, do: @find_value
@@ -30,6 +32,34 @@ defmodule Network.PeerHandlerV2 do
   def publish, do: @publish
   def ping, do: @ping
   def pong, do: @pong
+  def call, do: @call
+  def reply, do: @reply
+
+  def forward_message(device_id, payload, metadata) do
+    GenServer.call(
+      self(),
+      {:call, "forward_message", %{device_id: device_id, payload: payload, metadata: metadata}}
+    )
+  end
+
+  @doc """
+  Forward message to a specific peer connection. Used by EdgeV2 when forwarding
+  to a remote node. Returns :ok or {:error, reason}.
+  """
+  def forward_message(peer_pid, device_id, payload, metadata) when is_pid(peer_pid) do
+    case GenServer.call(
+           peer_pid,
+           {:call, "forward_message",
+            %{device_id: device_id, payload: payload, metadata: metadata}},
+           30_000
+         ) do
+      %{result: _} -> :ok
+      %{"result" => _} -> :ok
+      %{error: reason} -> {:error, reason}
+      %{"error" => reason} -> {:error, reason}
+      other -> {:error, other}
+    end
+  end
 
   def do_init(state) do
     send_hello(
@@ -41,7 +71,8 @@ defmodule Network.PeerHandlerV2 do
         server: nil,
         stable: false,
         sender: spawn_link(__MODULE__, :sender_new, [self(), state.socket]),
-        start_time: System.os_time(:second)
+        start_time: System.os_time(:second),
+        pending_calls: %{}
       })
     )
   end
@@ -94,6 +125,16 @@ defmodule Network.PeerHandlerV2 do
   def handle_call({:rpc, call}, from, state) do
     calls = :queue.in({call, from}, state.calls)
     ssl_send(%{state | calls: calls}, call)
+  end
+
+  def handle_call({:call, method, params}, from, state) do
+    id = :rand.uniform(1_000_000_000_000_000)
+
+    state =
+      %{state | pending_calls: Map.put(state.pending_calls, id, {from, method, params})}
+      |> ssl_send([@call, id, method, params])
+
+    {:noreply, state}
   end
 
   defp encode(msg) do
@@ -243,6 +284,17 @@ defmodule Network.PeerHandlerV2 do
     respond(state, {:value, value})
   end
 
+  defp handle_msg([@reply, id, reply], state) do
+    case Map.get(state.pending_calls, id) do
+      {from, _method, _params} ->
+        GenServer.reply(from, reply)
+        {:noreply, %{state | pending_calls: Map.delete(state.pending_calls, id)}}
+
+      nil ->
+        {:noreply, state}
+    end
+  end
+
   defp handle_msg([@response, :portopen, ref, "ok"], state) do
     case PortCollection.confirm_portopen(state.ports, ref) do
       {:ok, pc} -> {:noreply, %{state | ports: pc}}
@@ -257,6 +309,17 @@ defmodule Network.PeerHandlerV2 do
 
   defp handle_msg([@response, _cmd | rest], state) do
     respond(state, rest)
+  end
+
+  defp handle_msg([@call, id, method, params], state) do
+    reply =
+      case method do
+        "forward_message" -> handle_forward_message(params)
+        _ -> %{error: "unknown method"}
+      end
+      |> Rlp.encode!()
+
+    {[@reply, id, reply], state}
   end
 
   defp handle_msg([:portopen, portname, ref, device_address], state) do
@@ -286,6 +349,19 @@ defmodule Network.PeerHandlerV2 do
   defp handle_msg(msg, state) do
     log(state, "Unhandled: #{inspect(msg)}")
     {:noreply, state}
+  end
+
+  defp handle_forward_message(params) do
+    case Rlpx.list2map(params) do
+      %{device_id: device_id, payload: payload, metadata: metadata} ->
+        case Network.EdgeV2.send_message(device_id, payload, metadata) do
+          :ok -> %{result: :ok}
+          :error -> %{error: "device not connected"}
+        end
+
+      _ ->
+        %{error: "invalid parameters"}
+    end
   end
 
   defp respond(state, msg) do

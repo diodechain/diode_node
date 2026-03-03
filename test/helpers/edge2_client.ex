@@ -3,16 +3,50 @@
 # Licensed under the Diode License, Version 1.1
 defmodule Edge2Client do
   alias DiodeClient.Object.TicketV2, as: Ticket
-  alias DiodeClient.{Certs, Rlp, Rlpx, Wallet}
+  alias DiodeClient.{Base16, Certs, Rlp, Rlpx, Wallet}
   require ExUnit.Assertions
   import Ticket
   @chain Chains.Anvil
   @ticket_grace 4096
 
   def ensure_clients() do
+    for name <- [:client_1, :client_2] do
+      if pid = Process.whereis(name) do
+        Process.unregister(name)
+        Process.exit(pid, :normal)
+        Process.sleep(50)
+      end
+    end
+
     ensure_client(:client_1, 1)
     whitelist_client(1)
     ensure_client(:client_2, 2)
+    whitelist_client(2)
+    :ok
+  end
+
+  # Must match TestHelper.edge2_port/1: 20004 + num * 10
+  defp clone_edge2_port(num), do: 20004 + num * 10
+
+  @doc """
+  Like ensure_clients/0 but places client_1 on main node and client_2 on clone.
+  Used for cross-node message delivery tests. Unregisters existing clients first
+  to ensure fresh connections to the correct nodes.
+  """
+  def ensure_clients_on_nodes() do
+    for name <- [:client_1, :client_2] do
+      if pid = Process.whereis(name) do
+        Process.unregister(name)
+        Process.exit(pid, :normal)
+        Process.sleep(50)
+      end
+    end
+
+    main_port = hd(Diode.edge2_ports())
+    clone_port = clone_edge2_port(1)
+    ensure_client(:client_1, 1, main_port)
+    whitelist_client(1)
+    ensure_client(:client_2, 2, clone_port)
     whitelist_client(2)
     :ok
   end
@@ -40,6 +74,10 @@ defmodule Edge2Client do
   end
 
   def ensure_client(atom, n) do
+    ensure_client(atom, n, hd(Diode.edge2_ports()))
+  end
+
+  def ensure_client(atom, n, port) do
     try do
       case rpc(atom, ["ping"]) do
         ["pong"] ->
@@ -47,10 +85,10 @@ defmodule Edge2Client do
 
         other ->
           IO.puts("received #{inspect(other)}")
-          true = Process.register(client(n), atom)
+          true = Process.register(client(n, port), atom)
       end
     rescue
-      ArgumentError -> true = Process.register(client(n), atom)
+      ArgumentError -> true = Process.register(client(n, port), atom)
     end
 
     ExUnit.Assertions.assert(rpc(atom, ["ping"]) == ["pong"])
@@ -305,6 +343,41 @@ defmodule Edge2Client do
     end
   end
 
+  def wait_for_message(pid, expected_payload, timeout \\ 5000) do
+    start_time = System.monotonic_time(:millisecond)
+
+    case cpeek(pid) do
+      {:ok, messages} ->
+        # Look for message_received with the expected payload
+        message_received =
+          Enum.find(messages, fn
+            [_req, "message_received", ^expected_payload, _metadata] -> true
+            _ -> false
+          end)
+
+        if message_received do
+          # Remove the message from the queue by receiving it
+          case crecv(pid) do
+            {:ok, ^message_received} -> {:ok, message_received}
+            _ -> wait_for_message(pid, expected_payload, timeout)
+          end
+        else
+          # Wait a bit and try again
+          Process.sleep(100)
+          elapsed = System.monotonic_time(:millisecond) - start_time
+
+          if elapsed < timeout do
+            wait_for_message(pid, expected_payload, timeout - elapsed)
+          else
+            {:error, :timeout}
+          end
+        end
+
+      {:error, _} ->
+        {:error, :no_messages}
+    end
+  end
+
   def call(pid, cmd, timeout \\ 5000) do
     send(pid, {self(), cmd})
 
@@ -333,8 +406,12 @@ defmodule Edge2Client do
   end
 
   def client(n) do
+    client(n, hd(Diode.edge2_ports()))
+  end
+
+  def client(n, port) do
     cert = "./test/pems/device#{n}_certificate.pem"
-    {:ok, socket} = :ssl.connect(~c"localhost", hd(Diode.edge2_ports()), options(cert), 5000)
+    {:ok, socket} = :ssl.connect(~c"localhost", port, options(cert), 5000)
     wallet = clientid(n)
     key = Wallet.privkey!(wallet)
     fleet = RemoteChain.developer_fleet_address(@chain)
@@ -369,5 +446,59 @@ defmodule Edge2Client do
 
   def clientkey(n) do
     Certs.private_from_file("./test/pems/device#{n}_certificate.pem")
+  end
+
+  @doc """
+  Builds a valid ticketv2 for the given device and encodes it for dio_ticket RPC.
+  Returns base16-encoded RLP of the ticket list ["ticketv2", chain_id, epoch, fleet, tc, tb, local_address, device_signature].
+  """
+  def encode_ticket_for_dio_ticket(device_num, opts \\ []) do
+    wallet = clientid(device_num)
+    key = Wallet.privkey!(wallet)
+
+    {conns, bytes} =
+      case opts[:ticket_store] do
+        nil ->
+          case TicketStore.find(
+                 Wallet.address!(wallet),
+                 RemoteChain.developer_fleet_address(@chain),
+                 RemoteChain.epoch(@chain)
+               ) do
+            nil -> {1, 0}
+            tck -> {Ticket.total_connections(tck) + 1, Ticket.total_bytes(tck)}
+          end
+
+        {c, b} ->
+          {c, b}
+      end
+
+    epoch = opts[:epoch] || RemoteChain.epoch(@chain) - 1
+    total_bytes = opts[:total_bytes] || bytes + @ticket_grace
+
+    tck =
+      ticketv2(
+        chain_id: @chain.chain_id(),
+        server_id: Wallet.address!(Diode.wallet()),
+        total_connections: conns,
+        total_bytes: total_bytes,
+        local_address: "dio_ticket_test",
+        epoch: epoch,
+        fleet_contract: RemoteChain.developer_fleet_address(@chain)
+      )
+      |> Ticket.device_sign(key)
+
+    data = [
+      "ticketv2",
+      Ticket.chain_id(tck),
+      Ticket.epoch(tck),
+      Ticket.fleet_contract(tck),
+      Ticket.total_connections(tck),
+      Ticket.total_bytes(tck),
+      Ticket.local_address(tck),
+      Ticket.device_signature(tck)
+    ]
+
+    Rlp.encode!(data)
+    |> Base16.encode()
   end
 end

@@ -38,7 +38,8 @@ defmodule ChainAgent do
         :hide,
         :use_stdio,
         :binary,
-        :stderr_to_stdout
+        :stderr_to_stdout,
+        {:args, ["--port", "#{Chains.Anvil.port()}"]}
       ])
 
     await(%{state | port: port, out: ""})
@@ -46,6 +47,15 @@ defmodule ChainAgent do
 
   defp await(state = %{port: port, out: out, log: log}) do
     if String.contains?(out, "Listening on") do
+      hostport =
+        Regex.run(~r/Listening on (.*)/, out)
+        |> hd()
+        |> String.split(":")
+        |> tl()
+        |> Enum.join(":")
+
+      IO.puts(log, "Anvil started on #{hostport}")
+
       wallets =
         for n <- 0..9 do
           [_, privkey] = Regex.run(~r/\(#{n}\) (0x[a-f0-9]{64})/, out)
@@ -60,12 +70,16 @@ defmodule ChainAgent do
       restart_service(Network.EdgeV2)
       restart_service(Network.PeerHandlerV2)
       restart_service(KademliaLight)
+      RemoteChain.NodeProxy.reset_lastblock(Chains.Anvil)
+      RemoteChain.RPCCache.reset_block_number(Chains.Anvil)
+      Process.sleep(1000)
+      # Allow WS to send first block after reset so RPCCache gets fresh block_number
 
       wallets = Enum.map(wallets, fn w -> Base16.encode(Wallet.privkey!(w)) end) |> Enum.join(" ")
       System.put_env("WALLETS", wallets)
 
-      # IO.puts(out)
-      # RemoteChain.RPC.rpc!(Chains.Anvil, "evm_setAutomine", [true])
+      # Need to mine one block to ensure the chain is ready (NodeProxy checks block == 0)
+      RemoteChain.RPC.rpc!(Chains.Anvil, "anvil_mine", [1])
       IO.puts(log, "Anvil started")
       state
     else
@@ -77,6 +91,10 @@ defmodule ChainAgent do
         {^port, {:exit_status, status}} ->
           IO.puts(log, "Anvil exited with status #{status}")
           do_restart(%{state | port: nil})
+
+        {_other_port, {:data, _}} ->
+          # Ignore data from old/different port (e.g. messages in mailbox from before restart)
+          await(state)
 
         {_other_port, {:exit_status, _status}} ->
           # this is another previously closed port
@@ -157,7 +175,7 @@ defmodule TestHelper do
       Process.whereis(RemoteChain.Anvil) ||
         elem(GenServer.start(ChainAgent, [], name: RemoteChain.Anvil), 1)
 
-    GenServerDbg.call(chaintask, :restart)
+    GenServerDbg.call(chaintask, :restart, 15_000)
   end
 
   def wait(n) do
@@ -194,39 +212,92 @@ defmodule TestHelper do
   end
 
   def start_clones(number) do
+    start_clones(number, [])
+  end
+
+  @doc """
+  Start clone nodes for multi-node tests. Options:
+  - :peer_wiring - when true, configures clones to connect to main (SEED) and
+    main to know clones (DEFAULT_PEER_LIST). Requires wallets to be set.
+    Uses wallet[num] for clone num to get deterministic node_ids.
+  """
+  def start_clones(number, opts) do
     kill_clones()
     basedir = File.cwd!() <> "/clones"
     File.rm_rf!(basedir)
     File.mkdir!(basedir)
 
+    peer_wiring = Keyword.get(opts, :peer_wiring, false)
+    main_peer_uri = peer_wiring && main_peer_uri()
+    wallets = peer_wiring && wallets()
+
     for num <- 1..number do
-      add_clone(num)
+      clone_opts =
+        if peer_wiring do
+          [
+            seed: main_peer_uri,
+            private_key:
+              Wallet.privkey!(Enum.at(wallets, num)) |> Base16.encode() |> then(&"0x#{&1}")
+          ]
+        else
+          []
+        end
+
+      add_clone(num, clone_opts)
     end
 
     :ok = wait_clones(number, 60)
     Process.sleep(@delay_clone)
   end
 
-  def add_clone(num) do
+  defp main_peer_uri() do
+    "diode://#{Base16.encode(Diode.address())}@localhost:#{Diode.peer2_port()}"
+  end
+
+  @doc """
+  Configure main node's DEFAULT_PEER_LIST to include clones for cross-node message forwarding.
+  Call before running cross-node tests. Clones must be started with :peer_wiring.
+  """
+  def configure_main_peer_list_for_clones(number) do
+    wallets = wallets()
+    peer_uris = for num <- 1..number, do: clone_peer_uri(num, Enum.at(wallets, num))
+    Diode.Config.set("DEFAULT_PEER_LIST", Enum.join(peer_uris, " "))
+    # Trigger KademliaLight to contact seeds immediately
+    send(KademliaLight, :contact_seeds)
+    Process.sleep(2000)
+    :ok
+  end
+
+  defp clone_peer_uri(num, wallet) do
+    "diode://#{Base16.encode(Wallet.address!(wallet))}@localhost:#{peer_port(num)}"
+  end
+
+  def add_clone(num, opts \\ []) do
     basedir = File.cwd!() <> "/clones"
     clonedir = "#{basedir}/#{num}/"
     file = File.open!("#{basedir}/#{num}.log", [:write, :binary])
 
+    seed = Keyword.get(opts, :seed, "none")
+    private_key = Keyword.get(opts, :private_key)
+
+    env =
+      [
+        {"MIX_ENV", "test"},
+        {"DATA_DIR", clonedir},
+        {"RPC_PORT", "#{rpc_port(num)}"},
+        {"RPCS_PORT", "#{rpcs_port(num)}"},
+        {"EDGE2_PORT", "#{edge2_port(num)}"},
+        {"PEER2_PORT", "#{peer_port(num)}"},
+        {"SEED", seed}
+      ]
+      |> (fn list ->
+            if private_key, do: [{"PRIVATE", private_key} | list], else: list
+          end).()
+      |> Enum.map(fn {key, value} -> {String.to_charlist(key), String.to_charlist(value)} end)
+
     spawn_link(fn ->
       iex = System.find_executable("iex")
       args = ["--cookie", @cookie, "-S", "mix", "run"]
-
-      env =
-        [
-          {"MIX_ENV", "test"},
-          {"DATA_DIR", clonedir},
-          {"RPC_PORT", "#{rpc_port(num)}"},
-          {"RPCS_PORT", "#{rpcs_port(num)}"},
-          {"EDGE2_PORT", "#{edge2_port(num)}"},
-          {"PEER2_PORT", "#{peer_port(num)}"},
-          {"SEED", "none"}
-        ]
-        |> Enum.map(fn {key, value} -> {String.to_charlist(key), String.to_charlist(value)} end)
 
       port =
         Port.open({:spawn_executable, iex}, [

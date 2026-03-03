@@ -21,6 +21,7 @@ if Mix.env() == :test do
 
   if System.get_env("RPC_PORT") == nil do
     System.put_env("RPC_PORT", "18001")
+    System.put_env("RPCS_PORT", "18002")
     System.put_env("EDGE2_PORT", "18003")
     System.put_env("PEER2_PORT", "18004")
   end

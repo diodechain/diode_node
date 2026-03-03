@@ -32,4 +32,15 @@ defmodule DiodeClient.Object.Ticket do
   def too_many_bytes?(tck) do
     total_bytes(tck) > 1024 * 1024 * 1024 * 1024 * 1024
   end
+
+  def preferred_server_ids(tck) do
+    la = local_address(tck)
+    id = server_id(tck)
+
+    case la do
+      <<0, addr::binary-size(20)>> -> [addr, id]
+      <<1, addr::binary-size(20)>> -> [id, addr]
+      _ -> [id]
+    end
+  end
 end
