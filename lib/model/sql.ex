@@ -44,6 +44,7 @@ defmodule Model.Sql do
     :persistent_term.put(atom, conn)
     query!(conn, "PRAGMA journal_mode = WAL")
     query!(conn, "PRAGMA synchronous = NORMAL")
+    query!(conn, "PRAGMA threads = 4")
   end
 
   def query(mod, sql, params \\ []) do

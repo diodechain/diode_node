@@ -56,7 +56,7 @@ defmodule Diode do
     children =
       [
         {BinaryLRU, [name: :memory_cache, max_memory_size: 100_000_000]},
-        {Exqlite.LRU, [file_path: Diode.data_dir("lru.sq3")]},
+        {Exqlite.LRU, [file_path: Diode.data_dir("lru.sq3"), mmap_size: 1024_000_000]},
         Stats,
         {Exqlite.LRU, [name: Network.Stats.LRU, file_path: Diode.data_dir("network_stats.sq3")]},
         supervisor(Model.Sql),

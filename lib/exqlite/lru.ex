@@ -11,7 +11,9 @@ defmodule Exqlite.LRU do
     {file_path, _opts} = Keyword.pop!(opts, :file_path)
     name = Keyword.get(opts, :name, __MODULE__)
     max_items = Keyword.get(opts, :max_items, 1_000_000)
-    GenServer.start_link(__MODULE__, {file_path, max_items}, name: name)
+    mmap_size = Keyword.get(opts, :mmap_size, 0)
+    opts = %{file_path: file_path, max_items: max_items, mmap_size: mmap_size}
+    GenServer.start_link(__MODULE__, opts, name: name)
   end
 
   def child_spec(opts) do
@@ -22,10 +24,11 @@ defmodule Exqlite.LRU do
     }
   end
 
-  def init({file_path, max_items}) do
+  def init(%{file_path: file_path, max_items: max_items, mmap_size: mmap_size}) do
     {:ok, conn} = Exqlite.Sqlite3.open(file_path)
     query(conn, "PRAGMA journal_mode = WAL")
     query(conn, "PRAGMA synchronous = NORMAL")
+    query(conn, "PRAGMA mmap_size = #{mmap_size}")
 
     query(conn, """
     CREATE TABLE IF NOT EXISTS settings (
