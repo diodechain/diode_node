@@ -246,6 +246,21 @@ defmodule Network.Rpc do
     end
   end
 
+  @local_dio_methods [
+    "dio_network",
+    "dio_getObject",
+    "dio_getNode",
+    "dio_traffic",
+    "dio_tickets",
+    "dio_usage",
+    "dio_usageHistory",
+    "dio_checkConnectivity"
+  ]
+
+  def local_dio_method?(method) when is_binary(method) do
+    method in @local_dio_methods
+  end
+
   def execute_dio(method, params, _opts) do
     case method do
       "dio_edgev2" ->

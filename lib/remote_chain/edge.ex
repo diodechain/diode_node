@@ -149,8 +149,8 @@ defmodule RemoteChain.Edge do
         end
 
       ["rpc", method, params] ->
-        with {:ok, params} <- Jason.decode(params),
-             result when is_map(result) <- RemoteChain.RPCCache.rpc(chain, method, params) do
+        with {:ok, params} <- decode_rpc_params(params),
+             result when is_map(result) <- do_rpc(chain, method, params) do
           response(Jason.encode!(result))
         else
           {:error, %Jason.DecodeError{}} -> error("invalid json params")
@@ -177,6 +177,38 @@ defmodule RemoteChain.Edge do
 
   defp default(msg, state) do
     Network.EdgeV2.handle_async_msg(msg, state)
+  end
+
+  defp decode_rpc_params(params) when is_list(params), do: {:ok, params}
+
+  defp decode_rpc_params(params) when is_binary(params), do: Jason.decode(params)
+
+  defp do_rpc(chain, method, params) do
+    if Network.Rpc.local_dio_method?(method) do
+      try do
+        case Network.Rpc.execute_dio(method, params, %{}) do
+          {_result, _code, error} when error != nil ->
+            %{"error" => error}
+
+          {_result, code, _error} when code != 200 ->
+            %{"error" => %{"code" => code, "message" => "Request failed"}}
+
+          {result, _code, _error} ->
+            actual =
+              case result do
+                {:raw, value} -> value
+                other -> other
+              end
+
+            %{"result" => actual}
+        end
+      catch
+        :bad_request -> %{"error" => %{"code" => -32600, "message" => "Bad request"}}
+        :not_found -> %{"error" => %{"code" => -32602, "message" => "Not found"}}
+      end
+    else
+      RemoteChain.RPCCache.rpc(chain, method, params)
+    end
   end
 
   def check_block_number(chain, ref) do
