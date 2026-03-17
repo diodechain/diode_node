@@ -137,12 +137,7 @@ defmodule RemoteChain.NodeProxy do
 
   def handle_info(
         {:DOWN, _ref, :process, down_pid, reason},
-        state = %{
-          connections: connections,
-          subscriptions: subs,
-          fallback: fallback,
-          fallback_url: fallback_url
-        }
+        state = %{subscriptions: subs}
       ) do
     if Map.has_key?(subs, down_pid) do
       subs = Map.delete(subs, down_pid)
@@ -160,28 +155,7 @@ defmodule RemoteChain.NodeProxy do
         GenServer.cast(pid, :ensure_connections)
       end)
 
-      requests =
-        Enum.reject(state.requests, fn {_, %{conn: conn, from: from}} ->
-          if conn == down_pid do
-            GenServer.reply(from, {:error, :disconnect})
-            true
-          end
-        end)
-        |> Map.new()
-
-      new_connections = Enum.filter(connections, fn {_, pid} -> pid != down_pid end) |> Map.new()
-
-      {new_fallback, new_fallback_url} =
-        if fallback == down_pid, do: {nil, nil}, else: {fallback, fallback_url}
-
-      {:noreply,
-       %{
-         state
-         | connections: new_connections,
-           requests: requests,
-           fallback: new_fallback,
-           fallback_url: new_fallback_url
-       }}
+      {:noreply, remove_connection(state, down_pid)}
     end
   end
 
@@ -274,8 +248,51 @@ defmodule RemoteChain.NodeProxy do
       )
 
       GenServer.reply(from, {:error, :disconnect})
+      # Connection is dead (e.g. WSConn exited before handle_connect or crashed).
+      # Remove it so we don't keep picking it and hitting Globals.await timeouts.
+      state = remove_connection(state, conn)
+      pid = self()
+
+      Debouncer.immediate({__MODULE__, pid, :ensure_connections}, fn ->
+        GenServer.cast(pid, :ensure_connections)
+      end)
+
       state
     end
+  end
+
+  defp remove_connection(
+         state = %NodeProxy{
+           connections: connections,
+           requests: requests,
+           fallback: fallback,
+           fallback_url: fallback_url
+         },
+         down_pid
+       ) do
+    requests =
+      Enum.reject(requests, fn {_, %{conn: conn, from: from}} ->
+        if conn == down_pid do
+          GenServer.reply(from, {:error, :disconnect})
+          true
+        else
+          false
+        end
+      end)
+      |> Map.new()
+
+    new_connections = Enum.filter(connections, fn {_, pid} -> pid != down_pid end) |> Map.new()
+
+    {new_fallback, new_fallback_url} =
+      if fallback == down_pid, do: {nil, nil}, else: {fallback, fallback_url}
+
+    %{
+      state
+      | connections: new_connections,
+        requests: requests,
+        fallback: new_fallback,
+        fallback_url: new_fallback_url
+    }
   end
 
   defp ensure_connections(
