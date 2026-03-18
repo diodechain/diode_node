@@ -1,7 +1,12 @@
 # Diode Server
 # Copyright 2021-2024 Diode
 # Licensed under the Diode License, Version 1.1
-ExUnit.start(seed: 0)
+
+# Exclude WireGuard tests when WIREGUARD_ENABLED is not set (per wireguard exit node plan)
+exclude_wireguard = System.get_env("WIREGUARD_ENABLED") not in ["1", "true"]
+exclude = if exclude_wireguard, do: [requires_wireguard: true], else: []
+
+ExUnit.start(seed: 0, exclude: exclude)
 
 defmodule ChainAgent do
   alias DiodeClient.{Base16, Wallet}

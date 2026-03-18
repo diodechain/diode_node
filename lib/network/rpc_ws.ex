@@ -63,13 +63,17 @@ defmodule Network.RpcWs do
   end
 
   defp needs_connection_state?(%{"method" => method})
-       when method in ["dio_ticket", "dio_message"],
+       when method in ["dio_ticket", "dio_message", "dio_wireguard_open", "dio_wireguard_close"],
        do: true
 
   defp needs_connection_state?(list) when is_list(list) do
     Enum.any?(list, fn
-      %{"method" => m} when m in ["dio_ticket", "dio_message"] -> true
-      _ -> false
+      %{"method" => m}
+      when m in ["dio_ticket", "dio_message", "dio_wireguard_open", "dio_wireguard_close"] ->
+        true
+
+      _ ->
+        false
     end)
   end
 

@@ -254,7 +254,9 @@ defmodule Network.Rpc do
     "dio_tickets",
     "dio_usage",
     "dio_usageHistory",
-    "dio_checkConnectivity"
+    "dio_checkConnectivity",
+    "dio_wireguard_open",
+    "dio_wireguard_close"
   ]
 
   def local_dio_method?(method) when is_binary(method) do
@@ -562,6 +564,62 @@ defmodule Network.Rpc do
             _ ->
               result(nil, 400, %{"code" => -32602, "message" => "invalid params"})
           end
+        end
+
+      "dio_wireguard_open" ->
+        # Check if device is authenticated
+        device = Process.get({:websocket_device, self()})
+
+        if device == nil do
+          result(nil, 400, %{"code" => -32000, "message" => "not authenticated"})
+        else
+          case params do
+            [hex_public_key] when is_binary(hex_public_key) ->
+              try do
+                # Decode hex public key to binary
+                public_key_binary = Base16.decode(hex_public_key)
+
+                # Validate it's 32 bytes
+                if byte_size(public_key_binary) != 32 do
+                  result(nil, 400, %{"code" => -32602, "message" => "invalid params"})
+                else
+                  case WireGuardService.add_peer(device, public_key_binary) do
+                    :ok ->
+                      result(nil)
+
+                    {:error, :invalid_public_key} ->
+                      result(nil, 400, %{"code" => -32602, "message" => "invalid public key"})
+
+                    {:error, {:wireguard, _reason}} ->
+                      result(nil, 500, %{"code" => -32000, "message" => "wireguard error"})
+
+                    {:error, :not_enabled} ->
+                      result(nil, 503, %{"code" => -32000, "message" => "wireguard not enabled"})
+
+                    other ->
+                      Logger.error("Unexpected WireGuard error: #{inspect(other)}")
+                      result(nil, 500, %{"code" => -32000, "message" => "wireguard error"})
+                  end
+                end
+              rescue
+                ArgumentError ->
+                  result(nil, 400, %{"code" => -32602, "message" => "invalid params"})
+              end
+
+            _ ->
+              result(nil, 400, %{"code" => -32602, "message" => "invalid params"})
+          end
+        end
+
+      "dio_wireguard_close" ->
+        # Check if device is authenticated
+        device = Process.get({:websocket_device, self()})
+
+        if device == nil do
+          result(nil, 400, %{"code" => -32000, "message" => "not authenticated"})
+        else
+          WireGuardService.remove_peer(device)
+          result(nil)
         end
 
       _ ->
