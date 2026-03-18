@@ -1,0 +1,358 @@
+# Diode Server
+# Copyright 2021-2024 Diode
+# Licensed under the Diode License, Version 1.1
+defmodule WireGuardService do
+  use GenServer
+  require Logger
+  alias DiodeClient.Base16
+  import Wireguardex.DeviceConfigBuilder
+  import Wireguardex.PeerConfigBuilder, only: [allowed_ips: 2]
+  import Wireguardex, only: [set_device: 2]
+
+  def start_link(_args) do
+    GenServer.start_link(__MODULE__, [], name: __MODULE__)
+  end
+
+  def add_peer(device_address, public_key_binary)
+      when is_binary(device_address) and is_binary(public_key_binary) do
+    GenServer.call(__MODULE__, {:add_peer, device_address, public_key_binary})
+  end
+
+  def remove_peer(device_address) when is_binary(device_address) do
+    GenServer.call(__MODULE__, {:remove_peer, device_address})
+  end
+
+  def init(_args) do
+    enabled = wireguard_enabled?()
+    interface = Diode.Config.get("WIREGUARD_INTERFACE")
+    listen_port = Diode.Config.get_int("WIREGUARD_LISTEN_PORT")
+    tunnel_subnet = Diode.Config.get("WIREGUARD_TUNNEL_SUBNET")
+    poll_interval_ms = Diode.Config.get_int("WIREGUARD_POLL_INTERVAL_MS")
+
+    state = %{
+      enabled: enabled,
+      interface: interface,
+      listen_port: listen_port,
+      tunnel_subnet: tunnel_subnet,
+      poll_interval_ms: poll_interval_ms,
+      private_key: nil,
+      peers: %{},
+      traffic_snapshots: %{},
+      poll_timer: nil
+    }
+
+    if enabled and listen_port > 0 do
+      case setup_interface(state) do
+        {:ok, new_state} ->
+          {:ok, new_state}
+
+        {:error, :already_started} ->
+          Logger.warning("WireGuard interface #{interface} already exists")
+          {:ok, state}
+
+        {:error, reason} ->
+          Logger.error("Failed to start WireGuard interface: #{inspect(reason)}")
+          {:ok, state}
+      end
+    else
+      Logger.info("WireGuard disabled or listen_port not configured")
+      {:ok, state}
+    end
+  end
+
+  def handle_call({:add_peer, device_address, public_key_binary}, _from, state) do
+    if not state.enabled or state.listen_port == 0 do
+      {:reply, {:error, :not_enabled}, state}
+    else
+      case add_peer_impl(device_address, public_key_binary, state) do
+        {:ok, new_state} ->
+          {:reply, :ok, new_state}
+
+        {:error, _reason} = error ->
+          {:reply, error, state}
+      end
+    end
+  end
+
+  def handle_call({:remove_peer, device_address}, _from, state) do
+    if not state.enabled do
+      {:reply, :ok, state}
+    else
+      new_state = remove_peer_impl(device_address, state)
+      {:reply, :ok, new_state}
+    end
+  end
+
+  def handle_info(:poll_traffic, state) do
+    if state.enabled and state.listen_port > 0 do
+      new_state = poll_traffic_impl(state)
+      timer = Process.send_after(self(), :poll_traffic, state.poll_interval_ms)
+      {:noreply, %{new_state | poll_timer: timer}}
+    else
+      {:noreply, state}
+    end
+  end
+
+  defp setup_interface(state) do
+    try do
+      # Check if interface already exists
+      case Wireguardex.get_device(state.interface) do
+        {:ok, _device} ->
+          {:error, :already_started}
+
+        {:error, _reason} ->
+          # Interface doesn't exist, create it
+          private_key = Wireguardex.generate_private_key()
+          public_key_result = Wireguardex.get_public_key(private_key)
+
+          case public_key_result do
+            {:ok, _public_key} ->
+              device_config =
+                device_config()
+                |> private_key(private_key)
+                |> listen_port(state.listen_port)
+
+              case set_device(state.interface, device_config) do
+                :ok ->
+                  timer = Process.send_after(self(), :poll_traffic, state.poll_interval_ms)
+
+                  new_state = %{
+                    state
+                    | private_key: private_key,
+                      poll_timer: timer
+                  }
+
+                  Logger.info(
+                    "WireGuard interface #{state.interface} created on port #{state.listen_port}"
+                  )
+
+                  {:ok, new_state}
+
+                {:error, reason} ->
+                  {:error, {:wireguard, reason}}
+              end
+
+            {:error, reason} ->
+              {:error, {:wireguard, reason}}
+          end
+      end
+    rescue
+      e ->
+        Logger.error("WireGuard setup error: #{inspect(e)}")
+        {:error, {:wireguard, Exception.message(e)}}
+    catch
+      :exit, reason ->
+        Logger.error("WireGuard setup exit: #{inspect(reason)}")
+        {:error, {:wireguard, inspect(reason)}}
+    end
+  end
+
+  defp add_peer_impl(device_address, public_key_binary, state) do
+    # Validate public key is 32 bytes
+    if byte_size(public_key_binary) != 32 do
+      {:error, :invalid_public_key}
+    else
+      # Convert to Base64 for wireguardex
+      public_key_base64 = Base.encode64(public_key_binary)
+
+      # Check if device already has a peer
+      old_peer = Map.get(state.peers, device_address)
+
+      state =
+        if old_peer != nil do
+          # Remove old peer and account traffic
+          account_and_remove_peer(device_address, old_peer, state)
+        else
+          state
+        end
+
+      # Assign tunnel IP from subnet
+      tunnel_ip = assign_tunnel_ip(device_address, state.tunnel_subnet, state.peers)
+
+      # Build peer config with allowed_ips = tunnel_ip/32 only
+      peer_config =
+        Wireguardex.PeerConfigBuilder.peer_config()
+        |> Wireguardex.PeerConfigBuilder.public_key(public_key_base64)
+        |> allowed_ips([tunnel_ip])
+
+      # Add peer to WireGuard
+      case Wireguardex.add_peer(state.interface, peer_config) do
+        :ok ->
+          # Update state
+          new_peers = Map.put(state.peers, device_address, {public_key_base64, tunnel_ip})
+          new_snapshots = Map.put(state.traffic_snapshots, device_address, {0, 0})
+
+          Logger.info(
+            "Added WireGuard peer for device #{Base16.encode(device_address, false)} with IP #{tunnel_ip}"
+          )
+
+          {:ok, %{state | peers: new_peers, traffic_snapshots: new_snapshots}}
+
+        {:error, reason} ->
+          {:error, {:wireguard, reason}}
+      end
+    end
+  end
+
+  defp remove_peer_impl(device_address, state) do
+    peer = Map.get(state.peers, device_address)
+
+    if peer != nil do
+      account_and_remove_peer(device_address, peer, state)
+    else
+      state
+    end
+  end
+
+  defp account_and_remove_peer(device_address, {public_key_base64, _tunnel_ip}, state) do
+    # Account traffic before removal
+    state = account_traffic_for_peer(device_address, state)
+
+    # Remove from WireGuard
+    case Wireguardex.remove_peer(state.interface, public_key_base64) do
+      :ok ->
+        Logger.info("Removed WireGuard peer for device #{Base16.encode(device_address, false)}")
+
+      {:error, reason} ->
+        Logger.warning("Error removing WireGuard peer: #{inspect(reason)}")
+    end
+
+    # Update state
+    new_peers = Map.delete(state.peers, device_address)
+    new_snapshots = Map.delete(state.traffic_snapshots, device_address)
+
+    %{state | peers: new_peers, traffic_snapshots: new_snapshots}
+  end
+
+  defp poll_traffic_impl(state) do
+    case Wireguardex.get_device(state.interface) do
+      {:ok, device} ->
+        # Get peers from device (device.peers is a list of PeerInfo structs)
+        peers = device.peers
+
+        # For each peer in our state, find matching peer in device and compute delta
+        Enum.reduce(state.peers, state, fn {device_address, {public_key_base64, _tunnel_ip}},
+                                           acc ->
+          # Find peer in device by public key (PeerInfo has config and stats)
+          device_peer_info =
+            Enum.find(peers, fn peer_info ->
+              peer_info.config.public_key == public_key_base64
+            end)
+
+          if device_peer_info != nil do
+            # Get stats from PeerInfo struct
+            stats = device_peer_info.stats
+            rx_bytes = stats.rx_bytes
+            tx_bytes = stats.tx_bytes
+            total_bytes = rx_bytes + tx_bytes
+
+            # Get last snapshot
+            {last_rx, last_tx} = Map.get(acc.traffic_snapshots, device_address, {0, 0})
+            last_total = last_rx + last_tx
+
+            # Compute delta
+            delta = total_bytes - last_total
+
+            if delta > 0 do
+              TicketStore.increase_device_usage(device_address, delta)
+            end
+
+            # Update snapshot
+            new_snapshots = Map.put(acc.traffic_snapshots, device_address, {rx_bytes, tx_bytes})
+            %{acc | traffic_snapshots: new_snapshots}
+          else
+            acc
+          end
+        end)
+
+      {:error, reason} ->
+        Logger.warning("Error polling WireGuard traffic: #{inspect(reason)}")
+        state
+    end
+  end
+
+  defp account_traffic_for_peer(device_address, state) do
+    case Wireguardex.get_device(state.interface) do
+      {:ok, device} ->
+        peers = device.peers
+        {public_key_base64, _tunnel_ip} = Map.get(state.peers, device_address)
+
+        device_peer_info =
+          Enum.find(peers, fn peer_info ->
+            peer_info.config.public_key == public_key_base64
+          end)
+
+        if device_peer_info != nil do
+          stats = device_peer_info.stats
+          rx_bytes = stats.rx_bytes
+          tx_bytes = stats.tx_bytes
+          total_bytes = rx_bytes + tx_bytes
+
+          {last_rx, last_tx} = Map.get(state.traffic_snapshots, device_address, {0, 0})
+          last_total = last_rx + last_tx
+          delta = total_bytes - last_total
+
+          if delta > 0 do
+            TicketStore.increase_device_usage(device_address, delta)
+          end
+        end
+
+        state
+
+      {:error, _reason} ->
+        state
+    end
+  end
+
+  defp assign_tunnel_ip(_device_address, subnet, existing_peers) do
+    # Parse subnet (e.g., "10.0.0.0/24")
+    [base_ip_str, prefix_len_str] = String.split(subnet, "/")
+    prefix_len = String.to_integer(prefix_len_str)
+
+    # Get base IP as integer
+    [a, b, c, d] = String.split(base_ip_str, ".") |> Enum.map(&String.to_integer/1)
+    base_ip = :erlang.list_to_tuple([a, b, c, d])
+
+    # Get used IPs
+    used_ips =
+      existing_peers
+      |> Map.values()
+      |> Enum.map(fn {_key, ip_str} -> ip_str end)
+      |> Enum.map(fn ip_str ->
+        [a, b, c, d] =
+          String.split(ip_str, "/") |> hd() |> String.split(".") |> Enum.map(&String.to_integer/1)
+
+        :erlang.list_to_tuple([a, b, c, d])
+      end)
+      |> MapSet.new()
+
+    # Find next available IP in subnet
+    # For /24, we can use .2 to .254 (skip .0, .1, .255)
+    start_ip =
+      case base_ip do
+        {a, b, c, _d} -> {a, b, c, 2}
+      end
+
+    ip = find_next_available_ip(start_ip, used_ips, prefix_len)
+
+    # Format as "a.b.c.d/32"
+    {a, b, c, d} = ip
+    "#{a}.#{b}.#{c}.#{d}/32"
+  end
+
+  defp find_next_available_ip(ip, used_ips, prefix_len) do
+    if MapSet.member?(used_ips, ip) do
+      {a, b, c, d} = ip
+      next_d = if d < 254, do: d + 1, else: 2
+      next_ip = {a, b, c, next_d}
+      find_next_available_ip(next_ip, used_ips, prefix_len)
+    else
+      ip
+    end
+  end
+
+  defp wireguard_enabled? do
+    enabled = Diode.Config.get("WIREGUARD_ENABLED")
+    enabled in ~w(1 true)
+  end
+end

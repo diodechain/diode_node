@@ -462,6 +462,38 @@ defmodule Network.EdgeV2 do
             {:ok, physical_port} -> response("ok", physical_port)
           end
 
+        ["wireguard", "open", public_key]
+        when is_binary(public_key) and byte_size(public_key) == 32 ->
+          if not wireguard_enabled?() do
+            error(503, "wireguard not enabled")
+          else
+            case WireGuardService.add_peer(device_address(state), public_key) do
+              :ok ->
+                response("ok")
+
+              {:error, :invalid_public_key} ->
+                error(400, "invalid public key")
+
+              {:error, {:wireguard, _reason}} ->
+                error(500, "wireguard error")
+
+              {:error, :not_enabled} ->
+                error(503, "wireguard not enabled")
+
+              other ->
+                Logger.error("Unexpected WireGuard error: #{inspect(other)}")
+                error(500, "wireguard error")
+            end
+          end
+
+        ["wireguard", "close"] ->
+          if not wireguard_enabled?() do
+            error(503, "wireguard not enabled")
+          else
+            WireGuardService.remove_peer(device_address(state))
+            response("ok")
+          end
+
         _ ->
           log(state, "Unhandled message: #{truncate(msg)}")
           error(401, "bad input")
@@ -1083,5 +1115,10 @@ defmodule Network.EdgeV2 do
 
   defp unpaid_bytes(state) do
     TicketStore.device_unpaid_bytes(device_address(state), device_fleet(state))
+  end
+
+  defp wireguard_enabled?() do
+    enabled = Diode.Config.get("WIREGUARD_ENABLED")
+    enabled in ~w(1 true)
   end
 end

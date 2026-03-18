@@ -52,7 +52,7 @@ parts:
 apps:
   service:
     command: bin/run start
-    plugs: [network, network-bind]
+    plugs: [network, network-bind, network-control]
     daemon: simple
 
   shell:

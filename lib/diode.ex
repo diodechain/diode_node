@@ -66,7 +66,7 @@ defmodule Diode do
         supervisor(Channels),
         {PubSub, args},
         Network.PortManager
-      ]
+      ] ++ wireguard_children()
 
     with {:ok, pid} <-
            Supervisor.start_link(children, strategy: :rest_for_one, name: Diode.Supervisor) do
@@ -107,6 +107,19 @@ defmodule Diode do
       rpc_api(:http, port: rpc_port()),
       rpc_api(:https, port: rpcs_port(), sni_fun: &CertMagex.sni_fun/1)
     ]
+  end
+
+  defp wireguard_children() do
+    if wireguard_enabled?() do
+      [WireGuardService]
+    else
+      []
+    end
+  end
+
+  defp wireguard_enabled?() do
+    enabled = Diode.Config.get("WIREGUARD_ENABLED")
+    enabled in ~w(1 true)
   end
 
   def any_ip() do

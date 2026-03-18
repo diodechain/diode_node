@@ -110,6 +110,7 @@ defmodule Diode.Mixfile do
       {:profiler, github: "dominicletz/profiler", override: true},
       {:websockex, "~> 0.5"},
       {:rotating_file, "~> 0.1"},
+      {:wireguardex, "~> 0.4"},
 
       # linting
       {:dialyxir, "~> 1.1", only: [:dev], runtime: false},

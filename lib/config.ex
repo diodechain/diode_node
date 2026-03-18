@@ -42,7 +42,12 @@ defmodule Diode.Config do
       end,
       "NAME" => nil,
       "MEMORY_LIMIT" => nil,
-      "ACCOUNTANT_ADDRESS" => nil
+      "ACCOUNTANT_ADDRESS" => nil,
+      "WIREGUARD_ENABLED" => "0",
+      "WIREGUARD_INTERFACE" => "diode_wg",
+      "WIREGUARD_LISTEN_PORT" => nil,
+      "WIREGUARD_TUNNEL_SUBNET" => "10.0.0.0/24",
+      "WIREGUARD_POLL_INTERVAL_MS" => "60000"
     }
   end
 
