@@ -102,10 +102,20 @@ defmodule Diode do
   end
 
   def network_children() do
+    host = Diode.Config.get("HOST")
+
     [
       Network.Server.child(edge2_ports(), Network.EdgeV2),
       rpc_api(:http, port: rpc_port()),
-      rpc_api(:https, port: rpcs_port(), sni_fun: &CertMagex.sni_fun/1)
+      if host != nil do
+        rpc_api(
+          :https,
+          [port: rpcs_port(), sni_fun: &CertMagex.sni_fun/1] ++
+            CertMagex.ssl_opts(host)
+        )
+      else
+        rpc_api(:https, port: rpcs_port(), sni_fun: &CertMagex.sni_fun/1)
+      end
     ]
   end
 

@@ -93,7 +93,7 @@ defmodule Diode.Mixfile do
 
   defp deps do
     [
-      {:certmagex, "~> 1.0"},
+      {:certmagex, "~> 1.2"},
       {:debouncer, "~> 1.0", override: true},
       {:dets_plus, "~> 2.0"},
       {:eblake2, "~> 1.0"},
