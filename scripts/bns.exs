@@ -1,18 +1,48 @@
 Mix.install(
   [
-    {:diode, path: "/home/dominicletz/projects/diode/diode_traffic_relay"},
+    {:diode, path: __DIR__ <> "/../"},
     {:dets_plus, "~> 2.1"}
   ],
   config: [diode: [no_start: true]]
 )
 
-{:ok, _pid} = Supervisor.start_link([{RemoteChain.Sup, Chains.Moonbeam}], strategy: :rest_for_one)
+alias DiodeClient.{Secp256k1, Base16, Hash, Wallet}
+
+{:ok, _pid} =
+  Supervisor.start_link([{RemoteChain.Sup, Chains.OasisSapphire}], strategy: :rest_for_one)
+
 {:ok, _pid} = Supervisor.start_link([{RemoteChain.Sup, Chains.Diode}], strategy: :rest_for_one)
 :persistent_term.put(:identity, Secp256k1.generate())
 Logger.configure(level: :warning)
 
+defmodule Helper do
+  require Logger
+
+  def submit_tx(tx, retries \\ 30) do
+    if retries == 0 do
+      raise "Failed to submit transaction after #{retries} retries"
+    end
+
+    Shell.submit_tx(tx)
+    |> case do
+      tx_id when is_binary(tx_id) ->
+        IO.inspect(DiodeClient.Transaction.hash(tx) |> Base16.encode())
+
+        tx_id
+        |> IO.inspect()
+
+      {:error, error} ->
+        Logger.error("Failed to submit transaction: #{inspect(error)}, retrying... in 10 seconds")
+        Process.sleep(10_000)
+        submit_tx(tx, retries - 1)
+    end
+  end
+end
+
+# curl -k -H "Content-Type: application/json" -X POST --data '{"jsonrpc":"2.0","method":"eth_getStorage","params":["0xaf60faa5cd840b724742f1af116168276112d6a6", "latest"],"id":73}' https://prenet.diode.io:8443 > bns_2026_03_13.json
+
 storage =
-  File.read!("bns_2024_05_06.json")
+  File.read!("bns_2026_03_13.json")
   |> Poison.decode!()
   |> Map.get("result")
   |> Enum.map(fn
@@ -37,14 +67,14 @@ names =
   end)
   |> Enum.filter(fn name ->
     String.printable?(name) and not String.contains?(name, "satanmeth") and
-      not String.starts_with?(name, "diodetest-") and
+      not String.starts_with?(name, "diodetest") and
       not String.starts_with?(name, "test-")
   end)
   |> Enum.sort()
   |> Enum.uniq()
 
 IO.puts("Names: #{length(names)}")
-{:ok, _dets} = DetsPlus.open_file(:moon_cache)
+{:ok, _dets} = DetsPlus.open_file(:oasis_cache)
 
 missing =
   for name <- names do
@@ -65,20 +95,20 @@ missing =
         owner = Hash.to_address(owner)
 
         m_owner =
-          case DetsPlus.lookup(:moon_cache, addr) do
+          case DetsPlus.lookup(:oasis_cache, addr) do
             [] ->
               IO.inspect({name, Base16.encode(owner)})
 
               m_owner =
                 RemoteChain.RPCCache.get_storage_at(
-                  Chains.Moonbeam,
+                  Chains.OasisSapphire,
                   "0x8a093e3A83F63A00FFFC4729aa55482845a49294",
                   Base16.encode(addr)
                 )
                 |> Base16.decode()
                 |> Hash.to_address()
 
-              DetsPlus.insert(:moon_cache, [{addr, m_owner}])
+              DetsPlus.insert(:oasis_cache, [{addr, m_owner}])
               m_owner
 
             [{^addr, value}] ->
@@ -91,16 +121,23 @@ missing =
   |> Enum.filter(fn {_name, owner, m_owner, _addr} -> owner != m_owner end)
 
 IO.puts("Missing: #{length(missing)}")
-DetsPlus.sync(:moon_cache)
+DetsPlus.sync(:oasis_cache)
 
 wallet = Wallet.from_privkey(Base16.decode(String.trim(File.read!("diode_glmr.key"))))
 
-bns = Base16.decode("0x8a093e3A83F63A00FFFC4729aa55482845a49294")
-missing = Enum.shuffle(missing) |> Enum.chunk_every(50)
+bns = Base16.decode("0x6cbf10355F8a16F7cd2F7aa762c08374959cE1bD")
+
+missing =
+  Enum.shuffle(missing)
+  |> Enum.take(1123)
+  |> Enum.chunk_every(1)
 
 for chunk <- missing do
   nonce =
-    RemoteChain.RPC.get_transaction_count(Chains.Moonbeam, Base16.encode(Wallet.address!(wallet)))
+    RemoteChain.RPC.get_transaction_count(
+      Chains.OasisSapphire,
+      Base16.encode(Wallet.address!(wallet))
+    )
     |> Base16.decode_int()
 
   IO.puts("Wallet: #{Base16.encode(Wallet.address!(wallet))} Nonce: #{nonce}")
@@ -109,33 +146,33 @@ for chunk <- missing do
     IO.puts("Register #{name} to #{Base16.encode(owner)} ...")
     Process.sleep(100)
 
-    DetsPlus.delete(:moon_cache, addr)
-    DetsPlus.sync(:moon_cache)
+    DetsPlus.delete(:oasis_cache, addr)
+    DetsPlus.sync(:oasis_cache)
 
     tx1 =
       Shell.transaction(wallet, bns, "Register", ["string", "address"], [name, owner],
         nonce: nonce + i * 2,
-        chainId: Chains.Moonbeam.chain_id()
+        chainId: Chains.OasisSapphire.chain_id()
       )
 
     tx2 =
       Shell.transaction(wallet, bns, "TransferOwner", ["string", "address"], [name, owner],
         nonce: nonce + 1 + i * 2,
-        chainId: Chains.Moonbeam.chain_id()
+        chainId: Chains.OasisSapphire.chain_id()
       )
 
-    IO.puts("TX1: Registering #{name} to #{Base16.encode(owner)} ...")
-    id1 = IO.inspect(Shell.submit_tx(tx1))
-    IO.puts("TX2: Transferring #{name} to #{Base16.encode(owner)} ...")
-    id2 = IO.inspect(Shell.submit_tx(tx2))
+    IO.puts("TX-1: Registering #{name} to #{Base16.encode(owner)} ...")
+    id1 = Helper.submit_tx(tx1)
+    IO.puts("TX-2: Transferring #{name} to #{Base16.encode(owner)} ...")
+    id2 = Helper.submit_tx(tx2)
     [{id1, tx1}, {id2, tx2}]
   end
   |> List.flatten()
   |> Enum.reverse()
-  |> Enum.with_index()
+  |> Enum.with_index(1)
   |> Enum.reverse()
   |> Enum.each(fn {tx, idx} ->
-    IO.puts("Checking TX#{idx} ...")
+    IO.puts("Awaiting TX-#{idx} ...")
     Shell.await_tx_id(tx)
   end)
 end

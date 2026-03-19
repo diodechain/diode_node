@@ -43,28 +43,36 @@ defmodule Shell do
     end
   end
 
-  def await_tx_id({tx_id, tx}) do
+  def await_tx_id({tx_id, tx}, n \\ 0) do
     NodeProxy.subscribe_block(Transaction.chain_id(tx))
 
     case RemoteChain.RPC.get_transaction_by_hash(Transaction.chain_id(tx), tx_id) do
       nil ->
-        NodeProxy.unsubscribe_block(Transaction.chain_id(tx))
+        if n > 0 and rem(n, 3) == 0 do
+          IO.puts("Resubmitting transaction TX-#{tx_id}")
+          IO.inspect(submit_tx(tx))
+        end
 
-        raise "Awaiting transaction (nil?!): #{tx_id} #{inspect(Base16.encode(Transaction.hash(tx)))}"
+        await_block(tx_id, tx, n)
 
       %{"blockNumber" => nil} ->
-        receive do
-          {{NodeProxy, _chain}, :block_number, _block_number} ->
-            await_tx_id({tx_id, tx})
-        after
-          5000 ->
-            IO.puts("Awaiting transaction: #{tx_id}")
-            await_tx_id({tx_id, tx})
-        end
+        await_block(tx_id, tx, n)
 
       %{"blockNumber" => block_number} ->
         NodeProxy.unsubscribe_block(Transaction.chain_id(tx))
         block_number
+    end
+  end
+
+  defp await_block(tx_id, tx, n) do
+    receive do
+      {{NodeProxy, _chain}, :block_number, block_number} ->
+        IO.puts("New block number: #{block_number}")
+        await_tx_id({tx_id, tx}, n + 1)
+    after
+      10_000 ->
+        IO.puts("No new block for 10 seconds: #{tx_id}")
+        await_tx_id({tx_id, tx}, n + 1)
     end
   end
 
