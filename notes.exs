@@ -1,10 +1,22 @@
+# Mar 16th
+alias DiodeClient.Base16
+
+tx = Shell.create_transaction(Diode.wallet(),
+  nil, %{
+    "to" => Base16.decode("0x7102533b13b950c964efd346ee15041e3e55413f"),
+    "chainId" => Chains.OasisSapphire.chain_id(),
+    "value" => Shell.ether(50)
+})
+
+
+
 # Feb 19th
 alias DiodeClient.Base16
 
 token = "0x434116a99619f2B465A137199C38c1Aab0353913" |> Base16.decode()
 tx = Shell.create_transaction(Diode.wallet(),
   nil, %{
-    "to" => Base16.decode("0x937c492a77ae90de971986d003ffbc5f8bb2232c"),
+    "to" => Base16.decode("0x7102533b13b950c964efd346ee15041e3e55413f"),
     "chainId" => Chains.Moonbeam.chain_id(),
     "value" => Shell.ether(350)
 })
