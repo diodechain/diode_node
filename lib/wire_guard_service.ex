@@ -18,6 +18,21 @@ defmodule WireGuardService do
     GenServer.call(__MODULE__, {:add_peer, device_address, public_key_binary})
   end
 
+  @doc """
+  Builds the WireGuardSessionInfo map (spec v0.1.4) for RPC and Edge responses.
+  All map keys are UTF-8 strings; `listen_port` is a non-negative integer.
+  """
+  def session_info_map(server_public_key, endpoint_host, listen_port, client_address)
+      when is_binary(server_public_key) and is_binary(endpoint_host) and is_integer(listen_port) and
+             listen_port >= 0 and is_binary(client_address) do
+    %{
+      "server_public_key" => server_public_key,
+      "endpoint_host" => endpoint_host,
+      "listen_port" => listen_port,
+      "client_address" => client_address
+    }
+  end
+
   def remove_peer(device_address) when is_binary(device_address) do
     GenServer.call(__MODULE__, {:remove_peer, device_address})
   end
@@ -66,7 +81,13 @@ defmodule WireGuardService do
     else
       case add_peer_impl(device_address, public_key_binary, state) do
         {:ok, new_state} ->
-          {:reply, :ok, new_state}
+          case session_info_after_add(device_address, new_state) do
+            {:ok, session} ->
+              {:reply, {:ok, session}, new_state}
+
+            {:error, reason} ->
+              {:reply, {:error, {:wireguard, reason}}, new_state}
+          end
 
         {:error, _reason} = error ->
           {:reply, error, state}
@@ -348,6 +369,46 @@ defmodule WireGuardService do
       find_next_available_ip(next_ip, used_ips, prefix_len)
     else
       ip
+    end
+  end
+
+  defp session_info_after_add(device_address, new_state) do
+    {_pub64, client_cidr} = Map.fetch!(new_state.peers, device_address)
+
+    with {:ok, server_pk} <- server_public_key_from_state(new_state) do
+      host = endpoint_host_for_session()
+
+      {:ok, session_info_map(server_pk, host, new_state.listen_port, client_cidr)}
+    end
+  end
+
+  defp server_public_key_from_state(state) do
+    cond do
+      is_binary(state.private_key) and state.private_key != "" ->
+        Wireguardex.get_public_key(state.private_key)
+
+      true ->
+        case Wireguardex.get_device(state.interface) do
+          {:ok, %Wireguardex.Device{public_key: pk}}
+          when is_binary(pk) and pk != "" ->
+            {:ok, pk}
+
+          {:ok, _} ->
+            {:error, "no server public key on device"}
+
+          {:error, reason} ->
+            {:error, reason}
+        end
+    end
+  end
+
+  defp endpoint_host_for_session do
+    case Diode.Config.get("WIREGUARD_ENDPOINT_HOST") do
+      host when is_binary(host) and host != "" ->
+        host
+
+      _ ->
+        Diode.Config.get("HOST") || ""
     end
   end
 

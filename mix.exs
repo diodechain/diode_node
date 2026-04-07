@@ -33,6 +33,7 @@ defmodule Diode.Mixfile do
       dialyzer: [plt_add_apps: [:mix]],
       docs: docs(vsn),
       elixir: "~> 1.15",
+      # warnings_as_errors disabled: vendored xturn (lib/xturn/) upstream is not warning-clean on Elixir 1.19
       elixirc_options: [warnings_as_errors: Mix.target() == :host],
       elixirc_paths: elixirc_paths(Mix.env()),
       package: package(),
@@ -55,7 +56,10 @@ defmodule Diode.Mixfile do
   defp elixirc_paths(_), do: ["lib"]
 
   def application do
-    [mod: {Diode, []}, extra_applications: [:logger, :observer, :runtime_tools]]
+    [
+      mod: {Diode, []},
+      extra_applications: [:logger, :observer, :runtime_tools, :exts, :sasl, :xmerl]
+    ]
   end
 
   defp aliases do
@@ -65,7 +69,10 @@ defmodule Diode.Mixfile do
         "format --check-formatted",
         "credo --only warning",
         "dialyzer"
-      ]
+      ],
+
+      # TURN unit tests: no anvil, no full app start (see test/test_helper.exs)
+      "test.turn": "cmd bash -c \"DIODE_MINIMAL_TEST=1 mix test --no-start test/diode/turn/\""
     ]
   end
 
@@ -111,6 +118,12 @@ defmodule Diode.Mixfile do
       {:websockex, "~> 0.5"},
       {:rotating_file, "~> 0.1"},
       {:wireguardex, "~> 0.4"},
+      # xturn is vendored under lib/xturn/ — Hex/path dep fails to compile on Elixir 1.19
+      # xmedialib vendored under vendor/xmedialib (OTP 28+ :crypto.mac in Stun; see docs/vendoring-xturn.md)
+      {:xmedialib, path: "vendor/xmedialib", override: true},
+      {:xturn_sockets, path: "vendor/xturn_sockets", override: true},
+      {:xturn_cache, "~> 0.1.0"},
+      {:exts, "~> 0.3.4"},
 
       # linting
       {:dialyxir, "~> 1.1", only: [:dev], runtime: false},

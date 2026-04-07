@@ -56,8 +56,8 @@ defmodule WireGuardServiceTest do
     device_address = <<0::160>> <> <<1::8>>
     public_key = :crypto.strong_rand_bytes(32)
 
-    # Add peer
-    assert :ok == WireGuardService.add_peer(device_address, public_key)
+    assert {:ok, info} = WireGuardService.add_peer(device_address, public_key)
+    assert_session_info_keys(info)
   end
 
   @tag :skip
@@ -68,11 +68,10 @@ defmodule WireGuardServiceTest do
     old_public_key = :crypto.strong_rand_bytes(32)
     new_public_key = :crypto.strong_rand_bytes(32)
 
-    # Add first peer
-    assert :ok == WireGuardService.add_peer(device_address, old_public_key)
+    assert {:ok, _} = WireGuardService.add_peer(device_address, old_public_key)
 
-    # Replace with new peer
-    assert :ok == WireGuardService.add_peer(device_address, new_public_key)
+    assert {:ok, info} = WireGuardService.add_peer(device_address, new_public_key)
+    assert_session_info_keys(info)
   end
 
   @tag :skip
@@ -82,8 +81,8 @@ defmodule WireGuardServiceTest do
     device_address = <<0::160>> <> <<3::8>>
     public_key = :crypto.strong_rand_bytes(32)
 
-    # Add peer
-    assert :ok == WireGuardService.add_peer(device_address, public_key)
+    assert {:ok, info} = WireGuardService.add_peer(device_address, public_key)
+    assert_session_info_keys(info)
 
     # Remove peer
     assert :ok == WireGuardService.remove_peer(device_address)
@@ -113,5 +112,13 @@ defmodule WireGuardServiceTest do
 
     assert {:error, :invalid_public_key} ==
              WireGuardService.add_peer(device_address, invalid_key)
+  end
+
+  defp assert_session_info_keys(info) when is_map(info) do
+    assert Map.has_key?(info, "server_public_key")
+    assert Map.has_key?(info, "endpoint_host")
+    assert Map.has_key?(info, "listen_port")
+    assert Map.has_key?(info, "client_address")
+    assert is_integer(info["listen_port"])
   end
 end

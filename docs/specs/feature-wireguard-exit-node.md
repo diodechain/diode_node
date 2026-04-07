@@ -1,4 +1,4 @@
-# WireGuard Exit Node Service Specification v0.1.3
+# WireGuard Exit Node Service Specification v0.1.4
 
 **Spec type:** Feature  
 **Path:** `docs/specs/feature-wireguard-exit-node.md`
@@ -148,15 +148,17 @@ Removes the peer for the device. Traffic is accounted immediately before removal
 
 ### Edge Async Messages
 
-#### `["wireguard", "open", public_key]` → `["response", "ok"]` | `["error", ...]`
+#### `["wireguard", "open", public_key]` → `["response", session_info]` | `["error", ...]`
 
 Adds or replaces the WireGuard peer for the authenticated Edge device. **Encoding:** `public_key` is raw binary (32 bytes) in the Edge RLP message.
+
+**Success payload:** `session_info` SHOULD mirror websocket `dio_wireguard_open`’s `result` object: same keys (`server_public_key` Base64, `endpoint_host`, `listen_port`, `client_address`). Encoding of `session_info` is implementation-defined (e.g. JSON string in the second response element, or an RLP structure); **SHOULD** be consistent with other Edge responses that return structured data. Minimum bar: clients receive everything needed to set `Endpoint`, server `PublicKey`, and local `Address` in a WireGuard config.
 
 **Behavior:** Use `Network.EdgeV2.response/1` and `Network.EdgeV2.error/2` for consistency:
 
 | Condition | Output |
 |-----------|--------|
-| Authenticated, valid key | `response("ok")` → `["response", "ok"]` |
+| Authenticated, valid key | `response(session_info)` (structured; legacy: `response("ok")` until upgraded) |
 | Invalid key | `error(400, "invalid public key")` → `["error", 400, "invalid public key"]` |
 | wireguardex failure | `error(500, "wireguard error")` → `["error", 500, "wireguard error"]` |
 | WireGuard disabled | `error(503, "wireguard not enabled")` |
@@ -175,7 +177,7 @@ Removes the WireGuard peer for the authenticated Edge device. Traffic is account
 
 Use **dedicated RPC methods** `dio_wireguard_open` and `dio_wireguard_close` (same pattern as `dio_ticket`, `dio_message`). Add both to `needs_connection_state?/1` in `Network.RpcWs` so they run in the websocket process with `Process.get({:websocket_device, self()})`. Add both to `@local_dio_methods` in `Network.Rpc` so `RemoteChain.Edge.do_rpc/3` routes them locally. Require prior `dio_ticket`; return `%{"code" => -32000, "message" => "not authenticated"}` when `Process.get({:websocket_device, self()}) == nil`.
 
-#### `dio_wireguard_open(public_key) → null`
+#### `dio_wireguard_open(public_key) → WireGuardSessionInfo`
 
 Adds or replaces the WireGuard peer for the websocket-authenticated device.
 
@@ -187,7 +189,32 @@ Adds or replaces the WireGuard peer for the websocket-authenticated device.
 {"jsonrpc":"2.0","id":1,"method":"dio_wireguard_open","params":["0x1234..."]}
 ```
 
-**Response:** `{"jsonrpc":"2.0","id":1,"result":null}`
+**Success response (`result`):** A JSON **object** (not `null`) so clients can configure the tunnel without guessing the server key, port, or assigned inner IP:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `server_public_key` | string | yes | Exit interface’s WireGuard **public** key, **Base64** (standard `wg` / `wg-quick` encoding, 44 characters with default alphabet). |
+| `endpoint_host` | string | yes | Hostname or literal IP clients MUST use as the WireGuard **UDP endpoint** (the public face of this node for WireGuard). SHOULD match the address clients already use for Diode RPC when applicable. IPv6 MUST be unbracketed here; clients bracket when composing `Endpoint = [...]:port`. |
+| `listen_port` | integer | yes | UDP listen port of the server’s WireGuard interface (same as `WIREGUARD_LISTEN_PORT`). |
+| `client_address` | string | yes | Inner (tunnel) address assigned to this device, in **CIDR** form (e.g. `10.0.0.2/32`), matching the peer’s `allowed_ips` on the server. |
+
+**Example:**
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "server_public_key": "bW9jazEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5MDE=",
+    "endpoint_host": "198.51.100.77",
+    "listen_port": 51820,
+    "client_address": "10.0.0.2/32"
+  }
+}
+```
+
+**Rationale:** Today, clients that only receive `null` must hardcode or discover the server’s WireGuard public key, UDP port, and tunnel IP from out-of-band docs—error-prone and wrong after key rotation or multi-homing. Returning this object keeps one round-trip for a working `[Peer]` / `[Interface]` config.
+
+**Implementation status:** In the reference tree (`diode_node_wt_wireguard`), `WireGuardService.add_peer/2` currently returns only `:ok` and `Network.Rpc` maps success to `result(nil)`. **Implementations SHOULD be updated** to return the object above (values available from interface setup: `Wireguardex.get_public_key/1` for the device, configured `listen_port`, server registry or bind address for `endpoint_host`, and the assigned tunnel IP from the peer pool). Until then, clients MAY fall back to defaults documented elsewhere.
 
 #### `dio_wireguard_close() → null`
 
@@ -207,10 +234,10 @@ Removes the WireGuard peer for the websocket-authenticated device.
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `WIREGUARD_INTERFACE` | string | `"diode_wg"` | WireGuard interface name |
-| `WIREGUARD_LISTEN_PORT` | integer | (required) | UDP port for WireGuard (public) |
+| `WIREGUARD_LISTEN_PORT` | integer | `"51820"` | UDP port for WireGuard (public); override if the port is taken |
 | `WIREGUARD_TUNNEL_SUBNET` | string | `"10.0.0.0/24"` | Subnet for peer tunnel IPs |
 | `WIREGUARD_POLL_INTERVAL_MS` | integer | `"60000"` | Traffic poll interval (ms) |
-| `WIREGUARD_ENABLED` | string | `"0"` | `"1"` to enable; WireGuardService not started when falsy |
+| `WIREGUARD_ENABLED` | string | `"1"` | In `lib/config.ex` defaults, WireGuard is **on** (`"1"`). Set to `"0"` to disable. With `listen_port` defaulting to `51820`, the service starts unless you clear the port or disable explicitly. |
 
 **Config convention:** Use `Diode.Config.get("WIREGUARD_ENABLED")` etc., consistent with `RPC_PORT`, `EDGE2_PORT`. Snap: `snapctl get wireguard-enabled` (lowercase, hyphenated).
 
@@ -310,7 +337,7 @@ wireguard_close:
 - [ ] Peer isolation (AllowedIPs per peer, no cross-peer routes)
 - [ ] Local network exclusion (firewall or routing)
 - [ ] EdgeV2: add `["wireguard", "open", public_key]` and `["wireguard", "close"]` clauses in `do_handle_async_msg` (before the `_` catch-all); guard that `wireguard_enabled?` or return `error(503, "wireguard not enabled")`
-- [ ] RPC: `dio_wireguard_open` / `dio_wireguard_close` in `execute_dio`; add to `needs_connection_state?` and `@local_dio_methods`
+- [ ] RPC: `dio_wireguard_open` / `dio_wireguard_close` in `execute_dio`; add to `needs_connection_state?` and `@local_dio_methods`; **`dio_wireguard_open` success returns `WireGuardSessionInfo` object (not `null`)**
 - [ ] `wireguard_enabled` and config wiring in `Diode` application
 - [ ] Snap: add `network-control` plug to `snap/snapcraft.yaml` for the service app; document `snap connect diode-node:network-control` in setup docs
 - [ ] Unit and integration tests
@@ -323,7 +350,7 @@ wireguard_close:
 #### Setup
 
 1. Add `{:wireguardex, "~> 0.5"}` to `mix.exs` deps
-2. Set `WIREGUARD_ENABLED=1`, `WIREGUARD_LISTEN_PORT`, and optional `WIREGUARD_INTERFACE` (env or `snapctl set diode-node wireguard-enabled=true`)
+2. Defaults in `config.ex`: **`WIREGUARD_ENABLED=1`**, **`WIREGUARD_LISTEN_PORT=51820`**. Override either via env if needed. Use `WIREGUARD_ENABLED=0` to turn the service off. Optional: `WIREGUARD_INTERFACE` (env or `snapctl set diode-node wireguard-enabled=true` where applicable).
 3. Ensure WireGuard kernel module is loaded (Linux: `modprobe wireguard`)
 4. **Privileges (snap):** `sudo snap connect diode-node:network-control` then `sudo snap restart diode-node.service`. See [Snap Deployment](#snap-deployment) in the spec. **Non-snap:** Run as root, or `sudo setcap 'cap_net_admin+eip' $(which beam.smp)` (see [wireguardex](https://github.com/firezone/wireguardex#note-about-privileges)).
 5. Optionally force NIF compilation: `config :rustler_precompiled, :force_build, wireguardex: true` or `WIREGUARDNIF_BUILD=true`
@@ -337,8 +364,9 @@ wireguard_close:
 ```javascript
 // 1. Authenticate
 ws.send(JSON.stringify({jsonrpc:"2.0", id:1, method:"dio_ticket", params:[ticketHex]}));
-// 2. Open wireguard peer (public_key: Base16/hex string)
+// 2. Open wireguard peer (public_key: Base16/hex string); parse result for server key, endpoint, client Address
 ws.send(JSON.stringify({jsonrpc:"2.0", id:2, method:"dio_wireguard_open", params:[hexPublicKey]}));
+// result should be { server_public_key, endpoint_host, listen_port, client_address } (see spec § Websocket RPC)
 // 3. Close wireguard peer
 ws.send(JSON.stringify({jsonrpc:"2.0", id:3, method:"dio_wireguard_close", params:[]}));
 ```
@@ -369,3 +397,4 @@ The [wireguardex](https://github.com/firezone/wireguardex) package (module name 
 - **v0.1.1** – Snap deployment: `network-control` plug and `snap connect diode-node:network-control`
 - **v0.1.2** – Public key encoding: Edge uses raw binary; websocket RPC uses `DiodeClient.Base16` (hex)
 - **v0.1.3** – Align with project practice: files-impact table, dedicated RPC methods, `Diode.Config` keys, `response`/`error`/`result` usage, `@local_dio_methods`, `needs_connection_state`
+- **v0.1.4** – **`dio_wireguard_open` (and Edge `wireguard` open) success response** MUST expose `server_public_key` (Base64), `endpoint_host`, `listen_port`, and `client_address` so clients can build WireGuard config in one round-trip; documents gap vs current `result: null` / `response("ok")` implementation

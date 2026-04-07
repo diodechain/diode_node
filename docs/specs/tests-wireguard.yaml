@@ -6,7 +6,7 @@ wireguard_add_peer:
     input:
       device: "0x1234567890123456789012345678901234567890"
       public_key: "YAnz5DF+rFpW0mNh3GlOa2Tqp2fnlJWBZAGb2f73fl+A="
-    output: :ok
+    output: "{:ok, WireGuardSessionInfo}"
     expect_traffic_accounted: false  # no traffic yet
 
   - name: "add peer replaces existing"
@@ -16,7 +16,7 @@ wireguard_add_peer:
     input:
       device: "0x1234567890123456789012345678901234567890"
       public_key: "NEW_KEY_BASE64_PLACEHOLDER"
-    output: :ok
+    output: "{:ok, WireGuardSessionInfo}"
     expect_traffic_accounted: true  # replacement accounts old peer traffic
 
 wireguard_remove_peer:
@@ -37,10 +37,11 @@ wireguard_remove_peer:
 
 edge_wireguard_open:
   # Edge uses raw binary (32 bytes) for public_key in RLP. In tests, use Base16.decode(hex) to obtain binary.
+  # v0.1.4: second element is JSON string (WireGuardSessionInfo), not "ok".
   - name: "Edge wireguard open"
     method_params: ["wireguard", "open", "0x609b39cc0fed5a56d26361dc690e6b64eaa76fa7949560590066f67fb7ff97e0"]  # decode to binary
     authenticated: true
-    output: ["response", "ok"]
+    output: ["response", "<json WireGuardSessionInfo>"]
 
   - name: "Edge wireguard close"
     method_params: ["wireguard", "close"]
@@ -61,4 +62,4 @@ rpc_wireguard:
     method: "dio_wireguard_open"
     params: ["0x609b39cc0fed5a56d26361dc690e6b64eaa76fa7949560590066f67fb7ff97e0"]
     authenticated: true
-    output: null
+    output: WireGuardSessionInfo  # JSON object: server_public_key, endpoint_host, listen_port, client_address

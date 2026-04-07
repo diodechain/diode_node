@@ -1,0 +1,42 @@
+# TURN Relay Service - Test Cases
+# See feature-turn-support.md
+
+turnopen_issue_credentials:
+  - name: "first turnopen returns credentials and TTL"
+    input:
+      device: "0x1234567890123456789012345678901234567890"
+    authenticated: true
+    output:
+      has_keys: ["username", "credential", "urls", "realm", "ttl_seconds"]
+      ttl_seconds: 86400
+
+  - name: "repeat turnopen within 24h returns same username and credential"
+    setup:
+      device: "0x1234567890123456789012345678901234567890"
+      prior_turnopen: true
+    input:
+      device: "0x1234567890123456789012345678901234567890"
+    authenticated: true
+    output:
+      same_as_prior: ["username", "credential"]
+
+turnopen_auth:
+  - name: "Edge turnopen without authentication fails"
+    method_params: ["turnopen"]
+    authenticated: false
+    error: true
+
+  - name: "dio_turn_open without ticket fails"
+    method: "dio_turn_open"
+    params: []
+    authenticated: false
+    error: true
+    error_code: -32000
+    error_message: "not authenticated"
+
+traffic_accounting:
+  - name: "relay usage increases TicketStore for device (strategy-specific)"
+    setup:
+      device: "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd"
+      turn_credentials: "<from turnopen>"
+    note: "Assert increase_device_usage or device_usage delta after simulated relay traffic or hook invocation"

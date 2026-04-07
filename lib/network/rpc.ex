@@ -256,7 +256,9 @@ defmodule Network.Rpc do
     "dio_usageHistory",
     "dio_checkConnectivity",
     "dio_wireguard_open",
-    "dio_wireguard_close"
+    "dio_wireguard_close",
+    "dio_turn_open",
+    "dio_version"
   ]
 
   def local_dio_method?(method) when is_binary(method) do
@@ -584,8 +586,8 @@ defmodule Network.Rpc do
                   result(nil, 400, %{"code" => -32602, "message" => "invalid params"})
                 else
                   case WireGuardService.add_peer(device, public_key_binary) do
-                    :ok ->
-                      result(nil)
+                    {:ok, session} ->
+                      result(wireguard_open_result_for_rpc(session))
 
                     {:error, :invalid_public_key} ->
                       result(nil, 400, %{"code" => -32602, "message" => "invalid public key"})
@@ -622,9 +624,39 @@ defmodule Network.Rpc do
           result(nil)
         end
 
+      "dio_turn_open" ->
+        device = Process.get({:websocket_device, self()})
+
+        if device == nil do
+          result(nil, 400, %{"code" => -32000, "message" => "not authenticated"})
+        else
+          case Diode.Turn.issue_credentials(device) do
+            {:ok, cred} ->
+              result(cred)
+
+            {:error, :not_enabled} ->
+              result(nil, 503, %{"code" => -32000, "message" => "turn not enabled"})
+
+            _ ->
+              result(nil, 500, %{"code" => -32000, "message" => "turn error"})
+          end
+        end
+
+      "dio_version" ->
+        result(%{
+          version: Diode.Version.version(),
+          description: Diode.Version.description()
+        })
+
       _ ->
         nil
     end
+  end
+
+  # Json.prepare! encodes bare integers as hex; spec requires JSON number for listen_port.
+  defp wireguard_open_result_for_rpc(session) when is_map(session) do
+    port = Map.fetch!(session, "listen_port")
+    Map.put(session, "listen_port", {:raw, port})
   end
 
   defp handle_proxy(method, params, opts) do

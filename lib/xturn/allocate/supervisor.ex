@@ -1,0 +1,56 @@
+### ----------------------------------------------------------------------
+###
+### Copyright (c) 2013 - 2018 Lee Sylvester and Xirsys LLC <experts@xirsys.com>
+###
+### All rights reserved.
+###
+### XTurn is licensed by Xirsys under the Apache
+### License, Version 2.0. (the "License");
+###
+### you may not use this file except in compliance with the License.
+### You may obtain a copy of the License at
+###
+###      http://www.apache.org/licenses/LICENSE-2.0
+###
+### Unless required by applicable law or agreed to in writing, software
+### distributed under the License is distributed on an "AS IS" BASIS,
+### WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+### See the License for the specific language governing permissions and
+### limitations under the License.
+###
+### See LICENSE for the full license text.
+###
+### ----------------------------------------------------------------------
+
+defmodule Xirsys.XTurn.Allocate.Supervisor do
+  use Supervisor
+  require Logger
+
+  def start_link(alloc) do
+    :supervisor.start_link({:local, __MODULE__}, __MODULE__, alloc)
+  end
+
+  def start_child(id, listener, tuple5, lifetime) do
+    :supervisor.start_child(__MODULE__, [id, listener, tuple5, lifetime])
+  end
+
+  def terminate_child(child) do
+    :supervisor.terminate_child(__MODULE__, child)
+  end
+
+  def init(alloc) do
+    # `{alloc, []}` becomes `start_link([[]])` via GenServer.child_spec/1. For
+    # `:simple_one_for_one`, OTP does `apply(M, F, A ++ extra)`; `A` must be [] so
+    # dynamic `start_child([id, sock, t5, life])` calls `start_link/4`, not
+    # `start_link([[], id, ...])`.
+    Supervisor.init(
+      [
+        Supervisor.child_spec({alloc, []},
+          restart: :temporary,
+          start: {alloc, :start_link, []}
+        )
+      ],
+      strategy: :simple_one_for_one
+    )
+  end
+end

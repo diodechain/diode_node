@@ -66,7 +66,7 @@ defmodule Diode do
         supervisor(Channels),
         {PubSub, args},
         Network.PortManager
-      ] ++ wireguard_children()
+      ] ++ wireguard_children() ++ turn_children()
 
     with {:ok, pid} <-
            Supervisor.start_link(children, strategy: :rest_for_one, name: Diode.Supervisor) do
@@ -107,17 +107,44 @@ defmodule Diode do
     [
       Network.Server.child(edge2_ports(), Network.EdgeV2),
       rpc_api(:http, port: rpc_port()),
-      if host != nil do
-        rpc_api(
-          :https,
-          [port: rpcs_port(), sni_fun: &CertMagex.sni_fun/1] ++
+      if host != nil and acme_ip_cert_eligible?(host) do
+        ssl_opts =
+          try do
             CertMagex.ssl_opts(host)
-        )
+          rescue
+            _ ->
+              []
+          end
+
+        rpc_api(:https, [port: rpcs_port(), sni_fun: &CertMagex.sni_fun/1] ++ ssl_opts)
       else
         rpc_api(:https, port: rpcs_port(), sni_fun: &CertMagex.sni_fun/1)
       end
     ]
   end
+
+  # Let's Encrypt / ACME will not issue for these; skip ssl_opts(host) to avoid startup crash.
+  defp acme_ip_cert_eligible?(host) when is_binary(host) do
+    case :inet.parse_address(String.to_charlist(host)) do
+      {:ok, {_, _, _, _} = ip4} ->
+        not unroutable_ipv4?(ip4)
+
+      {:ok, _} ->
+        true
+
+      {:error, _} ->
+        true
+    end
+  end
+
+  defp unroutable_ipv4?({10, _, _, _}), do: true
+  defp unroutable_ipv4?({172, b, _, _}) when b >= 16 and b <= 31, do: true
+  defp unroutable_ipv4?({192, 168, _, _}), do: true
+  defp unroutable_ipv4?({169, 254, _, _}), do: true
+  defp unroutable_ipv4?({127, _, _, _}), do: true
+  # RFC6598 shared address space
+  defp unroutable_ipv4?({100, b, _, _}) when b >= 64 and b <= 127, do: true
+  defp unroutable_ipv4?(_), do: false
 
   defp wireguard_children() do
     if wireguard_enabled?() do
@@ -126,6 +153,16 @@ defmodule Diode do
       []
     end
   end
+
+  defp turn_children() do
+    if turn_enabled?() do
+      [supervisor(Diode.Turn.Supervisor)]
+    else
+      []
+    end
+  end
+
+  defp turn_enabled?(), do: Diode.Turn.turn_enabled?()
 
   defp wireguard_enabled?() do
     enabled = Diode.Config.get("WIREGUARD_ENABLED")

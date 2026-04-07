@@ -50,3 +50,6 @@ nodedata_prod/
 nodedata_test/
 supervise/
 .env
+*.so
+vendor/*/deps
+project.log

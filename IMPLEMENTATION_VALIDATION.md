@@ -59,9 +59,9 @@ All components from the specification have been implemented and integrated.
 - ✅ WireGuard disabled → 503 error
 
 ### Configuration
-- ✅ `WIREGUARD_ENABLED` (default: "0")
+- ✅ `WIREGUARD_ENABLED` (default: `"1"` in `lib/config.ex`)
 - ✅ `WIREGUARD_INTERFACE` (default: "diode_wg")
-- ✅ `WIREGUARD_LISTEN_PORT` (required when enabled)
+- ✅ `WIREGUARD_LISTEN_PORT` (default `"51820"` in `config.ex`)
 - ✅ `WIREGUARD_TUNNEL_SUBNET` (default: "10.0.0.0/24")
 - ✅ `WIREGUARD_POLL_INTERVAL_MS` (default: "60000")
 

@@ -96,8 +96,13 @@ defmodule RemoteChain.RPC do
   end
 
   def call!(chain, opts \\ []) do
-    {:ok, ret} = call(chain, opts)
-    ret
+    case call(chain, opts) do
+      {:ok, ret} ->
+        ret
+
+      {:error, error} ->
+        raise "RPC error: #{inspect(error)} when calling #{inspect(opts)} on #{inspect(chain)}"
+    end
   end
 
   def estimate_gas(chain, to, data, block \\ "latest") do

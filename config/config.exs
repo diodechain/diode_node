@@ -7,7 +7,6 @@ import Config
 config :logger,
   # handle_otp_reports: true,
   # handle_sasl_reports: true,
-  backends: [:console],
   truncate: 8000,
   format: "$time $metadata[$level] $message"
 

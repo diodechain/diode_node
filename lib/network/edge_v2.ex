@@ -462,14 +462,30 @@ defmodule Network.EdgeV2 do
             {:ok, physical_port} -> response("ok", physical_port)
           end
 
+        ["turnopen"] ->
+          if not Diode.Turn.turn_enabled?() do
+            error(503, "turn not enabled")
+          else
+            case Diode.Turn.issue_credentials(device_address(state)) do
+              {:ok, cred} ->
+                response(Jason.encode!(cred))
+
+              {:error, :not_enabled} ->
+                error(503, "turn not enabled")
+
+              _ ->
+                error(500, "turn error")
+            end
+          end
+
         ["wireguard", "open", public_key]
         when is_binary(public_key) and byte_size(public_key) == 32 ->
           if not wireguard_enabled?() do
             error(503, "wireguard not enabled")
           else
             case WireGuardService.add_peer(device_address(state), public_key) do
-              :ok ->
-                response("ok")
+              {:ok, session} ->
+                response(Jason.encode!(session))
 
               {:error, :invalid_public_key} ->
                 error(400, "invalid public key")

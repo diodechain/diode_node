@@ -434,4 +434,11 @@ defmodule TestHelper do
   end
 end
 
-TestHelper.restart_chain()
+# Full suite: local chain + wallets. TURN unit tests use
+# `DIODE_MINIMAL_TEST=1 mix test --no-start test/diode/turn/` to skip chain startup
+# (avoids anvil / DB prerequisites for isolated tests).
+if System.get_env("DIODE_MINIMAL_TEST") == "1" do
+  {:ok, _} = Application.ensure_all_started(:globals)
+else
+  TestHelper.restart_chain()
+end

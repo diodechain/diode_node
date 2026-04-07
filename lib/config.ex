@@ -1,5 +1,6 @@
 defmodule Diode.Config do
   alias DiodeClient.Base16
+  require Logger
 
   def defaults() do
     %{
@@ -45,9 +46,14 @@ defmodule Diode.Config do
       "ACCOUNTANT_ADDRESS" => nil,
       "WIREGUARD_ENABLED" => "1",
       "WIREGUARD_INTERFACE" => "diode_wg",
-      "WIREGUARD_LISTEN_PORT" => nil,
+      "WIREGUARD_LISTEN_PORT" => "51820",
       "WIREGUARD_TUNNEL_SUBNET" => "10.0.0.0/24",
-      "WIREGUARD_POLL_INTERVAL_MS" => "60000"
+      "WIREGUARD_POLL_INTERVAL_MS" => "60000",
+      "WIREGUARD_ENDPOINT_HOST" => nil,
+      "TURN_ENABLED" => "1",
+      "TURN_LISTEN_PORT" => "19403",
+      "TURN_REALM" => "diode",
+      "TURN_BIND_HOST" => nil
     }
   end
 
@@ -60,6 +66,11 @@ defmodule Diode.Config do
   end
 
   def configure() do
+    if System.get_env("HOST") do
+      # User has set the HOST environment variable, so we don't want to overwrite it dynamically.
+      System.put_env("HOST_LOCKED", "1")
+    end
+
     for {var, _default} <- defaults() do
       value = get_config_value(var)
 
@@ -113,7 +124,19 @@ defmodule Diode.Config do
     snap_get(var) || System.get_env(var) || eval(default!(var))
   end
 
+  def set("HOST" = var, value) do
+    if System.get_env("HOST_LOCKED") do
+      Logger.warning("Ignoring set of HOST to #{value} because it is locked.")
+    else
+      do_set(var, value)
+    end
+  end
+
   def set(var, value) do
+    do_set(var, value)
+  end
+
+  defp do_set(var, value) do
     Globals.put({__MODULE__, var}, value)
     old_value = System.get_env(var)
     snap_set(var, value)
@@ -164,6 +187,15 @@ defmodule Diode.Config do
         {__MODULE__, :restart_peer_handler},
         fn ->
           if pid = Process.whereis(Network.PeerHandlerV2),
+            do: Process.exit(pid, :restart_host_changed)
+        end,
+        10_000
+      )
+
+      Debouncer.apply(
+        {__MODULE__, :restart_turn_service},
+        fn ->
+          if pid = Process.whereis(TurnService),
             do: Process.exit(pid, :restart_host_changed)
         end,
         10_000
