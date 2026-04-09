@@ -44,3 +44,6 @@ screenlog.*
 # Docker
 Dockerfile
 docker
+
+# Git metadata (worktree pointer breaks `git describe` inside the image; not needed to build)
+.git

@@ -34,6 +34,8 @@ COPY .tool-versions snap/build_prereq.sh /app/
 RUN /app/build_prereq.sh
 
 COPY mix.lock mix.exs snap/build_deps.sh /app/
+# Path deps in mix.exs; must exist before mix deps.compile in build_deps.sh
+COPY vendor/ /app/vendor/
 ENV ERL_FLAGS="+JPperf true"
 RUN /app/build_deps.sh
 

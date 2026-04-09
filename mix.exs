@@ -22,7 +22,11 @@ defmodule Diode.Mixfile do
         {[], "v0.0.0"}
       end
 
-    vsn = Regex.run(~r/v([0-9]+\.[0-9]+\.[0-9]+)/, description) |> Enum.at(1)
+    vsn =
+      case Regex.run(~r/v([0-9]+\.[0-9]+\.[0-9]+)/, description) do
+        [_, v] -> v
+        _ -> "0.0.0"
+      end
 
     [
       aliases: aliases(),
