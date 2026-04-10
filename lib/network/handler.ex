@@ -57,6 +57,10 @@ defmodule Network.Handler do
           {:ok, socket} ->
             enter_loop(Map.merge(state, %{socket: socket, address: address, node_id: node_id}))
 
+          {:error, :timeout} ->
+            on_nodeid(node_id)
+            {:stop, :timeout, state}
+
           other ->
             on_nodeid(node_id)
 
