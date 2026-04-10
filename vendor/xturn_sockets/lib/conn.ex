@@ -35,20 +35,20 @@ defmodule Xirsys.Sockets.Conn do
   @software "xirsys-turnserver"
   @nonce "5543438859252a7c" # fixed, for now.
 
-  @type t :: {
-    listener :: :gen_tcp.socket() | :gen_udp.socket() | :ssl.sslsocket(),
-    message :: binary(),
-    decoded_message :: Stun.t(),
-    client_socket :: :gen_tcp.socket() | :gen_udp.socket() | :ssl.sslsocket(),
-    client_ip :: tuple(),
-    client_port :: integer(),
-    server_ip :: tuple(),
-    server_port :: integer(),
-    is_control :: boolean(),
-    force_auth :: boolean(),
-    response :: Response.t(),
-    halt :: boolean()
-  }
+  @type t :: %Conn{
+          listener: :gen_tcp.socket() | :gen_udp.socket() | :ssl.sslsocket() | nil,
+          message: binary() | nil,
+          decoded_message: Stun.t() | nil,
+          client_socket: :gen_tcp.socket() | :gen_udp.socket() | :ssl.sslsocket() | nil,
+          client_ip: tuple() | nil,
+          client_port: integer() | nil,
+          server_ip: tuple() | nil,
+          server_port: integer() | nil,
+          is_control: boolean(),
+          force_auth: boolean(),
+          response: Response.t() | nil,
+          halt: boolean() | nil
+        }
 
   defstruct listener: nil,
             message: nil,

@@ -47,7 +47,7 @@ defmodule Xirsys.XTurn.Pipeline do
   * **Channel Data** — [RFC5766](https://www.rfc-editor.org/rfc/rfc5766) section 11 (`:channeldata` pipe).
   * **Fallback** — logs an error when the message cannot be classified.
   """
-  @spec process_message(%Xirsys.Sockets.Conn{}) :: %Xirsys.Sockets.Conn{} | false
+  @spec process_message(Conn.t()) :: Conn.t() | false
   def process_message(
         %Xirsys.Sockets.Conn{message: <<@stun_marker::2, _::14, _rest::binary>> = msg} = conn
       ) do
@@ -83,7 +83,7 @@ defmodule Xirsys.XTurn.Pipeline do
     createperm:       Handles TURN createpermission requests [RFC5766] section 9
     send:             Handles TURN send indication requests [RFC5766] section 9
   """
-  @spec do_request(%Xirsys.Sockets.Conn{}) :: %Xirsys.Sockets.Conn{} | false
+  @spec do_request(Conn.t()) :: Conn.t() | false
   def do_request(
         %Xirsys.Sockets.Conn{decoded_message: %XMediaLib.Stun{class: :request, method: :binding}} =
           conn

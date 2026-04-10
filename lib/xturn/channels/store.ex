@@ -100,7 +100,7 @@ defmodule Xirsys.XTurn.Channels.Store do
     maybe_values(lookup)
   end
 
-  defp maybe_values(%{values: clients}) when is_list(clients) and length(clients) > 0,
+  defp maybe_values(%{values: clients}) when is_list(clients) and clients != [],
     do: {:ok, clients}
 
   defp maybe_values(_),

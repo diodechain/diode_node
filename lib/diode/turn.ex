@@ -100,6 +100,5 @@ defmodule Diode.Turn do
       {:ok, ip} -> ip
       _ -> {127, 0, 0, 1}
     end
-    |> IO.inspect(label: "resolve_server_ip_tuple")
   end
 end

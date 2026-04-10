@@ -82,20 +82,17 @@ defmodule Xirsys.XTurn.Actions.Allocate do
     )
 
     # Build attributes to send back to client
-    nattrs =
-      %{
-        # reservation_token: <<0::64>>,
-        xor_mapped_address: {conn.client_ip, conn.client_port},
-        xor_relayed_address: {Socket.server_ip(), port},
-        lifetime: <<600::32>>
-      }
-      |> IO.inspect(label: "nattrs")
+    nattrs = %{
+      # reservation_token: <<0::64>>,
+      xor_mapped_address: {conn.client_ip, conn.client_port},
+      xor_relayed_address: {Socket.server_ip(), port},
+      lifetime: <<600::32>>
+    }
 
     Logger.debug("integrity = #{conn.decoded_message.integrity}")
     # turn2 = %XMediaLib.Stun{conn.decoded_message | integrity: :true}
     Logger.debug("Allocated")
     # Notify client
-    IO.inspect(conn.client_socket)
-    Conn.response(conn, :success, nattrs) |> IO.inspect(label: "Conn.response")
+    Conn.response(conn, :success, nattrs)
   end
 end
