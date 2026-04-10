@@ -25,8 +25,7 @@ defmodule Diode.Turn do
              "username" => u,
              "credential" => p,
              "urls" => [
-               "turn:#{host}:#{port}?transport=udp",
-               "turn:#{host}:#{port}?transport=tcp"
+               "turn:#{host}:#{port}?transport=udp"
              ],
              "realm" => realm,
              "ttl_seconds" => ttl,
