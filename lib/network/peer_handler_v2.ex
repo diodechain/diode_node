@@ -385,7 +385,7 @@ defmodule Network.PeerHandlerV2 do
 
   def on_nodeid(node) do
     OnCrash.call(fn reason ->
-      if reason != :kill_clone and reason != :normal do
+      if reason not in [:kill_clone, :normal, :shutdown] do
         log({node, nil}, "down for: #{inspect(reason)}")
         GenServer.cast(KademliaLight, {:failed_node, node})
       end

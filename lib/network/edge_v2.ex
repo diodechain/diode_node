@@ -1078,7 +1078,7 @@ defmodule Network.EdgeV2 do
 
   def on_nodeid(edge) do
     OnCrash.call(fn reason ->
-      if reason != :kill_clone and reason != :normal do
+      if reason not in [:kill_clone, :normal, :shutdown] do
         log({edge, nil}, "down for: #{inspect(reason)}")
       end
     end)
