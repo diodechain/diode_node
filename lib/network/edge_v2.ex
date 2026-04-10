@@ -208,6 +208,9 @@ defmodule Network.EdgeV2 do
           {response("ok"), state}
         end
 
+      ["version"] ->
+        {response(Diode.Version.version(), Diode.Version.description()), state}
+
       ["ticket", block, fleet, tc, tb, local_address, device_signature] ->
         ticketv1(
           server_id: Wallet.address!(Diode.wallet()),
