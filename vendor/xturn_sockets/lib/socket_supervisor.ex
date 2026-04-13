@@ -39,7 +39,14 @@ defmodule Xirsys.Sockets.SockSupervisor do
   end
 
   def init([]) do
-    tree = [worker(Xirsys.Sockets.Client, [], restart: :temporary)]
-    supervise(tree, strategy: :simple_one_for_one)
+    children = [
+      %{
+        id: Xirsys.Sockets.Client,
+        start: {Xirsys.Sockets.Client, :start_link, []},
+        restart: :temporary
+      }
+    ]
+
+    Supervisor.init(children, strategy: :simple_one_for_one)
   end
 end

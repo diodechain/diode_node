@@ -50,16 +50,15 @@ defmodule Xirsys.Sockets.Listener.UDP do
   end
 
   @doc """
-  Initialises connection with IPv6 address
+  Initialises the UDP listener for an IPv6 or IPv4 bind address.
   """
+  def init(args)
+
   def init([cb, {_, _, _, _, _, _, _, _} = ip, port, ssl]) do
     opts = @opts ++ [ip: ip] ++ [:binary, :inet6]
     open_socket(cb, ip, port, ssl, opts)
   end
 
-  @doc """
-  Initialises connection with IPv4 address
-  """
   def init([cb, {_, _, _, _} = ip, port, ssl]) do
     opts = @opts ++ [ip: ip] ++ [:binary]
     open_socket(cb, ip, port, ssl, opts)
