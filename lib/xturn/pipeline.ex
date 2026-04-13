@@ -51,7 +51,7 @@ defmodule Xirsys.XTurn.Pipeline do
   def process_message(
         %Xirsys.Sockets.Conn{message: <<@stun_marker::2, _::14, _rest::binary>> = msg} = conn
       ) do
-    Logger.debug("TURN Data received")
+    Logger.debug("[XTurn] TURN Data received")
     {:ok, turn} = Stun.decode(msg)
     do_request(%Xirsys.Sockets.Conn{conn | decoded_message: turn}) |> Conn.send()
   end
@@ -60,14 +60,14 @@ defmodule Xirsys.XTurn.Pipeline do
         %Xirsys.Sockets.Conn{message: <<1::2, _num::14, length::16, _rest::binary>>} = conn
       ) do
     Logger.debug(
-      "TURN channeldata request (length: #{length}) from client at ip:#{inspect(conn.client_ip)}, port:#{inspect(conn.client_port)}"
+      "[XTurn] TURN channeldata request (length: #{length}) from client at ip:#{inspect(conn.client_ip)}, port:#{inspect(conn.client_port)}"
     )
 
     execute(conn, :channeldata)
   end
 
   def process_message(%Xirsys.Sockets.Conn{message: <<_::binary>>}) do
-    Logger.error("Error in extracting TURN message")
+    Logger.error("[XTurn] Error in extracting TURN message")
     false
   end
 
@@ -89,7 +89,7 @@ defmodule Xirsys.XTurn.Pipeline do
           conn
       ) do
     Logger.debug(
-      "STUN request from client at ip:#{inspect(conn.client_ip)}, port:#{inspect(conn.client_port)} with ip:#{inspect(conn.server_ip)}, port:#{inspect(conn.server_port)}"
+      "[XTurn] STUN request from client at ip:#{inspect(conn.client_ip)}, port:#{inspect(conn.client_port)} with ip:#{inspect(conn.server_ip)}, port:#{inspect(conn.server_port)}"
     )
 
     attrs = %{
@@ -107,19 +107,19 @@ defmodule Xirsys.XTurn.Pipeline do
       )
       when class in [:request, :indication] do
     Logger.debug(
-      "TURN #{method} #{class} from client at ip:#{inspect(conn.server_ip)}, port:#{inspect(conn.server_port)}"
+      "[XTurn] TURN #{method} #{class} from client at ip:#{inspect(conn.server_ip)}, port:#{inspect(conn.server_port)}"
     )
 
     execute(conn, method)
   end
 
   def do_request(false) do
-    Logger.error("Error: STUN process halted by server")
+    Logger.error("[XTurn] Error: STUN process halted by server")
     false
   end
 
   def do_request(_) do
-    Logger.error("Error in processing STUN message")
+    Logger.error("[XTurn] Error in processing STUN message")
     false
   end
 

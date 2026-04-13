@@ -44,7 +44,7 @@ defmodule Xirsys.XTurn.Actions.HasRequestedTransport do
       false ->
         # Requested transport not in header
         Logger.error(
-          "Request transport not provided from ip:#{inspect(conn.client_ip)}, port:#{inspect(conn.client_port)}"
+          "[XTurn] Request transport not provided from ip:#{inspect(conn.client_ip)}, port:#{inspect(conn.client_port)}"
         )
 
         Conn.response(conn, 400, "Bad Request")
@@ -52,7 +52,7 @@ defmodule Xirsys.XTurn.Actions.HasRequestedTransport do
       _ ->
         # Only UDP supported. Not a WebRTC app?
         Logger.error(
-          "Unsupported transport protocol requested from ip:#{inspect(conn.client_ip)}, port:#{inspect(conn.client_port)}"
+          "[XTurn] Unsupported transport protocol requested from ip:#{inspect(conn.client_ip)}, port:#{inspect(conn.client_port)}"
         )
 
         Conn.response(conn, 442, "Unsupported Transport Protocol")

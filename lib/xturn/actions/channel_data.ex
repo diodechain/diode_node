@@ -33,14 +33,14 @@ defmodule Xirsys.XTurn.Actions.ChannelData do
   alias Xirsys.XTurn.Tuple5
 
   def process(%Xirsys.Sockets.Conn{is_control: true}) do
-    Logger.debug("cannot send channel data on control connection")
+    Logger.debug("[XTurn] cannot send channel data on control connection")
     false
   end
 
   # If packet has a channel data header, then process as channel data throughput
   def process(%Xirsys.Sockets.Conn{message: <<channel::16, _length::16, data::binary>>} = conn) do
     Logger.debug(
-      "channel data (#{byte_size(data)} bytes) received on channel #{inspect(channel)}"
+      "[XTurn] channel data (#{byte_size(data)} bytes) received on channel #{inspect(channel)}"
     )
 
     # Match on any protocol (though only :udp should exist)
@@ -56,7 +56,7 @@ defmodule Xirsys.XTurn.Actions.ChannelData do
         conn
 
       {:error, :not_found} ->
-        Logger.debug("channel #{inspect(channel)} does not exist in ETS")
+        Logger.debug("[XTurn] channel #{inspect(channel)} does not exist in ETS")
         false
     end
   end

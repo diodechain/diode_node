@@ -32,13 +32,13 @@ defmodule Xirsys.XTurn.Actions.SendIndication do
   alias Xirsys.XTurn.Tuple5
 
   def process(%Xirsys.Sockets.Conn{is_control: true}) do
-    Logger.debug("cannot send indications on control connection")
+    Logger.debug("[XTurn] cannot send indications on control connection")
     false
   end
 
   # Handles sending data from Client to Peer
   def process(%Xirsys.Sockets.Conn{decoded_message: %XMediaLib.Stun{attrs: attrs}} = conn) do
-    Logger.debug("send indication #{inspect(conn.decoded_message)}")
+    Logger.debug("[XTurn] send indication #{inspect(conn.decoded_message)}")
     # Get 5Tuple lookup match
     tuple5 = Tuple5.to_map(Tuple5.create(conn, :_))
 
@@ -49,21 +49,23 @@ defmodule Xirsys.XTurn.Actions.SendIndication do
          # Extract receiver address
          peer_address = {_pip, _port} <- Map.get(attrs, :xor_peer_address),
          # Get 5Tuple registration
-         {:ok, [client, {_relay_ip, _relay_port}, socket, permission_cache]} <-
+         {:ok, [client, {relay_ip, relay_port} = _relay, socket, permission_cache]} <-
            Store.lookup(tuple5) do
-      Logger.debug("sending indication to peer")
-      # Transmit data to peer
+      Logger.debug(
+        "[XTurn] send_indication relay=#{:inet.ntoa(relay_ip)}:#{relay_port} -> peer=#{:inet.ntoa(elem(peer_address, 0))}:#{elem(peer_address, 1)} via #{inspect(socket)}"
+      )
+
       AllocateClient.send_indication(client, peer_address, data, socket, permission_cache)
       conn
     else
       {:error, _} ->
         # 5Tuple not present, so allocation must not be valid (or present)
-        Logger.debug("client does not exist #{inspect(tuple5)} (send indication)")
+        Logger.debug("[XTurn] client does not exist #{inspect(tuple5)} (send indication)")
         false
 
       _ ->
         # Missing data from STUN packet header
-        Logger.debug("Required attributes not found during send indication")
+        Logger.debug("[XTurn] Required attributes not found during send indication")
         false
     end
   end

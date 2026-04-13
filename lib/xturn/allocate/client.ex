@@ -154,16 +154,21 @@ defmodule Xirsys.XTurn.Allocate.Client do
 
   def send_indication(pid, peer_address, data, socket \\ nil, perms \\ nil)
 
-  def send_indication(pid, {_, _} = peer_address, <<_::binary>> = data, nil, _perms),
-    do: GenServer.cast(pid, {:send_indication, peer_address, data})
+  def send_indication(pid, {_, _} = peer_address, <<_::binary>> = data, nil, _perms) do
+    Logger.debug("[XTurn] casting indication to peer #{inspect(peer_address)}")
+    GenServer.cast(pid, {:send_indication, peer_address, data})
+    :ok
+  end
 
   def send_indication(pid, {pip, pport}, <<_::binary>> = data, socket, perms) do
     cond do
       not require_perms() or Cache.has_key?(perms, pip) ->
+        Logger.debug("[XTurn] sending indication to peer #{inspect({pip, pport})}")
         Client.send_data(data, pip, pport, socket)
         GenServer.cast(pid, {:log_data, data})
 
       true ->
+        Logger.debug("[XTurn] no permissions for peer #{inspect({pip, pport})}")
         :ok
     end
   end
@@ -177,7 +182,7 @@ defmodule Xirsys.XTurn.Allocate.Client do
 
     {:ok, chans} =
       Cache.init(@channel_lifetime, fn id ->
-        Logger.info("CHANNEL #{inspect(id)} REMOVED")
+        Logger.debug("[XTurn] CHANNEL #{inspect(id)} REMOVED")
       end)
 
     {:ok,
@@ -197,22 +202,28 @@ defmodule Xirsys.XTurn.Allocate.Client do
     do: {:stop, :normal, state}
 
   def handle_info({:udp, socket, ip, in_port, packet}, %State{} = state) do
+    {:ok, relay_port} = Socket.port(state.relayed_socket)
+
     Logger.debug(
-      "udp data sent from peer #{inspect(ip)}:#{inspect(in_port)} in genserver #{inspect(self())}"
+      "[XTurn] relay:#{relay_port} received #{byte_size(packet)}B from #{:inet.ntoa(ip)}:#{in_port}"
     )
 
     Socket.setopts(socket)
 
     with true <- not require_perms() or Cache.has_key?(state.permissions, ip) do
       len = byte_size(packet)
-      Logger.debug("sending #{inspect(len)} bytes to client")
       data = channel_or_stun(packet, {ip, in_port}, state.tuple5, len)
 
-      Socket.send(
-        state.client_socket,
-        data,
-        state.tuple5.client_address,
-        state.tuple5.client_port
+      result =
+        Socket.send(
+          state.client_socket,
+          data,
+          state.tuple5.client_address,
+          state.tuple5.client_port
+        )
+
+      Logger.debug(
+        "[XTurn] relay:#{relay_port} forwarded #{byte_size(data)}B to client #{:inet.ntoa(state.tuple5.client_address)}:#{state.tuple5.client_port} => #{inspect(result)}"
       )
 
       Socket.send_to_peer_hooks(%{
@@ -225,7 +236,7 @@ defmodule Xirsys.XTurn.Allocate.Client do
        Time.milliseconds_left(state)}
     else
       _ ->
-        Logger.info("peer permission not available #{inspect(state.tuple5)}")
+        Logger.info("[XTurn] peer permission not available #{inspect(state.tuple5)}")
         {:noreply, state, Time.milliseconds_left(state)}
     end
   end
@@ -248,7 +259,7 @@ defmodule Xirsys.XTurn.Allocate.Client do
 
   def handle_call({:add_channel, channel_number, peer_address}, _from, %State{} = state) do
     channel = %Channel{id: channel_number, tuple5: state.tuple5, peer_address: peer_address}
-    Logger.debug("ADDING CHANNEL #{inspect(channel_number)}")
+    Logger.debug("[XTurn] ADDING CHANNEL #{inspect(channel_number)}")
 
     Channels.insert(
       channel_number,
@@ -276,7 +287,7 @@ defmodule Xirsys.XTurn.Allocate.Client do
 
   def handle_cast({:add_permissions, perm}, %State{} = state) do
     Logger.debug(
-      "adding permissions #{inspect(state.permissions)} #{inspect(perm)} #{inspect(state.tuple5)}"
+      "[XTurn] adding permissions #{inspect(state.permissions)} #{inspect(perm)} #{inspect(state.tuple5)}"
     )
 
     Cache.append(state.permissions, perm)
@@ -326,9 +337,12 @@ defmodule Xirsys.XTurn.Allocate.Client do
   end
 
   def terminate(reason, %State{} = state) do
-    if reason != :normal do
-      Logger.debug("Terminating with reason: #{inspect(reason)}")
-    end
+    relay_port =
+      if state.relayed_socket, do: elem(Socket.port(state.relayed_socket), 1), else: "nil"
+
+    Logger.debug(
+      "[XTurn] Terminating relay:#{relay_port} reason=#{inspect(reason)} pid=#{inspect(self())}"
+    )
 
     if state.relayed_socket,
       do: Socket.close(state.relayed_socket)
@@ -368,18 +382,27 @@ defmodule Xirsys.XTurn.Allocate.Client do
 
   def send_data(msg, state) do
     t5 = state.tuple5
-    Logger.debug("Returning data on #{inspect(t5.client_address)}:#{inspect(t5.client_port)}")
+
+    Logger.debug(
+      "[XTurn] Returning data on #{inspect(t5.client_address)}:#{inspect(t5.client_port)}"
+    )
+
     send_data(msg, t5.client_address, t5.client_port, state)
   end
 
   def send_data(msg, cip, cport, %Xirsys.Sockets.Socket{} = socket) do
-    Logger.debug("POSTING to #{inspect(cip)}:#{inspect(cport)} on socket #{inspect(socket)}")
-    Socket.send(socket, msg, cip, cport)
+    result = Socket.send(socket, msg, cip, cport)
+
+    Logger.debug(
+      "[XTurn] POSTING #{byte_size(msg)}B to #{:inet.ntoa(cip)}:#{cport} on #{inspect(socket)} => #{inspect(result)}"
+    )
+
+    result
   end
 
   def send_data(msg, cip, cport, state) do
     Logger.debug(
-      "POSTING to #{inspect(cip)}:#{inspect(cport)} on relayed socket #{inspect(state.relayed_socket)}"
+      "[XTurn] POSTING to #{inspect(cip)}:#{inspect(cport)} on relayed socket #{inspect(state.relayed_socket)}"
     )
 
     Socket.send(state.relayed_socket, msg, cip, cport)
@@ -417,7 +440,7 @@ defmodule Xirsys.XTurn.Allocate.Client do
           |> Stun.encode()
 
         Logger.debug(
-          "Data indication #{byte_size(encoded)}B peer=#{inspect(peer_address)}: #{Base.encode16(encoded)}"
+          "[XTurn] Data indication #{byte_size(encoded)}B peer=#{inspect(peer_address)}: #{Base.encode16(encoded)}"
         )
 
         encoded

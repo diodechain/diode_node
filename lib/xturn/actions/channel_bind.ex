@@ -34,7 +34,7 @@ defmodule Xirsys.XTurn.Actions.ChannelBind do
   alias Xirsys.Sockets.Conn
 
   def process(%Xirsys.Sockets.Conn{decoded_message: %XMediaLib.Stun{attrs: attrs}} = conn) do
-    Logger.debug("channelbinding #{inspect(conn.decoded_message)}")
+    Logger.debug("[XTurn] channelbinding #{inspect(conn.decoded_message)}")
 
     # Do the attributes contain a channel number and peer address pair?
     with true <- Map.has_key?(attrs, :channel_number) and Map.has_key?(attrs, :xor_peer_address),
@@ -45,7 +45,7 @@ defmodule Xirsys.XTurn.Actions.ChannelBind do
          # Retrieve session 5Tuple
          tuple5 <- Tuple5.to_map(Tuple5.create(conn, :_)) do
       Logger.debug(
-        "#{Channels.exists({channel_number, tuple5})}, #{Channels.exists({peer_address, tuple5})} = #{inspect(channel_number)}"
+        "[XTurn] #{Channels.exists({channel_number, tuple5})}, #{Channels.exists({peer_address, tuple5})} = #{inspect(channel_number)}"
       )
 
       # Check if channel bind registration already exists
@@ -56,7 +56,7 @@ defmodule Xirsys.XTurn.Actions.ChannelBind do
       do_channelbind(conn, channel_number, peer_address, tuple5, exists)
     else
       _ ->
-        Logger.info("Required attributes not found during channel bind")
+        Logger.info("[XTurn] Required attributes not found during channel bind")
         Conn.response(conn, 400, "Bad Request")
     end
   end
@@ -70,21 +70,21 @@ defmodule Xirsys.XTurn.Actions.ChannelBind do
         Conn.response(conn, :success)
 
       {:error, :not_found} ->
-        Logger.info("Invalid channel number provided in request - 5tuple not available")
+        Logger.info("[XTurn] Invalid channel number provided in request - 5tuple not available")
         Conn.response(conn, 400, "Bad Request")
     end
   end
 
   defp do_channelbind(conn, channel_number, peer_address, tuple5, true) do
     {:ok, [[client, _, _]]} = Channels.lookup({channel_number, peer_address, tuple5})
-    Logger.debug("refreshing timer")
+    Logger.debug("[XTurn] refreshing timer")
     AllocateClient.refresh_channel(client, channel_number)
     Conn.response(conn, :success)
   end
 
   defp do_channelbind(conn, _channel_number, _peer_address, _tuple5, _) do
     Logger.info(
-      "Invalid channel number provided in request - channel number or peer address already in use"
+      "[XTurn] Invalid channel number provided in request - channel number or peer address already in use"
     )
 
     Conn.response(conn, 400, "Bad Request")

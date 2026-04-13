@@ -89,9 +89,10 @@ defmodule Xirsys.XTurn.Actions.Allocate do
       lifetime: <<600::32>>
     }
 
-    Logger.debug("integrity = #{conn.decoded_message.integrity}")
-    # turn2 = %XMediaLib.Stun{conn.decoded_message | integrity: :true}
-    Logger.debug("Allocated")
+    Logger.debug(
+      "[XTurn] Allocated relay=#{:inet.ntoa(Socket.server_ip())}:#{port} for client=#{:inet.ntoa(conn.client_ip)}:#{conn.client_port} pid=#{inspect(pid)}"
+    )
+
     # Notify client
     Conn.response(conn, :success, nattrs)
   end

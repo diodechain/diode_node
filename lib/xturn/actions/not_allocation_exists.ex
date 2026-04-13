@@ -49,8 +49,8 @@ defmodule Xirsys.XTurn.Actions.NotAllocationExists do
     else
       _ ->
         # 5Tuple already created.
-        Logger.info(
-          "Allocation already exists from ip:#{inspect(conn.client_ip)}, port:#{inspect(conn.client_port)}"
+        Logger.warning(
+          "[XTurn] Allocation already exists from ip:#{inspect(conn.client_ip)}, port:#{inspect(conn.client_port)}"
         )
 
         # Conn.response(conn, 437, "Allocation Mismatch")
@@ -64,8 +64,7 @@ defmodule Xirsys.XTurn.Actions.NotAllocationExists do
         }
 
         # Respond positively, since this is not an error.
-        Logger.debug("integrity = #{conn.decoded_message.integrity}")
-        Logger.debug("Allocated")
+        Logger.debug("[XTurn] allocated integrity = #{conn.decoded_message.integrity}")
 
         conn
         |> Conn.response(:success, nattrs)

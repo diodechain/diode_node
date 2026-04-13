@@ -73,18 +73,18 @@ defmodule Xirsys.XTurn.Actions.Authenticates do
   ### TODO: Correctly implement custom XirSys authentication to TURN spec [RFC5766]
   defp process_integrity(msg, username, realm) do
     auth = Application.get_env(:xturn, :authentication) || %{}
-    Logger.info("Checking USERNAME #{inspect(username)}")
+    Logger.debug("[XTurn] Checking USERNAME #{inspect(username)}")
 
     with ^username <- Map.get(auth, :username),
          cred when is_binary(cred) <- Map.get(auth, :credential),
          key <- username <> ":" <> realm <> ":" <> cred,
-         _ <- Logger.info("KEY = #{inspect(key)}"),
+         _ <- Logger.debug("[XTurn] KEY = #{inspect(key)}"),
          hkey <- :crypto.hash(:md5, key),
          {:ok, %XMediaLib.Stun{} = turn} <- Stun.decode(msg, hkey) do
       %XMediaLib.Stun{turn | key: hkey}
     else
       e ->
-        Logger.warning("Integrity process failed: #{inspect(e)}")
+        Logger.warning("[XTurn] Integrity process failed: #{inspect(e)}")
         false
     end
   end

@@ -34,7 +34,7 @@ defmodule Xirsys.XTurn.Actions.Refresh do
 
   # Used to update allocation TTL (keep-alive)
   def process(%Xirsys.Sockets.Conn{decoded_message: %XMediaLib.Stun{attrs: attrs}} = conn) do
-    Logger.debug("refreshing #{inspect(conn.decoded_message)}")
+    Logger.debug("[XTurn] refreshing #{inspect(conn.decoded_message)}")
 
     # TTL present in header?
     with true <- Map.has_key?(attrs, :lifetime),
@@ -47,7 +47,7 @@ defmodule Xirsys.XTurn.Actions.Refresh do
     else
       _ ->
         # Invalid request
-        Logger.info("LIFETIME attribute not found during refresh request")
+        Logger.warning("[XTurn] LIFETIME attribute not found during refresh request")
         Conn.response(conn, 400, "Bad Request")
     end
   end
@@ -57,8 +57,8 @@ defmodule Xirsys.XTurn.Actions.Refresh do
     # Get 5Tuple
     case Store.lookup(tuple5) do
       {:ok, [client, {_relay_ip, _relay_port}, _, _]} ->
-        Logger.debug("Refreshing with 0 time")
-        # Kill allocation with 0 refresh 
+        Logger.debug("[XTurn] Refreshing with 0 time")
+        # Kill allocation with 0 refresh
         AllocateClient.refresh(client, 0)
 
       {:error, :not_found} ->
@@ -86,7 +86,7 @@ defmodule Xirsys.XTurn.Actions.Refresh do
 
   # Oops!
   defp do_refresh(conn, val, _) do
-    Logger.info("Bad value #{inspect(val)} in refresh request")
+    Logger.warning("[XTurn] Bad value #{inspect(val)} in refresh request")
     Conn.response(conn, 400, "Bad Request")
   end
 end
