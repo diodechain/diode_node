@@ -5,7 +5,7 @@ defmodule BertInt do
   @moduledoc """
   Binary Erlang Term encoding for internal node-to-node encoding.
   """
-  @spec encode!(any()) :: binary()
+
   def encode!(term) do
     term
     |> :erlang.term_to_binary()
@@ -29,7 +29,6 @@ defmodule BertInt do
     :erlang.iolist_to_binary(bs)
   end
 
-  @spec decode!(binary()) :: any()
   def decode!(term) do
     try do
       :zlib.unzip(term)

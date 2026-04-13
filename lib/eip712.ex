@@ -49,7 +49,6 @@ defmodule EIP712 do
     encode_type(primary_type, type_data) |> Hash.keccak_256()
   end
 
-  @spec hash_struct(binary(), [{String.t(), String.t(), any()}]) :: binary()
   def hash_struct(primary_type, type_data) do
     {types, values} = split_fields(type_data)
     hash_struct(primary_type, %{primary_type => types}, values)

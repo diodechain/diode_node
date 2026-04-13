@@ -16,7 +16,7 @@ defmodule Diode do
   end
 
   @env Mix.env()
-  @spec env :: :prod | :test | :dev
+
   def env() do
     :persistent_term.get(:env, @env)
   end
@@ -256,22 +256,18 @@ defmodule Diode do
     {Plug.Cowboy, scheme: scheme, plug: Network.RpcHttp, options: opts}
   end
 
-  @spec dev_mode? :: boolean
   def dev_mode?() do
     env() == :dev or env() == :test
   end
 
-  @spec test_mode? :: boolean
   def test_mode?() do
     env() == :test
   end
 
-  @spec trace? :: boolean
   def trace?() do
     true == :persistent_term.get(:trace, false)
   end
 
-  @spec trace(boolean) :: any
   def trace(enabled) when is_boolean(enabled) do
     :persistent_term.put(:trace, enabled)
   end
@@ -285,13 +281,11 @@ defmodule Diode do
     :persistent_term.put(:ticket_grace, bytes)
   end
 
-  @spec hash(binary()) :: binary()
   def hash(bin) do
     # Ethereum is using KEC instead ...
     Hash.sha3_256(bin)
   end
 
-  @spec wallet() :: Wallet.t()
   def wallet() do
     Model.CredSql.wallet()
   end
@@ -304,7 +298,6 @@ defmodule Diode do
     Path.join(Diode.Config.get("DATA_DIR"), file)
   end
 
-  @spec rpc_port() :: integer()
   def rpc_port() do
     Diode.Config.get_int("RPC_PORT")
   end
@@ -313,7 +306,6 @@ defmodule Diode do
     Diode.Config.get_int("RPCS_PORT")
   end
 
-  @spec edge2_ports :: [integer()]
   def edge2_ports() do
     Diode.Config.get("EDGE2_PORT")
     |> String.trim()
@@ -321,7 +313,6 @@ defmodule Diode do
     |> Enum.map(fn port -> String.to_integer(String.trim(port)) end)
   end
 
-  @spec peer2_port() :: integer()
   def peer2_port() do
     Diode.Config.get_int("PEER2_PORT")
   end

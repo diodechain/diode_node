@@ -187,7 +187,6 @@ defmodule Shell do
     RemoteChain.RPC.get_balance(chain_id, Base16.encode(address)) |> Base16.decode_int()
   end
 
-  @spec get_miner_stake(non_neg_integer(), binary()) :: non_neg_integer()
   def get_miner_stake(chain_id, address) do
     {value, _gas} =
       call(RemoteChain.registry_address(chain_id), "MinerValue", ["uint8", "address"], [

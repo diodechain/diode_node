@@ -8,12 +8,10 @@ defmodule Lru do
   defstruct queue: :queue.new(), map: %{}, max_size: nil
   @type t :: %Lru{queue: any(), map: map(), max_size: integer()}
 
-  @spec new(pos_integer()) :: Lru.t()
   def new(max_size) do
     %Lru{max_size: max_size}
   end
 
-  @spec insert(Lru.t(), any(), any()) :: Lru.t()
   def insert(lru, key, value) do
     lru = %{lru | queue: :queue.in(key, lru.queue)}
 
@@ -32,7 +30,6 @@ defmodule Lru do
     end
   end
 
-  @spec get(Lru.t(), any(), any()) :: any()
   def get(lru, key, default \\ nil) do
     case Map.get(lru.map, key) do
       {_, value} -> value
@@ -40,7 +37,6 @@ defmodule Lru do
     end
   end
 
-  @spec fetch(Lru.t(), any(), fun()) :: {Lru.t(), any()}
   def fetch(lru, key, filler) do
     case Map.get(lru.map, key) do
       {_, value} ->
@@ -54,7 +50,6 @@ defmodule Lru do
     end
   end
 
-  @spec size(Lru.t()) :: non_neg_integer()
   def size(lru) do
     map_size(lru.map)
   end

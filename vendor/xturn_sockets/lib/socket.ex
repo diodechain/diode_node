@@ -44,14 +44,14 @@ defmodule Xirsys.Sockets.Socket do
   @doc """
   Returns the server ip from config for packet use
   """
-  @spec server_ip() :: tuple()
+
   def server_ip(),
     do: Application.get_env(:xturn, :server_ip, {0, 0, 0, 0})
 
   @doc """
   Returns the client message hooks from config
   """
-  @spec client_hooks() :: list()
+
   def client_hooks() do
     case Application.get_env(:xturn, :client_hooks, []) do
       hooks when is_list(hooks) -> hooks
@@ -62,7 +62,7 @@ defmodule Xirsys.Sockets.Socket do
   @doc """
   Returns the peer message hooks from config
   """
-  @spec peer_hooks() :: list()
+
   def peer_hooks() do
     case Application.get_env(:xturn, :peer_hooks, []) do
       hooks when is_list(hooks) -> hooks
@@ -73,14 +73,14 @@ defmodule Xirsys.Sockets.Socket do
   @doc """
   Returns the servers local ip from the config
   """
-  @spec server_local_ip() :: tuple()
+
   def server_local_ip(),
     do: Application.get_env(:xturn, :server_local_ip, {0, 0, 0, 0})
 
   @doc """
   Opens a new port for UDP TURN transport
   """
-  @spec open_turn_port(tuple(), atom(), list()) :: {:ok, Socket.t()} | {:error, atom()}
+
   def open_turn_port({_, _, _, _} = sip, policy, opts) do
     # [{:buffer, 1024*1024*1024}, {:recbuf, 1024*1024*1024}, {:sndbuf, 1024*1024*1024}, {:exit_on_close, true}, {:keepalive, true}, {:nodelay, true}, {:packet, :raw}]
     udp_options =
@@ -99,7 +99,7 @@ defmodule Xirsys.Sockets.Socket do
   @doc """
   With new data, see if we can process a message on the buffer
   """
-  @spec process_buffer(any(), binary(), binary(), tuple(), function()) :: binary()
+
   def process_buffer(socket, data, buffer, addr, callback) do
     bin = <<buffer::binary, data::binary>>
     process_buffer(socket, bin, addr, callback)
@@ -110,7 +110,7 @@ defmodule Xirsys.Sockets.Socket do
   socket, otherwise simply accepts an incoming connection request
   on a listening socket.
   """
-  @spec handshake(%Socket{}) :: {:ok, %Socket{}} | {:error, any()}
+
   def handshake(%Socket{type: :tcp, sock: socket}) do
     with {:ok, cli_socket} <- :gen_tcp.accept(socket) do
       {:ok, %Socket{type: :tcp, sock: cli_socket}}
@@ -127,8 +127,6 @@ defmodule Xirsys.Sockets.Socket do
   @doc """
   Sends a message over an open udp socket port
   """
-  @spec send(%Socket{}, binary(), tuple() | nil, integer() | nil) ::
-          :ok | {:error, term()} | no_return()
   def send(socket, msg, ip \\ nil, port \\ nil)
 
   def send(%Socket{type: :udp, sock: socket}, msg, ip, port),
@@ -162,7 +160,7 @@ defmodule Xirsys.Sockets.Socket do
   @doc """
   Sets one or more options for a socket.
   """
-  @spec setopts(port() | %Socket{}, list()) :: :ok | {:error, term()}
+
   def setopts(socket, opts \\ @setopts_default)
 
   def setopts(%Socket{type: type, sock: socket}, opts) when type in [:udp, :tcp],
@@ -205,7 +203,7 @@ defmodule Xirsys.Sockets.Socket do
   @doc """
   Apply specific socket option for STUN connection
   """
-  @spec set_sockopt(%Socket{}, %Socket{}) :: :ok
+
   def set_sockopt(%Socket{type: type} = list_sock, %Socket{type: type} = cli_socket)
       when type in [:tls, :dtls] do
     try do
@@ -239,12 +237,6 @@ defmodule Xirsys.Sockets.Socket do
   @doc """
   Returns the local address and port number for a socket.
   """
-  @spec sockname(any()) ::
-          {:ok, {tuple(), integer()}}
-          | {:local, binary()}
-          | {:unspec, <<>>}
-          | {:undefined, any()}
-          | {:error, term()}
   def sockname(%Socket{type: type, sock: socket}) when type in [:udp, :tcp],
     do: :inet.sockname(socket)
 
@@ -254,12 +246,7 @@ defmodule Xirsys.Sockets.Socket do
   @doc """
   Returns the peer address and port number for a socket.
   """
-  @spec peername(any()) ::
-          {:ok, {tuple(), integer()}}
-          | {:local, binary()}
-          | {:unspec, <<>>}
-          | {:undefined, any()}
-          | {:error, term()}
+
   def peername(%Socket{type: type, sock: socket}) when type in [:udp, :tcp],
     do: :inet.peername(socket)
 
@@ -272,7 +259,7 @@ defmodule Xirsys.Sockets.Socket do
   @doc """
   Closes a socket of any type.s
   """
-  @spec close(Socket.t() | any(), any()) :: :ok
+
   def close(sock, reason \\ "")
 
   def close(%Socket{type: :udp, sock: socket}, reason) do

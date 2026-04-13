@@ -79,22 +79,18 @@ defmodule Network.PortCollection do
   defstruct pid: nil, refs: %{}
   @type t :: %PortCollection{pid: pid(), refs: %{Port.ref() => Port.t()}}
 
-  @spec put(PortCollection.t(), Port.t()) :: PortCollection.t()
   def put(pc, port) do
     %{pc | refs: Map.put(pc.refs, port.ref, port)}
   end
 
-  @spec delete(PortCollection.t(), Port.ref()) :: PortCollection.t()
   def delete(pc, ref) do
     %{pc | refs: Map.delete(pc.refs, ref)}
   end
 
-  @spec get(PortCollection.t(), Port.ref(), any()) :: Port.t() | nil
   def get(pc, ref, default \\ nil) do
     Map.get(pc.refs, ref, default)
   end
 
-  @spec get_clientref(PortCollection.t(), Port.ref()) :: {PortClient.t(), Port.t()} | nil
   def get_clientref(pc, cref) do
     Enum.find_value(pc.refs, fn {_ref, port} ->
       Enum.find_value(port.clients, fn
@@ -104,7 +100,6 @@ defmodule Network.PortCollection do
     end)
   end
 
-  @spec get_clientmon(PortCollection.t(), reference()) :: {PortClient.t(), Port.t()} | nil
   def get_clientmon(pc, cmon) do
     Enum.find_value(pc.refs, fn {_ref, port} ->
       Enum.find_value(port.clients, fn
@@ -114,7 +109,6 @@ defmodule Network.PortCollection do
     end)
   end
 
-  @spec find_sharedport(PortCollection.t(), Port.t()) :: Port.t() | nil
   def find_sharedport(_pc, %Port{shared: false}) do
     nil
   end

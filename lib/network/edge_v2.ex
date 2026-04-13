@@ -1047,7 +1047,6 @@ defmodule Network.EdgeV2 do
     )
   end
 
-  @spec device_id(state()) :: Wallet.t()
   def device_id(%{node_id: id}), do: id
   def device_address(%{node_id: id}), do: Wallet.address!(id)
   @default_fleet DiodeClient.Base16.decode("0x8afe08d333f785c818199a5bdc7a52ac6ffc492a")

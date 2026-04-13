@@ -67,11 +67,11 @@ defmodule Xirsys.Sockets.Conn do
   Flags a connection object as halted, so it
   shouldn't be processed any further
   """
-  @spec halt(Conn.t()) :: Conn.t()
+
   def halt(%Conn{} = conn),
     do: %Conn{conn | halt: true}
 
-  @spec response(%Conn{}, atom() | integer(), binary() | any()) :: %Conn{}
+
   def response(conn, class, attrs \\ nil)
 
   def response(%Conn{} = conn, class, attrs) when is_atom(class),
@@ -84,7 +84,7 @@ defmodule Xirsys.Sockets.Conn do
   If a response message has been set, then we must notify the client according
   to the STUN and TURN specifications.
   """
-  @spec send(%Conn{}) :: %Conn{}
+
   def send(%Conn{response: %Response{err_no: err, message: msg}} = conn) when is_integer(err) do
     conn
     |> build_response(err, msg)
@@ -106,7 +106,7 @@ defmodule Xirsys.Sockets.Conn do
   end
 
   # Adjust Conn struct ready for response to end user.
-  @spec build_response(%Conn{}, atom() | integer(), binary() | any()) :: %Conn{}
+
   defp build_response(%Conn{decoded_message: %Stun{} = turn} = conn, class, attrs)
        when is_atom(class) do
     new_attrs =
@@ -140,7 +140,7 @@ defmodule Xirsys.Sockets.Conn do
   end
 
   # Encode Conn object and send to end user.
-  @spec respond(%Conn{}) :: %Conn{}
+
   defp respond(%Conn{decoded_message: %Stun{} = turn} = conn) do
     case conn.client_socket do
       nil ->
