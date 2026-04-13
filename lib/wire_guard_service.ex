@@ -133,7 +133,7 @@ defmodule WireGuardService do
                 |> private_key(private_key)
                 |> listen_port(state.listen_port)
 
-              case set_device(state.interface, device_config) do
+              case set_device(device_config, state.interface) do
                 :ok ->
                   timer = Process.send_after(self(), :poll_traffic, state.poll_interval_ms)
 

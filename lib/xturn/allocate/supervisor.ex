@@ -26,6 +26,9 @@ defmodule Xirsys.XTurn.Allocate.Supervisor do
   use Supervisor
   require Logger
 
+  # Dialyzer: OTP 26+ types for Supervisor.init_option/0 omit :simple_one_for_one; runtime still supports it.
+  @dialyzer {:nowarn_function, init: 1}
+
   def start_link(alloc) do
     :supervisor.start_link({:local, __MODULE__}, __MODULE__, alloc)
   end

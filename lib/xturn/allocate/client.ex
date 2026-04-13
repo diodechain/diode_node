@@ -29,6 +29,12 @@ defmodule Xirsys.XTurn.Allocate.Client do
   require Logger
   @vsn "0"
 
+  # Dialyzer: vendored Socket.send/4 and GenServer.terminate/2 contract disagree on success typing.
+  @dialyzer [
+    {:nowarn_function, terminate: 2},
+    {:nowarn_function, send_data_channel: 4}
+  ]
+
   @default_lifetime 600
   @channel_lifetime 600_000
   @permission_lifetime 300_000
@@ -409,10 +415,16 @@ defmodule Xirsys.XTurn.Allocate.Client do
   end
 
   def send_data_channel(channel_number, data, socket, channel_cache) do
-    {:ok, channel} = Cache.fetch(channel_cache, channel_number)
-    {pip, pport} = channel.peer_address
-    send_data(data, pip, pport, socket)
-    byte_size(data)
+    case Cache.fetch(channel_cache, channel_number) do
+      {:ok, channel} ->
+        {pip, pport} = channel.peer_address
+        send_data(data, pip, pport, socket)
+        byte_size(data)
+
+      :error ->
+        Logger.debug("[XTurn] send_data_channel: no cache entry for channel #{channel_number}")
+        0
+    end
   end
 
   defp channel_or_stun(packet, {_, _} = peer_address, %Tuple5{} = tuple5, len) do
