@@ -135,7 +135,7 @@ snapcraft
 This will:
 1. Build the Elixir application
 2. Package it as a snap
-3. Include the `network-control` plug in the service app
+3. Include the `network-control` and `firewall-control` plugs in the service app (plus staged `iptables` / `iproute2` for NAT)
 
 #### Verify Snap Configuration
 
@@ -146,11 +146,12 @@ snap info diode-node_*.snap
 # Install (requires sudo)
 sudo snap install diode-node_*.snap --dangerous
 
-# Verify network-control plug is listed
-snap connections diode-node | grep network-control
+# Verify plugs are listed
+snap connections diode-node | grep -E 'network-control|firewall-control'
 
-# Connect the network-control interface (required for WireGuard)
+# Connect interfaces (WireGuard + NAT for peer internet egress)
 sudo snap connect diode-node:network-control
+sudo snap connect diode-node:firewall-control
 
 # Start the service
 sudo snap start diode-node.service
@@ -186,7 +187,7 @@ sudo snap services diode-node
 - [ ] Traffic accounting works (polling and immediate)
 - [ ] Peer replacement works (new key replaces old)
 - [ ] Snap builds successfully
-- [ ] Snap includes `network-control` plug
+- [ ] Snap includes `network-control` and `firewall-control` plugs
 - [ ] Snap service starts with WireGuard enabled
 
 ## Known Limitations
@@ -194,7 +195,7 @@ sudo snap services diode-node
 1. **Tests require CAP_NET_ADMIN**: WireGuard interface creation requires elevated privileges
 2. **Rust dependency**: wireguardex NIF compilation requires Rust toolchain
 3. **Kernel module**: WireGuard kernel module must be loaded
-4. **Snap interface**: `network-control` must be manually connected after installation
+4. **Snap interfaces**: `network-control` and `firewall-control` must be manually connected after installation (for WireGuard + automatic NAT)
 
 ## Troubleshooting
 
@@ -202,7 +203,7 @@ sudo snap services diode-node
 
 - Check kernel module: `lsmod | grep wireguard`
 - Check capabilities: `getcap $(which beam.smp)` (should include `cap_net_admin+eip`)
-- Check snap interface: `snap connections diode-node | grep network-control`
+- Check snap interfaces: `snap connections diode-node | grep -E 'network-control|firewall-control'`
 
 ### NIF Compilation Fails
 

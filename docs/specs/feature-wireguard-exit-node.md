@@ -253,7 +253,7 @@ The node is primarily deployed via Canonical's snap. The [network-control](https
 apps:
   service:
     command: bin/run start
-    plugs: [network, network-bind, network-control]
+    plugs: [network, network-bind, network-control, firewall-control]
 ```
 
 The interface is not granted until the user runs `snap connect`; the service will only create WireGuard interfaces when `wireguard_enabled` is true.
@@ -262,7 +262,10 @@ The interface is not granted until the user runs `snap connect`; the service wil
 
 ```bash
 sudo snap connect diode-node:network-control
+sudo snap connect diode-node:firewall-control
 ```
+
+(`firewall-control` lets the service run `iptables` for WireGuard peer NAT / internet egress; staged in the snap with `iptables` + `iproute2` packages.)
 
 Then restart the service if it was already running:
 
@@ -270,13 +273,9 @@ Then restart the service if it was already running:
 sudo snap restart diode-node.service
 ```
 
-**If firewall-control is needed** (e.g. for iptables rules to exclude local network from device access):
+**firewall-control** is included in `snap/snapcraft.yaml` for the `service` app for **WireGuard NAT** (`WireGuardNat` / `iptables`). Connect it after install (see above). For local-network exclusion or other custom rules, same plug applies.
 
-```bash
-sudo snap connect diode-node:firewall-control
-```
-
-Add `firewall-control` to the plugs in snapcraft.yaml if the implementation uses it for local-network exclusion.
+If you prefer host-managed firewall only, omit connecting `firewall-control` and set `WIREGUARD_AUTO_NAT=0`, then run `sudo scripts/setup-wg-nat.sh` on the host.
 
 ## Testing
 

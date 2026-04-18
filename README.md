@@ -25,6 +25,16 @@ After installation all configuration values are available via the snap config sy
 sudo snap get diode-node
 ```
 
+For WireGuard exit (interface + automatic peer NAT via `iptables`), connect:
+
+```bash
+sudo snap connect diode-node:network-control
+sudo snap connect diode-node:firewall-control
+sudo snap restart diode-node.service
+```
+
+If you do not connect `firewall-control`, set `WIREGUARD_AUTO_NAT=0` and configure NAT on the host (e.g. `scripts/setup-wg-nat.sh`).
+
 # Linux Kernel optimization
 
 To optimize Linux for maximum network performance we advise to enable tcp bbr:

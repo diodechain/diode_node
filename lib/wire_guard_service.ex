@@ -7,7 +7,7 @@ defmodule WireGuardService do
   alias DiodeClient.Base16
   import Wireguardex.DeviceConfigBuilder
   import Wireguardex.PeerConfigBuilder, only: [allowed_ips: 2]
-  import Wireguardex, only: [set_device: 2]
+  import Wireguardex, only: [delete_device: 1, set_device: 2]
 
   def start_link(_args) do
     GenServer.start_link(__MODULE__, [], name: __MODULE__)
@@ -43,14 +43,17 @@ defmodule WireGuardService do
     listen_port = Diode.Config.get_int("WIREGUARD_LISTEN_PORT")
     tunnel_subnet = Diode.Config.get("WIREGUARD_TUNNEL_SUBNET")
     poll_interval_ms = Diode.Config.get_int("WIREGUARD_POLL_INTERVAL_MS")
+    gateway_cidr = Diode.Config.get("WIREGUARD_GATEWAY_CIDR")
 
     state = %{
       enabled: enabled,
       interface: interface,
       listen_port: listen_port,
       tunnel_subnet: tunnel_subnet,
+      gateway_cidr: gateway_cidr,
       poll_interval_ms: poll_interval_ms,
       private_key: nil,
+      kernel_ready: false,
       peers: %{},
       traffic_snapshots: %{},
       poll_timer: nil
@@ -59,11 +62,13 @@ defmodule WireGuardService do
     if enabled and listen_port > 0 do
       case setup_interface(state) do
         {:ok, new_state} ->
-          {:ok, new_state}
+          host = endpoint_host_for_session()
 
-        {:error, :already_started} ->
-          Logger.warning("WireGuard interface #{interface} already exists")
-          {:ok, state}
+          Logger.info(
+            "WireGuard endpoint for sessions: host=#{inspect(host)}, listen_port=#{listen_port}, interface=#{interface}"
+          )
+
+          {:ok, new_state}
 
         {:error, reason} ->
           Logger.error("Failed to start WireGuard interface: #{inspect(reason)}")
@@ -76,22 +81,31 @@ defmodule WireGuardService do
   end
 
   def handle_call({:add_peer, device_address, public_key_binary}, _from, state) do
-    if not state.enabled or state.listen_port == 0 do
-      {:reply, {:error, :not_enabled}, state}
-    else
-      case add_peer_impl(device_address, public_key_binary, state) do
-        {:ok, new_state} ->
-          case session_info_after_add(device_address, new_state) do
-            {:ok, session} ->
-              {:reply, {:ok, session}, new_state}
+    cond do
+      not state.enabled or state.listen_port == 0 ->
+        {:reply, {:error, :not_enabled}, state}
 
-            {:error, reason} ->
-              {:reply, {:error, {:wireguard, reason}}, new_state}
-          end
+      not state.kernel_ready ->
+        {:reply,
+         {:error,
+          {:wireguard,
+           "kernel link/address setup did not complete (interface DOWN or no IP). " <>
+             "Check earlier WireGuardKernel error in the node log."}}, state}
 
-        {:error, _reason} = error ->
-          {:reply, error, state}
-      end
+      true ->
+        case add_peer_impl(device_address, public_key_binary, state) do
+          {:ok, new_state} ->
+            case session_info_after_add(device_address, new_state) do
+              {:ok, session} ->
+                {:reply, {:ok, session}, new_state}
+
+              {:error, reason} ->
+                {:reply, {:error, {:wireguard, reason}}, new_state}
+            end
+
+          {:error, _reason} = error ->
+            {:reply, error, state}
+        end
     end
   end
 
@@ -116,13 +130,31 @@ defmodule WireGuardService do
 
   defp setup_interface(state) do
     try do
-      # Check if interface already exists
+      # If a kernel interface survived a previous BEAM run, we must remove it or
+      # re-apply config — never short-circuit with :already_started or the new
+      # process loses its private_key while RPC still reads a stale public_key.
       case Wireguardex.get_device(state.interface) do
-        {:ok, _device} ->
-          {:error, :already_started}
+        {:ok, _} ->
+          case delete_device(state.interface) do
+            :ok ->
+              :ok
 
-        {:error, _reason} ->
-          # Interface doesn't exist, create it
+            {:error, reason} ->
+              Logger.error(
+                "WireGuard could not delete stale interface #{state.interface}: #{inspect(reason)}"
+              )
+
+              {:error, {:wireguard, reason}}
+          end
+
+        {:error, _} ->
+          :ok
+      end
+      |> case do
+        {:error, _} = err ->
+          err
+
+        :ok ->
           private_key = Wireguardex.generate_private_key()
           public_key_result = Wireguardex.get_public_key(private_key)
 
@@ -135,17 +167,41 @@ defmodule WireGuardService do
 
               case set_device(device_config, state.interface) do
                 :ok ->
+                  Logger.info(
+                    "WireGuard interface #{state.interface} configured on port #{state.listen_port}"
+                  )
+
+                  kernel_ready =
+                    case WireGuardKernel.setup_link(state.interface, state.gateway_cidr) do
+                      :ok ->
+                        _ =
+                          WireGuardNat.maybe_setup(%{
+                            interface: state.interface,
+                            tunnel_subnet: state.tunnel_subnet
+                          })
+
+                        true
+
+                      {:error, reason} ->
+                        # Don't fail GenServer init: surface the precise reason as a fail-soft.
+                        # add_peer_impl/3 will return a clear error to clients while we're degraded.
+                        Logger.error(
+                          "WireGuard kernel bring-up failed for #{state.interface} " <>
+                            "(gateway=#{inspect(state.gateway_cidr)}): #{inspect(reason)}. " <>
+                            "Verify BEAM has CAP_NET_ADMIN (`getcap $(readlink -f $(asdf where erlang)/erts-*/bin/beam.smp)`)."
+                        )
+
+                        false
+                    end
+
                   timer = Process.send_after(self(), :poll_traffic, state.poll_interval_ms)
 
                   new_state = %{
                     state
                     | private_key: private_key,
+                      kernel_ready: kernel_ready,
                       poll_timer: timer
                   }
-
-                  Logger.info(
-                    "WireGuard interface #{state.interface} created on port #{state.listen_port}"
-                  )
 
                   {:ok, new_state}
 
@@ -246,6 +302,8 @@ defmodule WireGuardService do
   end
 
   defp poll_traffic_impl(state) do
+    state = verify_kernel_public_key_matches_state(state)
+
     case Wireguardex.get_device(state.interface) do
       {:ok, device} ->
         # Get peers from device (device.peers is a list of PeerInfo structs)
@@ -289,6 +347,36 @@ defmodule WireGuardService do
       {:error, reason} ->
         Logger.warning("Error polling WireGuard traffic: #{inspect(reason)}")
         state
+    end
+  end
+
+  defp verify_kernel_public_key_matches_state(state) do
+    if state.private_key in [nil, ""] do
+      state
+    else
+      expected =
+        case Wireguardex.get_public_key(state.private_key) do
+          {:ok, pk} -> pk
+          _ -> nil
+        end
+
+      if expected == nil do
+        state
+      else
+        case Wireguardex.get_device(state.interface) do
+          {:ok, %Wireguardex.Device{public_key: actual}}
+          when is_binary(actual) and actual != "" and actual != expected ->
+            Logger.error(
+              "WireGuard kernel public_key no longer matches BEAM private_key for #{state.interface}. " <>
+                "Restart the node or fix CAP_NET_ADMIN / snap network-control."
+            )
+
+            state
+
+          _ ->
+            state
+        end
+      end
     end
   end
 

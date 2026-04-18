@@ -94,9 +94,17 @@ defmodule Diode do
       ]
       |> List.flatten()
       |> Enum.each(fn child ->
-        {:ok, _} = Supervisor.start_child(pid, child)
+        Logger.info("Starting child: #{inspect(child)}")
+
+        {time, {:ok, _}} =
+          :timer.tc(fn ->
+            Supervisor.start_child(pid, child)
+          end)
+
+        Logger.info("Child started in #{time}ms: #{inspect(child)}")
       end)
 
+      Logger.info("Supervisor started")
       {:ok, pid}
     end
   end
