@@ -40,6 +40,8 @@ ENV ERL_FLAGS="+JPperf true"
 RUN /app/build_deps.sh
 
 COPY . /app/
+ARG DIODE_VERSION_DESCRIPTION
+ENV DIODE_VERSION_DESCRIPTION=${DIODE_VERSION_DESCRIPTION}
 ENV HEX_HTTP_TIMEOUT=120
 RUN /app/snap/build_app.sh
 RUN mv /app/_build/prod/diode_node*.tar.gz /app/_build/prod/diode_node.tar.gz
