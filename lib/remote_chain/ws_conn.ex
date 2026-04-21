@@ -141,6 +141,20 @@ defmodule RemoteChain.WSConn do
     end
   end
 
+  @doc """
+  Non-blocking readiness check. Returns true iff `handle_connect/2` has
+  already populated `Globals` with this WSConn's underlying connection
+  (i.e. the TCP/TLS/WS handshake is done).
+
+  Unlike `send_request/3`, this never blocks and never registers a waiter
+  in `Globals`, so callers can use it to filter the connection pool
+  without paying the 500&nbsp;ms `Globals.await` budget or producing
+  noisy "Awaiting undefined key" / zombie-timeout log lines.
+  """
+  def ready?(pid) when is_pid(pid) do
+    Globals.get({__MODULE__, pid}) != nil
+  end
+
   @impl true
   def handle_info(
         :ping,

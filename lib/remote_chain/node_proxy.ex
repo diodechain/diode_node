@@ -62,10 +62,41 @@ defmodule RemoteChain.NodeProxy do
   @impl true
   def handle_call({:rpc, method, params}, from, state) do
     state = ensure_connections(state)
-    conn = Enum.random(Map.values(state.connections))
+    conn = pick_connection(state.connections)
     id = state.req + 1
     state = send_request(state, conn, id, method, params, from)
     {:noreply, %{state | req: id}}
+  end
+
+  # Prefer a WSConn whose async handshake has already completed.
+  #
+  # `RemoteChain.WSConn.send_request/3` blocks for up to 500&nbsp;ms in
+  # `Globals.await({WSConn, pid}, 500)` waiting for `handle_connect/2` to
+  # publish the underlying connection. While the handshake is in flight
+  # there is no point routing a request through that pid: the call will
+  # just time out, log
+  #
+  #     Failed to send request to #PID<...>: ... {:error, :not_connected}
+  #     Awaiting undefined key: {RemoteChain.WSConn, #PID<...>}
+  #
+  # and bubble `{:error, :disconnect}` back to `RPCCache.rpc!/3`. If
+  # several WSConns happen to be handshaking simultaneously (e.g. right
+  # after a fallback was added or after a slow upstream rejected the
+  # previous conn) every random pick fails for ~500&nbsp;ms and the
+  # warning keeps repeating without healing.
+  #
+  # Filter the pool to the connections that have completed their
+  # handshake. Only fall back to the full pool when none are ready, so
+  # the empty-pool behaviour (a crash, since there is nothing we can do)
+  # is preserved.
+  @doc false
+  def pick_connection(connections) do
+    pids = Map.values(connections)
+
+    case Enum.filter(pids, &RemoteChain.WSConn.ready?/1) do
+      [] -> Enum.random(pids)
+      ready -> Enum.random(ready)
+    end
   end
 
   @impl true
