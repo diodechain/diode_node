@@ -62,10 +62,41 @@ defmodule RemoteChain.NodeProxy do
   @impl true
   def handle_call({:rpc, method, params}, from, state) do
     state = ensure_connections(state)
-    conn = Enum.random(Map.values(state.connections))
+    conn = pick_connection(state.connections)
     id = state.req + 1
     state = send_request(state, conn, id, method, params, from)
     {:noreply, %{state | req: id}}
+  end
+
+  # Prefer a WSConn whose async handshake has already completed.
+  #
+  # `RemoteChain.WSConn.send_request/3` blocks for up to 500&nbsp;ms in
+  # `Globals.await({WSConn, pid}, 500)` waiting for `handle_connect/2` to
+  # publish the underlying connection. While the handshake is in flight
+  # there is no point routing a request through that pid: the call will
+  # just time out, log
+  #
+  #     Failed to send request to #PID<...>: ... {:error, :not_connected}
+  #     Awaiting undefined key: {RemoteChain.WSConn, #PID<...>}
+  #
+  # and bubble `{:error, :disconnect}` back to `RPCCache.rpc!/3`. If
+  # several WSConns happen to be handshaking simultaneously (e.g. right
+  # after a fallback was added or after a slow upstream rejected the
+  # previous conn) every random pick fails for ~500&nbsp;ms and the
+  # warning keeps repeating without healing.
+  #
+  # Filter the pool to the connections that have completed their
+  # handshake. Only fall back to the full pool when none are ready, so
+  # the empty-pool behaviour (a crash, since there is nothing we can do)
+  # is preserved.
+  @doc false
+  def pick_connection(connections) do
+    pids = Map.values(connections)
+
+    case Enum.filter(pids, &RemoteChain.WSConn.ready?/1) do
+      [] -> Enum.random(pids)
+      ready -> Enum.random(ready)
+    end
   end
 
   @impl true
@@ -248,8 +279,35 @@ defmodule RemoteChain.NodeProxy do
       )
 
       GenServer.reply(from, {:error, :disconnect})
-      # Connection is dead (e.g. WSConn exited before handle_connect or crashed).
-      # Remove it so we don't keep picking it and hitting Globals.await timeouts.
+      handle_failed_send(state, conn)
+    end
+  end
+
+  # Decide what to do with a connection after a failed send.
+  #
+  # `WSConn.send_request/3` returns `{:error, :not_connected}` in two very
+  # different situations:
+  #
+  #   1. The WSConn process is dead (crashed, exited before `handle_connect`).
+  #   2. The WSConn process is still alive but its async handshake has not
+  #      completed yet (slow TCP/TLS, slow DNS, the first 500ms after
+  #      `WSConn.start/3`).
+  #
+  # If we treat (2) as (1) and eagerly evict the conn, the next request will
+  # spawn a brand new WSConn that is also mid-handshake, and the warning
+  # `Failed to send request ... :not_connected` keeps repeating instead of
+  # healing as soon as the in-flight handshake completes.
+  #
+  # We only evict (and trigger `ensure_connections`) when the WSConn pid is
+  # really dead. If it is still alive we keep it in the pool; either its
+  # handshake completes on its own, or its own ping watchdog
+  # (`WSConn.handle_info(:ping, _)`) tears it down and the existing
+  # `:DOWN` monitor in `NodeProxy` cleans the pool up.
+  @doc false
+  def handle_failed_send(state, conn) do
+    if Process.alive?(conn) do
+      state
+    else
       state = remove_connection(state, conn)
       pid = self()
 
