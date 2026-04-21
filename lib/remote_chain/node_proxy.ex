@@ -248,8 +248,35 @@ defmodule RemoteChain.NodeProxy do
       )
 
       GenServer.reply(from, {:error, :disconnect})
-      # Connection is dead (e.g. WSConn exited before handle_connect or crashed).
-      # Remove it so we don't keep picking it and hitting Globals.await timeouts.
+      handle_failed_send(state, conn)
+    end
+  end
+
+  # Decide what to do with a connection after a failed send.
+  #
+  # `WSConn.send_request/3` returns `{:error, :not_connected}` in two very
+  # different situations:
+  #
+  #   1. The WSConn process is dead (crashed, exited before `handle_connect`).
+  #   2. The WSConn process is still alive but its async handshake has not
+  #      completed yet (slow TCP/TLS, slow DNS, the first 500ms after
+  #      `WSConn.start/3`).
+  #
+  # If we treat (2) as (1) and eagerly evict the conn, the next request will
+  # spawn a brand new WSConn that is also mid-handshake, and the warning
+  # `Failed to send request ... :not_connected` keeps repeating instead of
+  # healing as soon as the in-flight handshake completes.
+  #
+  # We only evict (and trigger `ensure_connections`) when the WSConn pid is
+  # really dead. If it is still alive we keep it in the pool; either its
+  # handshake completes on its own, or its own ping watchdog
+  # (`WSConn.handle_info(:ping, _)`) tears it down and the existing
+  # `:DOWN` monitor in `NodeProxy` cleans the pool up.
+  @doc false
+  def handle_failed_send(state, conn) do
+    if Process.alive?(conn) do
+      state
+    else
       state = remove_connection(state, conn)
       pid = self()
 
