@@ -13,7 +13,20 @@ defmodule Diode.Mixfile do
   @url "https://github.com/diodechain/diode_node"
 
   def project do
-    {patches, description, vsn} = version_info()
+    {patches, description} =
+      if File.exists?(".git") do
+        patches = elem(System.cmd("git", ["log", "-100", "--oneline"]), 0) |> String.split("\n")
+        description = elem(System.cmd("git", ["describe", "--tags"]), 0)
+        {patches, description}
+      else
+        {[], "v0.0.0"}
+      end
+
+    vsn =
+      case Regex.run(~r/v([0-9]+\.[0-9]+\.[0-9]+)/, description) do
+        [_, v] -> v
+        _ -> "0.0.0"
+      end
 
     [
       aliases: aliases(),
@@ -45,31 +58,6 @@ defmodule Diode.Mixfile do
 
   defp elixirc_paths(:test), do: ["lib", "test/helpers"]
   defp elixirc_paths(_), do: ["lib"]
-
-  # Resolves {patches, description, vsn}. Tries git first; if .git is
-  # missing or has no tags (e.g. hex package, shallow clone, or a Docker
-  # build context where .git is a worktree pointer to a host path that
-  # doesn't exist in the container), falls back to the
-  # DIODE_VERSION_DESCRIPTION env var (set by scripts/docker_build.sh) and
-  # finally to v0.0.0.
-  defp version_info do
-    {patches, description} =
-      with true <- File.exists?(".git"),
-           {patches_out, 0} <- System.cmd("git", ["log", "-100", "--oneline"]),
-           {desc_out, 0} <- System.cmd("git", ["describe", "--tags"]) do
-        {String.split(patches_out, "\n"), String.trim(desc_out)}
-      else
-        _ -> {[], System.get_env("DIODE_VERSION_DESCRIPTION") || "v0.0.0"}
-      end
-
-    vsn =
-      case Regex.run(~r/v([0-9]+\.[0-9]+\.[0-9]+)/, description) do
-        [_, v] -> v
-        _ -> "0.0.0"
-      end
-
-    {patches, description, vsn}
-  end
 
   def application do
     [
