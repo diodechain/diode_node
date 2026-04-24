@@ -209,7 +209,7 @@ defmodule Network.EdgeV2 do
         end
 
       ["version"] ->
-        {response(Diode.Version.version(), Diode.Version.description()), state}
+        {response(Diode.Version.version(), Diode.Version.description(), Diode.features()), state}
 
       ["ticket", block, fleet, tc, tb, local_address, device_signature] ->
         ticketv1(
@@ -531,6 +531,10 @@ defmodule Network.EdgeV2 do
 
   def response(arg, arg2) do
     response_array([arg, arg2])
+  end
+
+  def response(arg, arg2, arg3) do
+    response_array([arg, arg2, arg3])
   end
 
   defp response_array(args) do

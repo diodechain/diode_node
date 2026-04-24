@@ -356,6 +356,7 @@ defmodule Diode do
       |> Object.Server.new(hd(edge2_ports()), peer2_port(), Diode.Version.version(), [
         ["tickets", TicketStore.epoch_score()],
         ["uptime", Diode.uptime()],
+        ["features", Diode.features()],
         ["time", System.os_time()],
         ["name", Diode.Config.get("NAME")],
         ["block", RemoteChain.peaknumber(Chains.default_ticket_chain())]
@@ -389,6 +390,69 @@ defmodule Diode do
         Logger.info("maybe_import_key: Importing cert from '#{path}'")
         CertMagex.insert(privkey, pubcert)
       end
+    end
+  end
+
+  def features() do
+    flags =
+      for {flag, pred} <-
+            [{"turn", &turn_feature_ready?/0}, {"wg_exit", &wg_exit_feature_ready?/0}],
+          pred.(),
+          do: flag
+
+    Enum.join(flags, ",")
+  end
+
+  defp turn_feature_ready? do
+    Diode.Turn.turn_enabled?() and TurnService.operational?()
+  end
+
+  defp wg_exit_feature_ready? do
+    with true <- wireguard_enabled?(),
+         pid when is_pid(pid) <- Process.whereis(WireGuardService),
+         true <- WireGuardService.exit_bringup_ok?(),
+         {:ok, _} <- WireGuardNat.default_egress_device(),
+         true <- snap_wg_plugs_ok?() do
+      true
+    else
+      _ -> false
+    end
+  end
+
+  defp running_in_snap? do
+    case System.get_env("SNAP_NAME") do
+      n when is_binary(n) and n != "" -> true
+      _ -> false
+    end
+  end
+
+  defp snap_plug_connected?(plug) when is_binary(plug) do
+    exe = System.find_executable("snapctl")
+
+    if exe == nil do
+      false
+    else
+      match?({_, 0}, System.cmd(exe, ["is-connected", plug], stderr_to_stdout: true))
+    end
+  end
+
+  # network-control: WireGuard interface + routes; firewall-control: iptables when auto-NAT is on.
+  defp snap_wg_plugs_ok? do
+    cond do
+      not running_in_snap?() ->
+        true
+
+      not snap_plug_connected?("network-control") ->
+        false
+
+      WireGuardNat.auto_nat_disabled?() ->
+        true
+
+      not snap_plug_connected?("firewall-control") ->
+        false
+
+      true ->
+        true
     end
   end
 

@@ -645,7 +645,8 @@ defmodule Network.Rpc do
       "dio_version" ->
         result(%{
           version: Diode.Version.version(),
-          description: Diode.Version.description()
+          description: Diode.Version.description(),
+          features: Diode.features()
         })
 
       _ ->

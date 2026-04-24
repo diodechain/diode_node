@@ -73,7 +73,8 @@ defmodule WireGuardNat do
     {:error, :bad_args}
   end
 
-  defp auto_nat_disabled? do
+  @doc false
+  def auto_nat_disabled? do
     case Diode.Config.get("WIREGUARD_AUTO_NAT") do
       v when v in ~w(0 false no off) -> true
       _ -> false

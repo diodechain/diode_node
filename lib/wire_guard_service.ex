@@ -37,6 +37,14 @@ defmodule WireGuardService do
     GenServer.call(__MODULE__, {:remove_peer, device_address})
   end
 
+  @doc false
+  def exit_bringup_ok? do
+    case Process.whereis(__MODULE__) do
+      nil -> false
+      _pid -> GenServer.call(__MODULE__, :exit_bringup_ok?)
+    end
+  end
+
   def init(_args) do
     enabled = wireguard_enabled?()
     interface = Diode.Config.get("WIREGUARD_INTERFACE")
@@ -54,6 +62,7 @@ defmodule WireGuardService do
       poll_interval_ms: poll_interval_ms,
       private_key: nil,
       kernel_ready: false,
+      nat_ok: false,
       peers: %{},
       traffic_snapshots: %{},
       poll_timer: nil
@@ -118,6 +127,13 @@ defmodule WireGuardService do
     end
   end
 
+  def handle_call(:exit_bringup_ok?, _from, state) do
+    ok =
+      state.enabled and state.listen_port > 0 and state.kernel_ready and state.nat_ok
+
+    {:reply, ok, state}
+  end
+
   def handle_info(:poll_traffic, state) do
     if state.enabled and state.listen_port > 0 do
       new_state = poll_traffic_impl(state)
@@ -171,16 +187,25 @@ defmodule WireGuardService do
                     "WireGuard interface #{state.interface} configured on port #{state.listen_port}"
                   )
 
-                  kernel_ready =
+                  {kernel_ready, nat_ok} =
                     case WireGuardKernel.setup_link(state.interface, state.gateway_cidr) do
                       :ok ->
-                        _ =
+                        nat_result =
                           WireGuardNat.maybe_setup(%{
                             interface: state.interface,
                             tunnel_subnet: state.tunnel_subnet
                           })
 
-                        true
+                        nat_ok = nat_bringup_ok?(nat_result)
+
+                        if not nat_ok do
+                          Logger.warning(
+                            "WireGuard NAT setup failed; wg_exit will not be advertised until NAT works " <>
+                              "(snap: connect firewall-control if using WIREGUARD_AUTO_NAT, or set WIREGUARD_AUTO_NAT=0 and configure the host)."
+                          )
+                        end
+
+                        {true, nat_ok}
 
                       {:error, reason} ->
                         # Don't fail GenServer init: surface the precise reason as a fail-soft.
@@ -191,7 +216,7 @@ defmodule WireGuardService do
                             "Verify BEAM has CAP_NET_ADMIN (`getcap $(readlink -f $(asdf where erlang)/erts-*/bin/beam.smp)`)."
                         )
 
-                        false
+                        {false, false}
                     end
 
                   timer = Process.send_after(self(), :poll_traffic, state.poll_interval_ms)
@@ -200,6 +225,7 @@ defmodule WireGuardService do
                     state
                     | private_key: private_key,
                       kernel_ready: kernel_ready,
+                      nat_ok: nat_ok,
                       poll_timer: timer
                   }
 
@@ -504,4 +530,7 @@ defmodule WireGuardService do
     enabled = Diode.Config.get("WIREGUARD_ENABLED")
     enabled in ~w(1 true)
   end
+
+  defp nat_bringup_ok?(:ok), do: true
+  defp nat_bringup_ok?({:error, _}), do: false
 end

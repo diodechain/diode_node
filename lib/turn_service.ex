@@ -11,6 +11,14 @@ defmodule TurnService do
     GenServer.start_link(__MODULE__, [], name: __MODULE__)
   end
 
+  @doc false
+  def operational? do
+    case Process.whereis(__MODULE__) do
+      nil -> false
+      _pid -> GenServer.call(__MODULE__, :operational?)
+    end
+  end
+
   @impl true
   def init(_) do
     if Diode.Turn.turn_enabled?() do
@@ -27,6 +35,11 @@ defmodule TurnService do
       Logger.info("TURN disabled (TURN_ENABLED unset)")
       {:ok, %{xturn_supervisor: nil}}
     end
+  end
+
+  @impl true
+  def handle_call(:operational?, _from, state) do
+    {:reply, state.xturn_supervisor != nil, state}
   end
 
   defp start_turn_stack do
