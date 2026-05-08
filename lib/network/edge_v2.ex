@@ -325,7 +325,15 @@ defmodule Network.EdgeV2 do
 
   def handle_async_msg(msg, state) do
     try do
-      do_handle_async_msg(msg, state)
+      address = device_address(state) |> Base16.encode()
+
+      Profiler.warn_if_stuck(
+        fn ->
+          do_handle_async_msg(msg, state)
+        end,
+        timeout: 10_000,
+        label: "Peer #{address}: handle_async_msg(#{inspect(msg)})"
+      )
     catch
       :block_not_found -> error("block not found")
     end
