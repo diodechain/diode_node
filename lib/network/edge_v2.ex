@@ -325,7 +325,12 @@ defmodule Network.EdgeV2 do
 
   def handle_async_msg(msg, state) do
     try do
-      address = device_address(state) |> Base16.encode()
+      address =
+        if state == nil do
+          "nil"
+        else
+          Base16.encode(device_address(state))
+        end
 
       Profiler.warn_if_stuck(
         fn ->

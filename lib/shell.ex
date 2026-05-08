@@ -50,7 +50,7 @@ defmodule Shell do
       nil ->
         if n > 0 and rem(n, 3) == 0 do
           IO.puts("Resubmitting transaction TX-#{tx_id}")
-          IO.inspect(submit_tx(tx))
+          # IO.inspect(submit_tx(tx))
         end
 
         await_block(tx_id, tx, n)
