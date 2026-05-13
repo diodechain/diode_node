@@ -4,6 +4,10 @@
 defmodule Network.RpcHttp do
   use Plug.Router
 
+  require EEx
+
+  EEx.function_from_file(:defp, :render_api_docs, Path.join(__DIR__, "api_docs.html.eex"), [:docs])
+
   plug(
     Plug.Parsers,
     parsers: [:urlencoded, :json],
@@ -50,6 +54,14 @@ defmodule Network.RpcHttp do
     |> put_resp_header("x-diode-signature", DiodeClient.Base16.encode(signature))
     |> put_resp_header("x-diode-sender", DiodeClient.Wallet.base16(Diode.wallet()))
     |> send_resp(status, body)
+  end
+
+  get "/api" do
+    html = render_api_docs(Network.RpcDocs.all())
+
+    conn
+    |> put_resp_content_type("text/html")
+    |> send_resp(200, html)
   end
 
   match _ do

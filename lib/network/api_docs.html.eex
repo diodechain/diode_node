@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Diode JSON-RPC API</title>
+  <style>
+    :root {
+      --bg: #b1b1b1;
+      --shell-bg: #f6f9fc;
+      --text: #0a2540;
+      --muted: #425466;
+      --border: #e3e8ee;
+      --code-bg: #0d1117;
+      --code-text: #e6edf3;
+      --accent: #635bff;
+      --sidebar-width: 220px;
+      --code-width: min(440px, 38vw);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      font-size: 15px;
+      line-height: 1.55;
+      color: var(--text);
+      background: var(--bg);
+    }
+    .shell {
+      display: flex;
+      min-height: 100vh;
+      justify-content: center;
+    }
+    .sidebar {
+      width: var(--sidebar-width);
+      flex-shrink: 0;
+      border-right: 1px solid var(--border);
+      background: #fff;
+      position: sticky;
+      top: 0;
+      align-self: flex-start;
+      max-height: 100vh;
+      overflow-y: auto;
+      padding: 1.25rem 0.75rem 2rem;
+    }
+    .sidebar h1 {
+      font-size: 0.85rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      margin: 0 0.5rem 0.75rem;
+    }
+    .sidebar .group-label {
+      font-size: 0.72rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #8898aa;
+      margin: 1rem 0.5rem 0.35rem;
+    }
+    .sidebar a {
+      display: block;
+      padding: 0.35rem 0.5rem;
+      border-radius: 6px;
+      color: var(--text);
+      text-decoration: none;
+      font-size: 0.88rem;
+      font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    }
+    .sidebar a:hover { background: #f0f4ff; color: var(--accent); }
+    .main {
+      flex: 1;
+      min-width: 0;
+      padding: 2rem 2.5rem 4rem;
+      max-width: 720px;
+      background: var(--shell-bg);
+    }
+    .code-rail {
+      width: var(--code-width);
+      flex-shrink: 0;
+      background: var(--code-bg);
+      border-left: 1px solid #21262d;
+      position: sticky;
+      top: 0;
+      align-self: flex-start;
+      max-height: 100vh;
+      overflow-y: auto;
+      padding: 2rem 1rem 3rem;
+    }
+    article.endpoint {
+      margin-bottom: 3.5rem;
+      scroll-margin-top: 1.5rem;
+    }
+    article.endpoint h2 {
+      font-size: 1.35rem;
+      font-weight: 600;
+      margin: 0 0 0.5rem;
+      letter-spacing: -0.02em;
+    }
+    .method-pill {
+      display: inline-block;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.85rem;
+      background: #fff;
+      border: 1px solid var(--border);
+      padding: 0.15rem 0.5rem;
+      border-radius: 4px;
+      color: #1a3d5c;
+      margin-bottom: 0.75rem;
+    }
+    .auth {
+      font-size: 0.8rem;
+      color: var(--muted);
+      margin-bottom: 1rem;
+    }
+    .auth strong { color: var(--text); }
+    .description {
+      color: var(--muted);
+      white-space: pre-wrap;
+      margin-bottom: 1.25rem;
+    }
+    .params h3 {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #8898aa;
+      margin: 1.5rem 0 0.5rem;
+    }
+    table.params-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.88rem;
+    }
+    .params-table th, .params-table td {
+      text-align: left;
+      padding: 0.5rem 0.35rem;
+      border-bottom: 1px solid var(--border);
+      vertical-align: top;
+    }
+    .params-table th { color: #8898aa; font-weight: 500; width: 28%; }
+    .param-name { font-family: ui-monospace, Menlo, monospace; color: var(--text); }
+    .param-type { font-size: 0.8rem; color: #8898aa; }
+    .code-rail .anchor {
+      display: block;
+      padding-top: 0.25rem;
+      margin-bottom: 2.5rem;
+    }
+    .code-rail .label {
+      font-size: 0.68rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #8b949e;
+      margin: 0 0 0.35rem;
+    }
+    .code-rail pre {
+      margin: 0 0 1rem;
+      padding: 0.85rem;
+      background: #161b22;
+      border-radius: 8px;
+      border: 1px solid #30363d;
+      overflow-x: auto;
+      font-size: 0.72rem;
+      line-height: 1.45;
+      color: var(--code-text);
+    }
+    @media (max-width: 1024px) {
+      .shell { flex-direction: column; }
+      .sidebar {
+        position: relative;
+        max-height: none;
+        width: 100%;
+        border-right: none;
+        border-bottom: 1px solid var(--border);
+      }
+      .code-rail {
+        width: 100%;
+        position: relative;
+        max-height: none;
+        border-left: none;
+        border-top: 1px solid #30363d;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <nav class="sidebar" aria-label="API sections">
+      <h1>Diode RPC</h1>
+<%= for {label, items} <- docs |> Enum.group_by(fn d -> d.section end) |> Enum.sort_by(fn {k, _} -> k end) do %>
+      <div class="group-label"><%= Plug.HTML.html_escape(label) %></div>
+<%= for doc <- items do %>
+      <a href="#<%= Plug.HTML.html_escape(doc.slug) %>"><%= Plug.HTML.html_escape(doc.title) %></a>
+<% end %>
+<% end %>
+    </nav>
+    <div class="main" aria-label="Endpoint descriptions">
+<%= for doc <- docs do %>
+      <article class="endpoint" id="<%= Plug.HTML.html_escape(doc.slug) %>">
+        <h2><%= Plug.HTML.html_escape(doc.title) %></h2>
+<%= if doc.method do %>
+        <div class="method-pill"><%= Plug.HTML.html_escape(doc.method) %></div>
+<% end %>
+<%= if doc.auth == :none do %>
+        <div class="auth"><strong>Auth:</strong> none</div>
+<% end %>
+<%= if doc.auth == :session do %>
+        <div class="auth"><strong>Auth:</strong> WebSocket session (see description)</div>
+<% end %>
+<%= if doc.auth == :device do %>
+        <div class="auth"><strong>Auth:</strong> device session — call <code>dio_ticket</code> first on the same WebSocket</div>
+<% end %>
+        <div class="description"><%= Plug.HTML.html_escape(String.trim(doc.description)) %></div>
+<%= if doc.params != [] do %>
+        <div class="params">
+          <h3>Parameters</h3>
+          <table class="params-table">
+            <thead><tr><th>Argument</th><th>Details</th></tr></thead>
+            <tbody>
+<%= for p <- doc.params do %>
+              <tr>
+                <td><span class="param-name"><%= Plug.HTML.html_escape(p.name) %></span><br /><span class="param-type"><%= Plug.HTML.html_escape(p.type) %></span></td>
+                <td><%= Plug.HTML.html_escape(p.doc) %></td>
+              </tr>
+<% end %>
+            </tbody>
+          </table>
+        </div>
+<% end %>
+      </article>
+<% end %>
+    </div>
+    <aside class="code-rail" aria-label="Request and response examples">
+<%= for doc <- docs do %>
+      <div class="anchor" id="code-<%= Plug.HTML.html_escape(doc.slug) %>">
+        <p class="label">Example request</p>
+        <pre><%= Plug.HTML.html_escape(doc.example_request) %></pre>
+<%= if doc.example_response do %>
+        <p class="label">Example response</p>
+        <pre><%= Plug.HTML.html_escape(doc.example_response) %></pre>
+<% end %>
+      </div>
+<% end %>
+    </aside>
+  </div>
+</body>
+</html>
