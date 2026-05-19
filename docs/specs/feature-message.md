@@ -64,8 +64,11 @@ Does not generate:
 | `message/4` | Destination is self | `"can't connect to yourself"` |
 | `dio_message` | No authenticated device | `{"code": -32000, "message": "not authenticated"}` |
 | `dio_message` | Invalid destination format | `{"code": -32602, "message": "invalid params"}` |
-| `dio_ticket` | Invalid ticket signature | `{"code": -32001, "message": "invalid ticket"}` |
-| `dio_ticket` | Expired ticket | `{"code": -32002, "message": "ticket expired"}` |
+| `dio_ticket` | Malformed / undecodable ticket | `{"code": -32001, "message": "invalid ticket"}` |
+| `dio_ticket` | Epoch too low / high | `{"code": -32001, "message": "epoch number too low"}` or `"epoch number too high"` |
+| `dio_ticket` | Invalid signature | `{"code": -32001, "message": "signature mismatch"}` |
+| `dio_ticket` | Too many bytes / connections | `{"code": -32001, "message": "too many bytes"}` or `"too many connections"` |
+| `dio_ticket` | TicketStore rejection | `{"code": -32001, "message": "too_old"}` / `"too_big_jump"` / `"too_low"` |
 
 ## Domain-Specific Sections
 
@@ -80,9 +83,10 @@ Messages consume ticket bytes based on payload size:
 
 Websocket connections maintain device authentication state:
 - Initial state: unauthenticated
-- After `dio_ticket`: device_address stored in process dictionary
+- After `dio_ticket`: ticket validated and stored in `TicketStore` (same path as Edge v2); device_address stored in process dictionary; PubSub subscription for push delivery
 - Authentication persists for connection lifetime
 - No cross-request authentication sharing
+- Repeated `dio_ticket` on the same WebSocket may update the stored ticket (same as Edge)
 
 ### Message Delivery Semantics
 
@@ -189,19 +193,21 @@ This encoding applies whether the message was sent via EdgeV2 (binary) or via `d
 
 ### dio_ticket(ticket_data) → null
 
-Authenticates websocket connection with signed device ticket.
+Authenticates websocket connection with a signed device ticket and persists it to `TicketStore` via `Network.TicketSubmission` (shared with Edge v2 `ticket` / `ticketv2`).
 
 **Arguments:**
-- `ticket_data`: `string` - Hex-encoded RLP ticket data (0x-prefixed)
+- `ticket_data`: `string` - Hex-encoded RLP ticket data (0x-prefixed); `ticketv2` or legacy `ticket` list
 
 **Behavior:**
 
 | Condition | Output |
 |-----------|--------|
-| Valid ticket signature | Stores device_address in connection state, returns `null` |
-| Invalid signature | Error: -32001 "invalid ticket" |
-| Expired ticket | Error: -32002 "ticket expired" |
-| Already authenticated | Error: -32004 "already authenticated" |
+| Valid ticket | Stored in TicketStore + Kademlia; device_address in connection state; returns `null` |
+| Malformed RLP / hex | Error: -32001 "invalid ticket" |
+| Epoch too low / high | Error: -32001 "epoch number too low" / "epoch number too high" |
+| Invalid signature | Error: -32001 "signature mismatch" |
+| Too many bytes / connections | Error: -32001 "too many bytes" / "too many connections" |
+| TicketStore rejection | Error: -32001 "too_old" / "too_big_jump" / "too_low" |
 
 **Examples:**
 ```json
@@ -244,7 +250,7 @@ Message delivery can occur via two protocols (EdgeV2 binary, RPC websocket) and 
 
 ### dio_ticket positive test (prerequisite for RPC messaging)
 
-The websocket handler must store the validated device address in its connection state for the session lifetime so that `dio_message` can identify the sender. A positive test must: connect via websocket, call `dio_ticket` with a valid non-expired ticket, verify success, then call `dio_message` and confirm it succeeds (not "not authenticated").
+The websocket handler must store the validated ticket in `TicketStore` and the device address in its connection state for the session lifetime so that `dio_message` can identify the sender and traffic is accounted. A positive test must: connect via websocket, call `dio_ticket` with a valid non-expired ticket, verify success and `TicketStore.find/3` returns the ticket, then call `dio_message` and confirm it succeeds (not "not authenticated").
 
 ### Test Data Format (tests.yaml)
 

@@ -3,8 +3,7 @@
 # Licensed under the Diode License, Version 1.1
 defmodule Network.Rpc do
   require Logger
-  alias DiodeClient.{Base16, Object, Object.Ticket, Rlp, Rlpx, Wallet}
-  import DiodeClient.Object.TicketV2, only: [ticketv2: 1]
+  alias DiodeClient.{Base16, Object, Object.Ticket, Rlp, Wallet}
 
   def handle_jsonrpc(rpcs, opts \\ [])
 
@@ -479,35 +478,7 @@ defmodule Network.Rpc do
 
       "dio_ticket" ->
         [ticket_data] = params
-
-        try do
-          ticket_binary = Base16.decode(ticket_data)
-          ticket_rlp = Rlp.decode!(ticket_binary)
-          ticket = rlp_list_to_ticket(ticket_rlp)
-
-          # Basic ticket validation
-          cond do
-            Ticket.epoch(ticket) + 1 < RemoteChain.epoch(Ticket.chain_id(ticket)) ->
-              result(nil, 400, %{"code" => -32001, "message" => "epoch number too low"})
-
-            Ticket.epoch(ticket) > RemoteChain.epoch(Ticket.chain_id(ticket)) ->
-              result(nil, 400, %{"code" => -32001, "message" => "epoch number too high"})
-
-            Ticket.too_many_bytes?(ticket) ->
-              result(nil, 400, %{"code" => -32001, "message" => "too many bytes"})
-
-            true ->
-              # Extract device address from ticket
-              device_address = Ticket.device_address(ticket)
-              # Store in process dictionary for this websocket connection
-              Process.put({:websocket_device, self()}, device_address)
-              # Subscribe to receive messages pushed to this device
-              PubSub.subscribe({:edge, device_address})
-              result(nil)
-          end
-        rescue
-          _ -> result(nil, 400, %{"code" => -32001, "message" => "invalid ticket"})
-        end
+        handle_dio_ticket(ticket_data)
 
       "dio_message" ->
         # Check if device is authenticated (sender); destination is from params
@@ -818,25 +789,48 @@ defmodule Network.Rpc do
   defp encode16(nil), do: nil
   defp encode16(value), do: Base16.encode(value, false)
 
-  defp rlp_list_to_ticket([
-         "ticketv2",
-         chain_id,
-         epoch,
-         fleet,
-         tc,
-         tb,
-         local_address,
-         device_signature
-       ]) do
-    ticketv2(
-      chain_id: Rlpx.bin2uint(chain_id),
-      server_id: Wallet.address!(Diode.wallet()),
-      fleet_contract: fleet,
-      total_connections: Rlpx.bin2uint(tc),
-      total_bytes: Rlpx.bin2uint(tb),
-      local_address: local_address,
-      epoch: Rlpx.bin2uint(epoch),
-      device_signature: device_signature
-    )
+  defp handle_dio_ticket(ticket_data) do
+    with {:ok, ticket_rlp} <- decode_ticket_hex(ticket_data),
+         {:ok, ticket} <- Network.TicketSubmission.decode_rlp_ticket(ticket_rlp),
+         {:ok, wallet} <- device_wallet_from_ticket(ticket),
+         {:ok, _bytes} <-
+           Network.TicketSubmission.submit(ticket, wallet,
+             version: 1000,
+             reset_usage?: Process.get({:websocket_ticket_submitted, self()}) != true
+           ) do
+      device_address = Wallet.address!(wallet)
+      Process.put({:websocket_device, self()}, device_address)
+      Process.put({:websocket_ticket_submitted, self()}, true)
+      PubSub.subscribe({:edge, device_address})
+      result(nil)
+    else
+      {:error, message} when is_binary(message) ->
+        ticket_error(message)
+
+      {:error, message, _extra} when is_binary(message) ->
+        ticket_error(message)
+    end
+  end
+
+  defp decode_ticket_hex(ticket_data) do
+    {:ok, Rlp.decode!(Base16.decode(ticket_data))}
+  rescue
+    _ -> {:error, "invalid ticket"}
+  end
+
+  defp device_wallet_from_ticket(ticket) do
+    wallet =
+      case Ticket.mod(ticket) do
+        DiodeClient.Object.TicketV2 -> DiodeClient.Object.TicketV2.device_wallet(ticket)
+        _ -> Wallet.from_address(Ticket.device_address(ticket))
+      end
+
+    {:ok, wallet}
+  rescue
+    _ -> {:error, "invalid ticket"}
+  end
+
+  defp ticket_error(message) do
+    result(nil, 400, %{"code" => -32001, "message" => message})
   end
 end

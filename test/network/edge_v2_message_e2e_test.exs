@@ -160,8 +160,15 @@ defmodule Network.EdgeV2MessageE2ETest do
     # Connect via websocket to RPC (ws://localhost:rpc_port/ws)
     rpc_pid = RpcClient.connect(Diode.rpc_port())
 
+    wallet = Edge2Client.clientid(1)
+    device = DiodeClient.Wallet.address!(wallet)
+    fleet = RemoteChain.developer_fleet_address(Chains.Anvil)
+    epoch = RemoteChain.epoch(Chains.Anvil) - 1
+
     # Authenticate with dio_ticket (device 1)
     RpcClient.authenticate(rpc_pid, 1)
+
+    assert TicketStore.find(device, fleet, epoch)
 
     # Send dio_message to device 2
     client2_address = DiodeClient.Wallet.address!(Edge2Client.clientid(2))
