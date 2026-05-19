@@ -68,7 +68,7 @@ Does not generate:
 | `dio_ticket` | Epoch too low / high | `{"code": -32001, "message": "epoch number too low"}` or `"epoch number too high"` |
 | `dio_ticket` | Invalid signature | `{"code": -32001, "message": "signature mismatch"}` |
 | `dio_ticket` | Too many bytes / connections | `{"code": -32001, "message": "too many bytes"}` or `"too many connections"` |
-| `dio_ticket` | TicketStore rejection | `{"code": -32001, "message": "too_old"}` / `"too_big_jump"` / `"too_low"` |
+| `dio_ticket` | TicketStore rejection | `{"code": -32001, "message": "too_old"}` / `"too_big_jump"` / `"too_low"` (see below for `too_low` `data`) |
 
 ## Domain-Specific Sections
 
@@ -208,6 +208,13 @@ Authenticates websocket connection with a signed device ticket and persists it t
 | Invalid signature | Error: -32001 "signature mismatch" |
 | Too many bytes / connections | Error: -32001 "too many bytes" / "too many connections" |
 | TicketStore rejection | Error: -32001 "too_old" / "too_big_jump" / "too_low" |
+
+**`too_low` error `data`:** When `message` is `"too_low"`, the response includes a `data` object:
+
+- `usage` (hex int): `max(stored_ticket.total_bytes, device_usage)` for this device/fleet/epoch — minimum `total_bytes` for the next acceptable ticket.
+- `summary` (object): Edge-aligned fields from the server's reference ticket (`chain_id`, `epoch`, `total_connections`, `total_bytes`, `local_address`, `device_signature` for ticketv2; `block_hash` instead of chain/epoch for legacy ticketv1). All values hex-encoded.
+
+Build the next ticket with `total_bytes >= decode(usage)` and `score(new) > score(summary)` (`score = total_connections * 1024 + total_bytes`).
 
 **Examples:**
 ```json

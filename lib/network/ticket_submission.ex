@@ -6,7 +6,7 @@ defmodule Network.TicketSubmission do
   Shared ticket validation, TicketStore persistence, and Kademlia publish
   for Edge v2 and `dio_ticket` RPC.
   """
-  alias DiodeClient.{Object, Object.Ticket, Rlpx, Wallet}
+  alias DiodeClient.{Base16, Object, Object.Ticket, Rlpx, Wallet}
   import DiodeClient.Object.TicketV1, only: [ticketv1: 1]
   import DiodeClient.Object.TicketV2, only: [ticketv2: 1]
 
@@ -131,6 +131,58 @@ defmodule Network.TicketSubmission do
 
   defp maybe_reset_usage(_ticket, _device_wallet, false), do: :ok
 
+  @doc """
+  Required byte baseline for the device at submit time: max(stored ticket bytes, ETS usage).
+  Matches `TicketStore.add/3`.
+  """
+  @spec usage_for_device(binary(), Ticket.t()) :: non_neg_integer()
+  def usage_for_device(device, ticket) do
+    fleet = Ticket.fleet_contract(ticket)
+    epoch = Ticket.epoch(ticket)
+
+    last = TicketStore.find(device, fleet, epoch)
+    ticket_usage = if last == nil, do: 0, else: Ticket.total_bytes(last)
+    max(ticket_usage, TicketStore.device_usage(device))
+  end
+
+  @doc "JSON-safe named fields from `Ticket.summary/1` (hex-encoded)."
+  @spec encode_summary(Ticket.t()) :: map()
+  def encode_summary(ticket) do
+    case Ticket.mod(ticket) do
+      DiodeClient.Object.TicketV2 ->
+        %{
+          "chain_id" => encode16(Ticket.chain_id(ticket)),
+          "epoch" => encode16(Ticket.epoch(ticket)),
+          "total_connections" => encode16(Ticket.total_connections(ticket)),
+          "total_bytes" => encode16(Ticket.total_bytes(ticket)),
+          "local_address" => encode16(Ticket.local_address(ticket)),
+          "device_signature" => encode16(Ticket.device_signature(ticket))
+        }
+
+      DiodeClient.Object.TicketV1 ->
+        [block_hash, conns, bytes, local_address, device_signature] = Ticket.summary(ticket)
+
+        %{
+          "block_hash" => encode16(block_hash),
+          "total_connections" => encode16(conns),
+          "total_bytes" => encode16(bytes),
+          "local_address" => encode16(local_address),
+          "device_signature" => encode16(device_signature)
+        }
+    end
+  end
+
+  @doc "RPC `data` payload for `dio_ticket` too_low errors."
+  @spec too_low_data(Ticket.t(), Wallet.t()) :: map()
+  def too_low_data(ticket, device_wallet) do
+    device = Wallet.address!(device_wallet)
+
+    %{
+      "usage" => encode16(usage_for_device(device, ticket)),
+      "summary" => encode_summary(ticket)
+    }
+  end
+
   defp store_in_kademlia(ticket) do
     key = Object.key(ticket)
 
@@ -146,4 +198,7 @@ defmodule Network.TicketSubmission do
 
   defp to_num(bin) when is_binary(bin), do: Rlpx.bin2uint(bin)
   defp to_num(num) when is_integer(num), do: num
+
+  defp encode16(value) when is_binary(value), do: Base16.encode(value, false)
+  defp encode16(value) when is_integer(value) and value >= 0, do: Base16.encode(value, false)
 end

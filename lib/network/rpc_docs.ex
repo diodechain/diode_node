@@ -435,7 +435,9 @@ defmodule Network.RpcDocs do
       stores it in `TicketStore` (ETS + SQLite), publishes to Kademlia, binds the device address to the \
       connection process, and subscribes to push events for that device. On HTTP this does not persist a session. \
       On success `result` is `null`. Errors use `code` **-32001** with Edge-aligned `message` strings \
-      (e.g. `epoch number too low`, `too many bytes`, `signature mismatch`, `too_old`, `too_low`).
+      (e.g. `epoch number too low`, `too many bytes`, `signature mismatch`, `too_old`, `too_low`). \
+      For `too_low`, `data` includes `usage` (minimum `total_bytes`, hex) and `summary` (stored ticket fields, hex) \
+      so clients can submit an acceptable follow-up ticket without calling `dio_tickets`.
       """,
       params: [
         %{
