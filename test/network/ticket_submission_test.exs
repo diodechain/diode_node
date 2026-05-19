@@ -5,7 +5,7 @@ defmodule Network.TicketSubmissionTest do
   use ExUnit.Case, async: false
   import TestHelper
   alias DiodeClient.Object.TicketV2, as: Ticket
-  alias DiodeClient.Wallet
+  alias DiodeClient.{Base16, Rlp, Rlpx, Wallet}
   import Ticket, only: [ticketv2: 1]
   import Edge2Client, only: [clientid: 1]
 
@@ -81,7 +81,50 @@ defmodule Network.TicketSubmissionTest do
 
     low = build_ticket(wallet, epoch: epoch, total_bytes: @ticket_grace, total_connections: 1)
 
-    assert {:error, "too_low", _last} = Network.TicketSubmission.submit(low, wallet)
+    assert {:error, "too_low", last} = Network.TicketSubmission.submit(low, wallet)
+
+    data = Network.TicketSubmission.too_low_data(last, wallet)
+    usage = Base16.decode_int(data["usage"])
+    assert usage >= Ticket.total_bytes(last)
+
+    assert data["summary"]["total_bytes"] ==
+             Base16.encode(Ticket.total_bytes(last), false)
+
+    assert data["summary"]["total_connections"] ==
+             Base16.encode(Ticket.total_connections(last), false)
+  end
+
+  test "dio_ticket too_low includes data.usage and data.summary" do
+    wallet = clientid(1)
+    epoch = RemoteChain.epoch(@chain) - 1
+
+    high =
+      build_ticket(wallet, epoch: epoch, total_bytes: 1_000_000, total_connections: 100)
+
+    assert {:ok, _} = Network.TicketSubmission.submit(high, wallet)
+
+    low = build_ticket(wallet, epoch: epoch, total_bytes: @ticket_grace, total_connections: 1)
+
+    low_hex =
+      [
+        "ticketv2",
+        Rlpx.uint2bin(Ticket.chain_id(low)),
+        Rlpx.uint2bin(Ticket.epoch(low)),
+        Ticket.fleet_contract(low),
+        Rlpx.uint2bin(Ticket.total_connections(low)),
+        Rlpx.uint2bin(Ticket.total_bytes(low)),
+        Ticket.local_address(low),
+        Ticket.device_signature(low)
+      ]
+      |> Rlp.encode!()
+      |> Base16.encode(false)
+
+    assert {nil, 400, %{"code" => -32001, "message" => "too_low", "data" => data}} =
+             Network.Rpc.execute_dio("dio_ticket", [low_hex], %{connection_state: true})
+
+    assert Map.has_key?(data, "usage")
+    assert Map.has_key?(data["summary"], "total_bytes")
+    assert Map.has_key?(data["summary"], "epoch")
   end
 
   test "invalid RLP decode" do

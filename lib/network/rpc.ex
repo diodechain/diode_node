@@ -807,6 +807,13 @@ defmodule Network.Rpc do
       {:error, message} when is_binary(message) ->
         ticket_error(message)
 
+      {:error, "too_low", last} ->
+        with {:ok, wallet} <- device_wallet_from_ticket(last) do
+          ticket_error("too_low", Network.TicketSubmission.too_low_data(last, wallet))
+        else
+          {:error, message} -> ticket_error(message)
+        end
+
       {:error, message, _extra} when is_binary(message) ->
         ticket_error(message)
     end
@@ -830,7 +837,9 @@ defmodule Network.Rpc do
     _ -> {:error, "invalid ticket"}
   end
 
-  defp ticket_error(message) do
-    result(nil, 400, %{"code" => -32001, "message" => message})
+  defp ticket_error(message, data \\ nil) do
+    error = %{"code" => -32001, "message" => message}
+    error = if data, do: Map.put(error, "data", data), else: error
+    result(nil, 400, error)
   end
 end
