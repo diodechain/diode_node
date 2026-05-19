@@ -92,7 +92,7 @@ mix test --exclude wireguard
 #### RPC Integration Test
 
 1. Connect via WebSocket RPC
-2. Authenticate with `dio_ticket`
+2. Authenticate with `dio_ticket` (validates, stores ticket in `TicketStore`, binds device session)
 3. Call `dio_wireguard_open` with hex-encoded public key:
    ```json
    {"jsonrpc":"2.0","id":1,"method":"dio_wireguard_open","params":["0x1234..."]}

@@ -431,15 +431,17 @@ defmodule Network.RpcDocs do
       method: "dio_ticket",
       auth: :session,
       description: """
-      **WebSocket only** in practice: validates a v2 ticket, binds the device address to the connection process, \
-      and subscribes to push events for that device. On HTTP this does not persist a session. \
-      On success `result` is `null`. Errors use JSON-RPC-style objects (e.g. invalid epoch, too many bytes).
+      **WebSocket only** in practice: validates a signed ticket (same rules as Edge `ticket` / `ticketv2`), \
+      stores it in `TicketStore` (ETS + SQLite), publishes to Kademlia, binds the device address to the \
+      connection process, and subscribes to push events for that device. On HTTP this does not persist a session. \
+      On success `result` is `null`. Errors use `code` **-32001** with Edge-aligned `message` strings \
+      (e.g. `epoch number too low`, `too many bytes`, `signature mismatch`, `too_old`, `too_low`).
       """,
       params: [
         %{
           name: "ticket",
           type: "hex string",
-          doc: "Hex-encoded binary ticket (RLP ticketv2 payload)."
+          doc: "Hex-encoded RLP list: `ticketv2` or legacy `ticket` (same shapes as Edge v2)."
         }
       ],
       example_request: rpc("dio_ticket", ["0x0102…"]),

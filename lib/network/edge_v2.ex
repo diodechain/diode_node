@@ -707,101 +707,74 @@ defmodule Network.EdgeV2 do
   end
 
   defp handle_ticket(dl, state) do
-    cond do
-      Ticket.epoch(dl) + 1 < RemoteChain.epoch(Ticket.chain_id(dl)) ->
-        log(
-          state,
-          "Ticket with low epoch #{Ticket.epoch(dl)} vs. #{RemoteChain.epoch(Ticket.chain_id(dl))}!"
-        )
+    reset_usage? = state.version == 1000 and state.last_ticket == nil
 
-        error("epoch number too low")
-
-      Ticket.epoch(dl) > RemoteChain.epoch(Ticket.chain_id(dl)) ->
-        log(
-          state,
-          "Ticket with wrong epoch #{Ticket.epoch(dl)} vs. #{RemoteChain.epoch(Ticket.chain_id(dl))}!"
-        )
-
-        error("epoch number too high")
-
-      Ticket.too_many_bytes?(dl) ->
-        log(state, "Ticket with too many bytes #{Ticket.total_bytes(dl)}!")
-        error("too many bytes")
-
-      Ticket.total_connections(dl) > 1024 * 1024 * 1024 * 1024 ->
-        log(state, "Ticket with too many connections #{Ticket.total_connections(dl)}!")
-        error("too many connections")
-
-      not Ticket.device_address?(dl, device_id(state)) ->
-        log(state, "Received invalid ticket signature!")
-        error("signature mismatch")
-
-      # TODO: Needs to be re-enabled after dev-contract is all-yes
-      # not Contract.Fleet.device_allowlisted?(fleet, device) ->
-      #   log(state, "Received invalid ticket fleet!")
-      #   error("device not whitelisted")
-
-      true ->
-        dl = Ticket.server_sign(dl, Wallet.privkey!(Diode.wallet()))
-
-        # If the version is 1000 and this is the first ticket of this session
-        # we need to reset the device usage to the last ticket
-        if state.version == 1000 and state.last_ticket == nil do
-          last_ticket =
-            TicketStore.find(device_address(state), Ticket.fleet_contract(dl), Ticket.epoch(dl))
-
-          if last_ticket != nil do
-            TicketStore.reset_device_usage(device_address(state), Ticket.total_bytes(last_ticket))
-          else
-            TicketStore.reset_device_usage(device_address(state), 0)
-          end
-        end
-
-        ret = TicketStore.add(dl, device_id(state), state.version)
+    case Network.TicketSubmission.submit(dl, device_id(state),
+           version: state.version,
+           reset_usage?: reset_usage?
+         ) do
+      {:ok, bytes} ->
         total = Ticket.total_bytes(dl)
         usage = TicketStore.device_usage(device_address(state))
-        log(state, "ticket total: #{total} usage: #{usage} ret => #{inspect(ret, limit: 32)}")
+        log(state, "ticket total: #{total} usage: #{usage} ret => {:ok, #{bytes}}")
 
-        case ret do
-          {:ok, bytes} ->
-            key = Object.key(dl)
+        key = Object.key(dl)
+        Diode.broadcast_self()
+        pid = self()
 
-            # Storing the updated ticket of this device, debounce is 15 sec
-            Debouncer.immediate(
-              key,
-              fn ->
-                Model.KademliaSql.put_object(KademliaLight.hash(key), Object.encode!(dl))
-                KademliaLight.store(dl)
-              end,
-              15_000
-            )
+        Debouncer.delay(
+          {__MODULE__, :ticket_refresh, key},
+          fn ->
+            send(pid, :ticket_refresh)
+          end,
+          @refresh_interval
+        )
 
-            # Storing the updated ticket of this device, debounce is 10 sec
-            Diode.broadcast_self()
-            pid = self()
+        {response("thanks!", bytes),
+         %{state | last_ticket: DateTime.utc_now(), fleet: Ticket.fleet_contract(dl)}}
 
-            Debouncer.delay(
-              {__MODULE__, :ticket_refresh, key},
-              fn ->
-                send(pid, :ticket_refresh)
-              end,
-              @refresh_interval
-            )
+      {:error, msg} when is_binary(msg) ->
+        log_validation_error(state, dl, msg)
+        error(msg)
 
-            {response("thanks!", bytes),
-             %{state | last_ticket: DateTime.utc_now(), fleet: Ticket.fleet_contract(dl)}}
+      {:error, "too_old", min} ->
+        response("too_old", min)
 
-          {:too_old, min} ->
-            response("too_old", min)
+      {:error, "too_big_jump", min} ->
+        response("too_big_jump", min)
 
-          {:too_big_jump, min} ->
-            response("too_big_jump", min)
-
-          {:too_low, last} ->
-            response_array(["too_low" | Ticket.summary(last)])
-        end
+      {:error, "too_low", last} ->
+        response_array(["too_low" | Ticket.summary(last)])
     end
   end
+
+  defp log_validation_error(state, dl, "epoch number too low") do
+    log(
+      state,
+      "Ticket with low epoch #{Ticket.epoch(dl)} vs. #{RemoteChain.epoch(Ticket.chain_id(dl))}!"
+    )
+  end
+
+  defp log_validation_error(state, dl, "epoch number too high") do
+    log(
+      state,
+      "Ticket with wrong epoch #{Ticket.epoch(dl)} vs. #{RemoteChain.epoch(Ticket.chain_id(dl))}!"
+    )
+  end
+
+  defp log_validation_error(state, dl, "too many bytes") do
+    log(state, "Ticket with too many bytes #{Ticket.total_bytes(dl)}!")
+  end
+
+  defp log_validation_error(state, _dl, "too many connections") do
+    log(state, "Ticket with too many connections!")
+  end
+
+  defp log_validation_error(state, _dl, "signature mismatch") do
+    log(state, "Received invalid ticket signature!")
+  end
+
+  defp log_validation_error(_state, _dl, _msg), do: :ok
 
   defp truncate(msg) when is_binary(msg) and byte_size(msg) > 40 do
     binary_part(msg, 0, 37) <> "..."
