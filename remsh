@@ -4,4 +4,26 @@
 # Licensed under the Diode License, Version 1.1
 export ERL_EPMD_ADDRESS=127.0.0.1
 export MIX_ENV=prod
-exec iex --sname remsh_$$ --remsh diode_light
+
+REMSH_NODE=diode_light
+
+case "$1" in
+  rpc)
+    shift
+    if [ -z "$1" ]; then
+      echo "Usage: $0 rpc <expression>" >&2
+      exit 1
+    fi
+    expr="$*"
+    if [ -n "$COOKIE" ]; then
+      exec elixir --hidden --sname "remsh_rpc_$$" --cookie "$COOKIE" \
+        --rpc-eval "$REMSH_NODE" "$expr"
+    else
+      exec elixir --hidden --sname "remsh_rpc_$$" \
+        --rpc-eval "$REMSH_NODE" "$expr"
+    fi
+    ;;
+  *)
+    exec iex --sname "remsh_$$" --remsh "$REMSH_NODE"
+    ;;
+esac
