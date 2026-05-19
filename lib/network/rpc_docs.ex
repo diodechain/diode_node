@@ -98,19 +98,30 @@ defmodule Network.RpcDocs do
       method: "dio_network",
       auth: :none,
       description: """
-      Lists known Diode relay peers from Kademlia plus currently connected peers. \
-      Each entry includes `node_id`, connection state, retry metadata, and a decoded `node` object when available.
+      Lists the local node plus known Diode relay peers from Kademlia and currently connected peers. \
+      Each entry includes `local` (true for this server), `node_id`, connection state, retry metadata, \
+      and a decoded `node` object when available.
       """,
       params: [],
       example_request: rpc("dio_network", []),
       example_response:
         ok([
           %{
+            "local" => true,
             "connected" => true,
             "last_seen" => "0x6a04ebed",
             "last_error" => "0x00",
             "node_id" => "0x100c283fadc36f008a85cc1aa40a6e5de6115ef8",
             "node" => ["server", "198.51.100.1", "0xa056", "0xc76f", "2.2.3", [], "0x01…"],
+            "retries" => "0x00"
+          },
+          %{
+            "local" => false,
+            "connected" => true,
+            "last_seen" => "0x6a04ebed",
+            "last_error" => "0x00",
+            "node_id" => "0x200d394fbed47f109b96dd2bb51b7f6ef7226fa9",
+            "node" => ["server", "198.51.100.2", "0xa057", "0xc770", "2.2.3", [], "0x02…"],
             "retries" => "0x00"
           }
         ])

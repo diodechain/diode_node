@@ -419,11 +419,14 @@ defmodule Network.Rpc do
         |> raw_result()
 
       "dio_network" ->
+        local = dio_network_local_entry()
+
         conns = Network.Server.get_connections(Network.PeerHandlerV2)
 
         connected =
           Enum.map(conns, fn {address, _conn} ->
             %{
+              local: false,
               connected: true,
               last_seen: encode16(System.os_time(:second)),
               last_error: encode16(0),
@@ -450,6 +453,7 @@ defmodule Network.Rpc do
           address = Wallet.address!(item.node_id)
 
           %{
+            local: false,
             connected: Map.has_key?(conns, Wallet.address!(item.node_id)),
             last_seen: encode16(item.last_connected),
             last_error: encode16(item.last_error),
@@ -463,6 +467,7 @@ defmodule Network.Rpc do
         |> Enum.reduce(%{}, fn item, acc ->
           Map.put_new(acc, item.node_id, item)
         end)
+        |> Map.put(local.node_id, local)
         |> Map.values()
         |> raw_result()
 
@@ -623,6 +628,20 @@ defmodule Network.Rpc do
       _ ->
         nil
     end
+  end
+
+  defp dio_network_local_entry() do
+    address = Wallet.address!(Diode.wallet())
+
+    %{
+      local: true,
+      connected: true,
+      last_seen: encode16(System.os_time(:second)),
+      last_error: encode16(0),
+      node_id: encode16(address),
+      node: Diode.self() |> Json.prepare!(big_x: false),
+      retries: encode16(0)
+    }
   end
 
   # Json.prepare! encodes bare integers as hex; spec requires JSON number for listen_port.
