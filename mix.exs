@@ -132,7 +132,7 @@ defmodule Diode.Mixfile do
       {:oncrash, "~> 0.0"},
       {:plug_cowboy, "~> 2.5"},
       {:poison, "~> 6.0"},
-      {:profiler, github: "dominicletz/profiler", override: true},
+      {:profiler, "~> 0.4"},
       {:websockex, "~> 0.5"},
       {:rotating_file, "~> 0.1"},
       {:wireguardex, "~> 0.4"},

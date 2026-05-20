@@ -1,7 +1,9 @@
 Mix.install(
   [
     {:diode, path: __DIR__ <> "/../"},
-    {:dets_plus, "~> 2.1"}
+    {:dets_plus, "~> 2.1"},
+    {:globals, "~> 1.1"},
+    {:debouncer, "~> 1.0", override: true},
   ],
   config: [diode: [no_start: true]]
 )
@@ -18,9 +20,13 @@ Logger.configure(level: :warning)
 defmodule Helper do
   require Logger
 
-  def submit_tx(tx, retries \\ 30) do
+  def submit_tx(tx, retries \\ 30, check \\ false) do
     if retries == 0 do
       raise "Failed to submit transaction after #{retries} retries"
+    end
+
+    if check do
+      Shell.call_tx!(tx, "latest")
     end
 
     Shell.submit_tx(tx)
@@ -78,6 +84,7 @@ IO.puts("Names: #{length(names)}")
 
 missing =
   for name <- names do
+    name = String.downcase(name)
     name_hash = Hash.keccak_256(name)
     base = Hash.to_bytes32(1)
 
@@ -94,28 +101,24 @@ missing =
       owner ->
         owner = Hash.to_address(owner)
 
-        m_owner =
-          case DetsPlus.lookup(:oasis_cache, addr) do
-            [] ->
-              IO.inspect({name, Base16.encode(owner)})
+        case DetsPlus.lookup(:oasis_cache, name) do
+          [] ->
+            IO.inspect({name, Base16.encode(owner)})
+            full_name = "#{name}.sapphire"
 
-              m_owner =
-                RemoteChain.RPCCache.get_storage_at(
-                  Chains.OasisSapphire,
-                  "0x8a093e3A83F63A00FFFC4729aa55482845a49294",
-                  Base16.encode(addr)
-                )
-                |> Base16.decode()
-                |> Hash.to_address()
+            try do
+              m_owner = DiodeClient.Contracts.BNS.resolve_entry(full_name, "latest").owner
+              DetsPlus.insert(:oasis_cache, [{name, m_owner}])
+              {name, owner, m_owner, addr}
+            rescue
+              e in MatchError ->
+                IO.puts("Skipping failed name #{name}: #{inspect(e)}")
+                {nil, nil, nil, nil}
+            end
 
-              DetsPlus.insert(:oasis_cache, [{addr, m_owner}])
-              m_owner
-
-            [{^addr, value}] ->
-              value
-          end
-
-        {name, owner, m_owner, addr}
+          [{^name, m_owner}] ->
+            {name, owner, m_owner, addr}
+        end
     end
   end
   |> Enum.filter(fn {_name, owner, m_owner, _addr} -> owner != m_owner end)
@@ -133,39 +136,60 @@ missing =
   |> Enum.chunk_every(1)
 
 for chunk <- missing do
-  nonce =
+  Globals.put(
+    :nonce,
     RemoteChain.RPC.get_transaction_count(
       Chains.OasisSapphire,
       Base16.encode(Wallet.address!(wallet))
     )
     |> Base16.decode_int()
+  )
 
-  IO.puts("Wallet: #{Base16.encode(Wallet.address!(wallet))} Nonce: #{nonce}")
+  IO.puts("Wallet: #{Base16.encode(Wallet.address!(wallet))} Nonce: #{Globals.get(:nonce)}")
 
-  for {{name, owner, _m_owner, addr}, i} <- Enum.with_index(chunk) do
+  for {name, owner, m_owner, _addr} <- chunk do
     IO.puts("Register #{name} to #{Base16.encode(owner)} ...")
     Process.sleep(100)
 
-    DetsPlus.delete(:oasis_cache, addr)
+    DetsPlus.delete(:oasis_cache, name)
     DetsPlus.sync(:oasis_cache)
 
-    tx1 =
-      Shell.transaction(wallet, bns, "Register", ["string", "address"], [name, owner],
-        nonce: nonce + i * 2,
-        chainId: Chains.OasisSapphire.chain_id()
-      )
+    if m_owner == DiodeClient.Hash.to_address(0) do
+      IO.puts("TX-1: Registering #{name} to #{Base16.encode(owner)} ...")
 
-    tx2 =
-      Shell.transaction(wallet, bns, "TransferOwner", ["string", "address"], [name, owner],
-        nonce: nonce + 1 + i * 2,
-        chainId: Chains.OasisSapphire.chain_id()
-      )
+      tx1 =
+        Shell.transaction(wallet, bns, "Register", ["string", "address"], [name, owner],
+          nonce: Globals.incr(:nonce),
+          chainId: Chains.OasisSapphire.chain_id()
+        )
 
-    IO.puts("TX-1: Registering #{name} to #{Base16.encode(owner)} ...")
-    id1 = Helper.submit_tx(tx1)
-    IO.puts("TX-2: Transferring #{name} to #{Base16.encode(owner)} ...")
-    id2 = Helper.submit_tx(tx2)
-    [{id1, tx1}, {id2, tx2}]
+      id1 = Helper.submit_tx(tx1, 30, true)
+      IO.puts("TX-2: Transferring #{name} to #{Base16.encode(owner)} ...")
+
+      tx2 =
+        Shell.transaction(wallet, bns, "TransferOwner", ["string", "address"], [name, owner],
+          nonce: Globals.incr(:nonce),
+          chainId: Chains.OasisSapphire.chain_id()
+        )
+
+      id2 = Helper.submit_tx(tx2)
+      [{id1, tx1}, {id2, tx2}]
+    else
+      if m_owner == DiodeClient.Wallet.address!(wallet) do
+        IO.puts("TX-2: Transferring #{name} to #{Base16.encode(owner)} ...")
+
+        tx2 =
+          Shell.transaction(wallet, bns, "TransferOwner", ["string", "address"], [name, owner],
+            nonce: Globals.incr(:nonce),
+            chainId: Chains.OasisSapphire.chain_id()
+          )
+
+        id2 = Helper.submit_tx(tx2)
+        [{id2, tx2}]
+      else
+        []
+      end
+    end
   end
   |> List.flatten()
   |> Enum.reverse()

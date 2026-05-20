@@ -49,8 +49,11 @@ defmodule Shell do
     case RemoteChain.RPC.get_transaction_by_hash(Transaction.chain_id(tx), tx_id) do
       nil ->
         if n > 0 and rem(n, 3) == 0 do
-          IO.puts("Resubmitting transaction TX-#{tx_id}")
+          IO.puts("Resubmitting transaction TX-#{tx_id} [#{n}]")
           # IO.inspect(submit_tx(tx))
+          if n > 30 do
+            raise "Failed to resubmit"
+          end
         end
 
         await_block(tx_id, tx, n)
