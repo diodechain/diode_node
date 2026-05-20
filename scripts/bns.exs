@@ -1,9 +1,10 @@
+#!/usr/bin/env elixir
 Mix.install(
   [
     {:diode, path: __DIR__ <> "/../"},
     {:dets_plus, "~> 2.1"},
     {:globals, "~> 1.1"},
-    {:debouncer, "~> 1.0", override: true},
+    {:debouncer, "~> 1.0", override: true}
   ],
   config: [diode: [no_start: true]]
 )
