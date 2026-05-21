@@ -4,10 +4,13 @@
 defmodule Model.KademliaSql do
   alias RemoteChain.RPCCache
   alias Model.Sql
-  alias DiodeClient.Object
-  alias KBuckets
+  alias DiodeClient.{Object, Wallet}
+  alias KademliaLight.Node
   import DiodeClient.Object.TicketV2, only: :macros
+  import Wallet
   require Logger
+
+  @redistribute_after_seconds 20 * 60
 
   @day_seconds 86_400
   # Don't report after two days
@@ -31,6 +34,24 @@ defmodule Model.KademliaSql do
     """)
 
     ensure_stored_at_column()
+
+    query!("""
+        CREATE TABLE IF NOT EXISTS p2p_nodes (
+          address BLOB PRIMARY KEY,
+          ring_key BLOB NOT NULL,
+          on_chain INTEGER NOT NULL DEFAULT 0,
+          known_good INTEGER NOT NULL DEFAULT 0,
+          failures INTEGER NOT NULL DEFAULT 0,
+          last_connected INTEGER,
+          last_error INTEGER,
+          next_retry INTEGER,
+          first_failure INTEGER,
+          synced_at INTEGER NOT NULL DEFAULT 0
+        )
+    """)
+
+    query!("CREATE INDEX IF NOT EXISTS idx_p2p_nodes_ring_key ON p2p_nodes(ring_key)")
+    query!("CREATE INDEX IF NOT EXISTS idx_p2p_nodes_on_chain ON p2p_nodes(on_chain)")
   end
 
   defp ensure_stored_at_column() do
@@ -47,6 +68,257 @@ defmodule Model.KademliaSql do
 
   def clear() do
     query!("DELETE FROM p2p_objects")
+    query!("DELETE FROM p2p_nodes")
+  end
+
+  def clear_nodes() do
+    query!("DELETE FROM p2p_nodes")
+  end
+
+  def sync_registry_nodes(addresses \\ nil) do
+    addresses =
+      case addresses do
+        nil ->
+          case Contract.NodeRegistry.nodes_above(Shell.ether(1)) do
+            {:error, reason} ->
+              Logger.error("Node registry sync failed: #{inspect(reason)}")
+              :error
+
+            list when is_list(list) ->
+              list
+          end
+
+        list when is_list(list) ->
+          list
+      end
+
+    if addresses == :error do
+      :error
+    else
+      now = now_seconds()
+      registry_set = MapSet.new(addresses)
+
+      removed =
+        query!("SELECT address FROM p2p_nodes WHERE on_chain = 1")
+        |> Enum.map(&hd/1)
+        |> Enum.filter(fn addr -> not MapSet.member?(registry_set, addr) end)
+
+      for addr <- removed do
+        KademliaLight.redistribute_removed_node(addr)
+        query!("DELETE FROM p2p_nodes WHERE address = ?1", [addr])
+      end
+
+      for address <- addresses do
+        ring_key = KademliaRing.key(address)
+
+        query!(
+          """
+          INSERT INTO p2p_nodes (address, ring_key, on_chain, synced_at)
+          VALUES (?1, ?2, 1, ?3)
+          ON CONFLICT(address) DO UPDATE SET
+            on_chain = 1,
+            ring_key = excluded.ring_key,
+            synced_at = excluded.synced_at
+          """,
+          [address, ring_key, now]
+        )
+      end
+
+      ensure_self_node(now)
+      refresh_known_good_all()
+      GenServer.cast(KademliaLight, :reload_ring)
+      :ok
+    end
+  end
+
+  def ensure_self_node_for_init() do
+    ensure_self_node(now_seconds())
+  end
+
+  defp ensure_self_node(now) do
+    address = Diode.address()
+    ring_key = KademliaRing.key(Diode.wallet())
+
+    query!(
+      """
+      INSERT INTO p2p_nodes (address, ring_key, on_chain, known_good, synced_at, last_connected)
+      VALUES (?1, ?2, 1, 1, ?3, ?3)
+      ON CONFLICT(address) DO UPDATE SET
+        on_chain = 1,
+        ring_key = excluded.ring_key,
+        known_good = 1
+      """,
+      [address, ring_key, now]
+    )
+  end
+
+  def refresh_known_good_all() do
+    query!(
+      """
+      UPDATE p2p_nodes SET known_good = CASE
+        WHEN EXISTS (
+          SELECT 1 FROM p2p_objects
+          WHERE p2p_objects.key = p2p_nodes.ring_key
+            AND p2p_objects.stored_at > ?1
+        ) THEN 1 ELSE 0 END
+      WHERE on_chain = 1
+      """,
+      [stale_silence_deadline()]
+    )
+  end
+
+  def refresh_known_good(address) do
+    ring_key = KademliaRing.key(address)
+    kg = if object(ring_key) != nil, do: 1, else: 0
+
+    query!("UPDATE p2p_nodes SET known_good = ?1 WHERE address = ?2", [kg, address])
+    kg == 1
+  end
+
+  def list_on_chain_nodes() do
+    query!(
+      "SELECT address, ring_key, known_good, failures, last_connected, last_error, next_retry, first_failure FROM p2p_nodes WHERE on_chain = 1"
+    )
+    |> Enum.map(&row_to_node/1)
+  end
+
+  def get_node(address) do
+    case query!(
+           "SELECT address, ring_key, known_good, failures, last_connected, last_error, next_retry, first_failure FROM p2p_nodes WHERE address = ?1",
+           [address]
+         ) do
+      [row] -> row_to_meta(row)
+      [] -> nil
+    end
+  end
+
+  defp row_to_node([
+         address,
+         ring_key,
+         known_good,
+         failures,
+         last_connected,
+         last_error,
+         next_retry,
+         first_failure
+       ]) do
+    node = Node.new(Wallet.from_address(address))
+
+    {node,
+     %{
+       known_good: known_good == 1,
+       failures: failures || 0,
+       last_connected: last_connected,
+       last_error: last_error,
+       next_retry: next_retry,
+       first_failure: first_failure,
+       ring_key: ring_key
+     }}
+  end
+
+  defp row_to_meta(row) do
+    {_node, meta} = row_to_node(row)
+    meta
+  end
+
+  def upsert_node_from_connection(wallet() = node_id, attrs \\ %{}) do
+    address = Wallet.address!(node_id)
+    ring_key = KademliaRing.key(node_id)
+    now = now_seconds()
+
+    known_good = if Map.get(attrs, :known_good, false), do: 1, else: 0
+    last_connected = Map.get(attrs, :last_connected, now)
+    on_chain = if Map.get(attrs, :on_chain, false), do: 1, else: 0
+
+    query!(
+      """
+      INSERT INTO p2p_nodes (address, ring_key, on_chain, known_good, last_connected, synced_at, failures, first_failure, last_error, next_retry)
+      VALUES (?1, ?2, ?3, ?4, ?5, ?5, 0, NULL, NULL, NULL)
+      ON CONFLICT(address) DO UPDATE SET
+        known_good = MAX(p2p_nodes.known_good, excluded.known_good),
+        last_connected = COALESCE(excluded.last_connected, p2p_nodes.last_connected),
+        failures = 0,
+        first_failure = NULL,
+        last_error = NULL,
+        next_retry = NULL
+      """,
+      [address, ring_key, on_chain, known_good, last_connected]
+    )
+  end
+
+  def mark_stable(wallet() = node_id) do
+    address = Wallet.address!(node_id)
+    refresh_known_good(address)
+
+    query!(
+      """
+      UPDATE p2p_nodes SET
+        known_good = 1,
+        failures = 0,
+        first_failure = NULL,
+        last_error = NULL,
+        next_retry = NULL,
+        last_connected = ?1
+      WHERE address = ?2
+      """,
+      [now_seconds(), address]
+    )
+  end
+
+  def mark_failed(wallet() = node_id, next_retry) do
+    address = Wallet.address!(node_id)
+    now = now_seconds()
+
+    if get_node(address) == nil do
+      upsert_node_from_connection(node_id, %{})
+    end
+
+    meta = get_node(address) || %{known_good: false, failures: 0, first_failure: nil}
+
+    first_failure =
+      if meta.known_good and (meta.first_failure == nil or meta.failures == 0) do
+        now
+      else
+        meta.first_failure || now
+      end
+
+    failures = (meta.failures || 0) + 1
+
+    query!(
+      """
+      UPDATE p2p_nodes SET
+        failures = ?1,
+        last_error = ?2,
+        next_retry = ?3,
+        first_failure = ?4
+      WHERE address = ?5
+      """,
+      [failures, now, next_retry, first_failure, address]
+    )
+  end
+
+  def nodes_needing_redistribution(now \\ now_seconds()) do
+    cutoff = now - @redistribute_after_seconds
+
+    query!(
+      """
+      SELECT address, ring_key FROM p2p_nodes
+      WHERE known_good = 1
+        AND first_failure IS NOT NULL
+        AND first_failure <= ?1
+      """,
+      [cutoff]
+    )
+    |> Enum.map(fn [address, ring_key] -> {address, ring_key} end)
+  end
+
+  def delete_nodes_by_ring_keys(keys) when is_list(keys) do
+    for key <- keys do
+      query!("DELETE FROM p2p_nodes WHERE ring_key = ?1 AND address != ?2", [
+        key,
+        Diode.address()
+      ])
+    end
   end
 
   def archive() do
@@ -208,7 +480,7 @@ defmodule Model.KademliaSql do
   end
 
   defp prune_stale_chunk(cutoff, acc) do
-    self = KBuckets.key(Diode.wallet())
+    self = KademliaRing.key(Diode.wallet())
 
     stale_keys =
       query!("SELECT key FROM p2p_objects WHERE stored_at < ?1 AND key != ?2 LIMIT 100", [

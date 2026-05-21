@@ -235,7 +235,7 @@ defmodule Network.PeerHandlerV2 do
   defp handle_msg([@find_node, id], state) do
     nodes =
       KademliaLight.find_node_lookup(id)
-      |> Enum.filter(fn node -> not KBuckets.is_self(node) end)
+      |> Enum.filter(fn node -> not KademliaRing.is_self(node) end)
       |> map_network_items()
 
     {[@response, @find_node | nodes], state}
@@ -247,7 +247,7 @@ defmodule Network.PeerHandlerV2 do
         nil ->
           nodes =
             KademliaLight.find_node_lookup(id)
-            |> Enum.filter(fn node -> not KBuckets.is_self(node) end)
+            |> Enum.filter(fn node -> not KademliaRing.is_self(node) end)
             |> map_network_items()
 
           [@response, @find_node | nodes]
@@ -397,18 +397,22 @@ defmodule Network.PeerHandlerV2 do
     |> Enum.filter(fn item -> item.object != nil end)
   end
 
-  defp map_network_item(
-         item = %KBuckets.Item{
-           last_connected: last_seen,
-           node_id: node_id
-         }
-       ) do
+  defp map_network_item(%KademliaLight.Node{node_id: node_id} = item) do
+    meta = KademliaLight.node_meta(item.address) || %{}
+
     %{
-      __struct__: KBuckets.Item,
-      last_seen: last_seen,
+      __struct__: KademliaLight.Node,
+      last_seen: meta[:last_connected],
       node_id: node_id,
-      object: KBuckets.object?(item),
-      retries: 0
+      object: node_object(item),
+      retries: meta[:failures] || 0
     }
+  end
+
+  defp node_object(%KademliaLight.Node{ring_key: ring_key}) do
+    case Model.KademliaSql.object(ring_key) do
+      nil -> nil
+      binary -> Object.decode!(binary)
+    end
   end
 end
