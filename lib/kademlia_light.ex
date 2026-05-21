@@ -3,64 +3,58 @@
 # Licensed under the Diode License, Version 1.1
 defmodule KademliaLight do
   @moduledoc """
-    KademliaLight.ex is in fact a K* implementation. K* star is a modified version of KademliaLight
-    using the same KBuckets scheme to keep track of which nodes to remember. But instead of
-    using the XOR metric it is using geometric distance on a ring as node value distance.
-    Node distance is symmetric on the ring.
-
-    KademliaLight is the kademllia graph for the light node protocol (PeerHandlerV2).
+  K* light-node DHT: geometric ring over on-chain NodeRegistry members,
+  node metadata in SQLite, live connection state in ETS.
   """
   use GenServer
+  alias KademliaLight.Node
   alias Network.PeerHandlerV2
   alias DiodeClient.{Base16, ETSLru, Object, Object.Server, Wallet}
   alias Model.KademliaSql
   require Logger
-  @k 3
-  @storage_file "kademlia_light.etf"
 
-  defstruct tasks: %{}, network: nil, version: 2
-  @type t :: %KademliaLight{tasks: map(), network: KBuckets.t(), version: integer()}
+  @k 3
+  @k_search KademliaRing.k()
+  @alpha 3
+  @max_oid 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF + 1
+  @ets_table :kademlia_network
+  @redistribute_interval :timer.minutes(2)
+  @contact_interval :timer.minutes(1)
+  @discover_batch 40
+  @discover_throttle_seconds 3600
+  @discover_throttle_table :kademlia_discover_throttle
+  @max_retry_seconds 6 * 3600
+  @fib_max_index 28
+
+  defstruct ring: [], version: 3
 
   def start_link(_opts) do
     GenServer.start_link(__MODULE__, :ok, name: __MODULE__, hibernate_after: 5_000)
   end
 
-  @doc """
-    store/1 same as store/2 but usees Object.key/1 and Object.encode/1
-  """
   def store(object) when is_tuple(object) do
     key = Object.key(object)
     value = Object.encode!(object)
     store(key, value)
   end
 
-  @doc """
-    store() stores the given key-value pair in the @k nodes
-    that are closest to the key
-  """
   def store(key, value) when is_binary(value) do
     nodes =
       find_nodes(key)
       |> Enum.take(@k)
 
-    # :io.format("Storing #{value} at ~p as #{Base16.encode(key)}~n", [Enum.map(nearest, &port/1)])
     rpc(nodes, [PeerHandlerV2.store(), hash(key), value])
   end
 
-  @doc """
-    find_value() is different from store() in that it might return
-    an earlier result
-  """
   def find_value(key) do
     key = hash(key)
-    nodes = do_find_nodes(key, KBuckets.k(), PeerHandlerV2.find_value())
+
+    nodes = get_cached(&do_find_value/1, {:find_value, key}, key)
 
     case nodes do
       {:value, value, visited} ->
-        result = KBuckets.nearest_n(visited, key, KBuckets.k())
-        insert_nodes(visited)
+        result = KademliaRing.nearest_n(visited, key, @k_search)
 
-        # Ensuring local database doesn't have anything older or newer
         value =
           with local_ret when local_ret != nil <- KademliaSql.object(key),
                local_block <- Object.block_number(Object.decode!(local_ret)),
@@ -80,7 +74,6 @@ defmodule KademliaLight do
             _ -> value
           end
 
-        # KademliaLight logic: Writing found result to second nearest node
         with second_nearest when second_nearest != nil <- Enum.at(result, 1) do
           rpcast(second_nearest, [PeerHandlerV2.store(), key, value])
         end
@@ -88,9 +81,6 @@ defmodule KademliaLight do
         value
 
       visited ->
-        insert_nodes(visited)
-
-        # We got nothing so far, trying local fallback
         local_ret = KademliaSql.object(key)
 
         if local_ret != nil do
@@ -103,11 +93,6 @@ defmodule KademliaLight do
     end
   end
 
-  @doc """
-    find_node_object() is a buffed version of find_value()
-    in that it first search in it's own kbuckets network
-    and then secondly visits the value store
-  """
   def find_node_object(address) do
     if address == Diode.address() do
       Diode.self()
@@ -118,7 +103,7 @@ defmodule KademliaLight do
 
         [first | _] ->
           case Wallet.address!(first.node_id) do
-            ^address -> KBuckets.object(first)
+            ^address -> node_object(first)
             _ -> nil
           end
       end ||
@@ -127,259 +112,218 @@ defmodule KademliaLight do
       end
   end
 
-  @doc """
-    find_nodes() is following the kademlia paper 'find_node' algorithm.
-    It returns the nodes that are closest to the given address.
-  """
   def find_nodes(key) do
     key = hash(key)
-    visited = do_find_nodes(key, KBuckets.k(), PeerHandlerV2.find_node())
-    insert_nodes(visited)
-    Enum.take(visited, KBuckets.k())
+    nearest_n(key) |> Enum.take(@k_search)
   end
 
-  defp insert_nodes(visited) do
-    before = network()
-
-    network =
-      Enum.reduce(visited, before, fn item, network ->
-        if not KBuckets.member?(network, item) do
-          KBuckets.insert_item(network, item)
-        else
-          network
-        end
-      end)
-
-    if before != network do
-      GenServer.cast(__MODULE__, {:update_network, before, network})
-    end
-
-    visited
-  end
-
-  @doc """
-  Retrieves for the target key either the last cached values or
-  the nearest k entries from the KBuckets store
-  """
   def find_node_lookup(key) do
-    get_cached(&nearest_n/1, key)
+    key = hash(key)
+    get_cached(&nearest_n/1, {:find_node_lookup, key}, key)
   end
 
   def network() do
-    network = GenServerDbg.call(__MODULE__, :network)
-
-    Debouncer.immediate(
-      {__MODULE__, :ensure_network_integrity},
-      fn -> ensure_network_integrity(GenServerDbg.call(__MODULE__, :network)) end,
-      60_000
-    )
-
-    network
+    GenServer.call(__MODULE__, :network, 30_000)
   end
 
-  defp ensure_network_integrity(network) do
-    missing =
-      KBuckets.to_list(network)
-      |> Enum.reject(&KBuckets.is_self/1)
-      |> Enum.filter(fn item ->
-        KademliaSql.object(KBuckets.key(item)) == nil
-      end)
-
-    if not Enum.empty?(missing) do
-      missing_ids = Enum.map(missing, &KBuckets.key/1)
-
-      "KademliaLight network missing #{length(missing)} objects; clearing cached table: #{inspect(missing_ids)}"
-      |> Logger.error()
-
-      drop_nodes(missing_ids)
+  def ring_nodes() do
+    case :ets.lookup(@ets_table, :ring) do
+      [{:ring, nodes}] -> nodes
+      _ -> [Node.new(Diode.wallet())]
     end
+  end
+
+  def node_meta(address) do
+    case :ets.lookup(@ets_table, address) do
+      [{^address, meta}] -> meta
+      _ -> KademliaSql.get_node(address)
+    end
+  end
+
+  def register_node(node_id, server) do
+    if Model.KademliaSql.maybe_update_object(nil, server) do
+      address = Wallet.address!(node_id)
+      KademliaSql.refresh_known_good(address)
+      KademliaSql.upsert_node_from_connection(node_id, %{known_good: false})
+      GenServer.cast(__MODULE__, {:register_node, node_id})
+      :ok
+    end
+  end
+
+  def drop_nodes(keys) when is_list(keys) do
+    GenServer.call(__MODULE__, {:drop_nodes, keys}, 60_000)
+  end
+
+  def redistribute_removed_node(address) do
+    Debouncer.apply(
+      {:redistribute_removed, address},
+      fn ->
+        node = Node.new(Wallet.from_address(address))
+
+        spawn(__MODULE__, :redistribute_stale, [
+          ring_nodes(),
+          node
+        ])
+      end,
+      :timer.minutes(2)
+    )
+  end
+
+  def reset() do
+    GenServer.call(__MODULE__, :reset)
+  end
+
+  def append(key, value, store_self \\ false) do
+    GenServer.call(__MODULE__, {:append, key, value, store_self})
+  end
+
+  @impl true
+  def init(:ok) do
+    :ets.new(@ets_table, [:named_table, :set, :public, read_concurrency: true])
+
+    :ets.new(@discover_throttle_table, [
+      :named_table,
+      :set,
+      :public,
+      read_concurrency: true
+    ])
+
+    ETSLru.new(__MODULE__, 2048, fn value ->
+      case value do
+        nil -> false
+        [] -> false
+        _ -> true
+      end
+    end)
+
+    old_path = Diode.data_dir("kademlia_light.etf")
+
+    if File.exists?(old_path) do
+      Logger.info("Ignoring legacy kademlia_light.etf (network is registry-backed now)")
+      File.rm(old_path)
+    end
+
+    case KademliaSql.sync_registry_nodes() do
+      :error -> KademliaSql.ensure_self_node_for_init()
+      :ok -> :ok
+    end
+
+    ring = load_ring()
+    write_ets_ring(ring)
+
+    :timer.send_interval(@contact_interval, :contact_nodes)
+    :timer.send_interval(@redistribute_interval, :scan_redistribution)
+
+    {:ok, %__MODULE__{ring: ring, version: 3}, {:continue, :seed}}
+  end
+
+  @impl true
+  def handle_continue(:seed, state) do
+    handle_info(:contact_nodes, state)
+    {:noreply, state}
   end
 
   @impl true
   def handle_call(:reset, _from, _state) do
-    {:reply, :ok, %KademliaLight{network: KBuckets.new()}}
+    :ets.delete_all_objects(@ets_table)
+    :ets.delete_all_objects(@discover_throttle_table)
+    KademliaSql.clear_nodes()
+    ring = [Node.new(Diode.wallet())]
+    write_ets_ring(ring)
+    {:reply, :ok, %__MODULE__{ring: ring}}
   end
 
-  def handle_call({:drop_nodes, keys}, _from, state = %KademliaLight{network: network}) do
-    network =
-      Enum.reduce(keys, network, fn key, acc ->
-        case KBuckets.item(acc, key) do
-          nil -> acc
-          item -> KBuckets.delete_item(acc, item)
-        end
-      end)
-
-    {:reply, :ok, %{state | network: network}}
+  def handle_call({:drop_nodes, keys}, _from, state) do
+    KademliaSql.delete_nodes_by_ring_keys(keys)
+    ring = load_ring()
+    write_ets_ring(ring)
+    {:reply, :ok, %{state | ring: ring}}
   end
 
   def handle_call(:network, _from, state) do
-    {:reply, state.network, state}
+    {:reply, state.ring, state}
   end
 
-  def handle_call({:call, fun}, from, state) do
-    fun.(from, state)
-  end
-
-  def handle_call({:append, key, value, _store_self}, _from, queue) do
+  def handle_call({:append, key, value, _store_self}, _from, state) do
     KademliaSql.append!(key, value)
-    {:reply, :ok, queue}
+    {:reply, :ok, state}
   end
 
   @impl true
-  def handle_info(:clean, state = %KademliaLight{network: network}) do
-    # Remove all nodes who haven't connected in the last 30 hours
-    deadline = stale_deadline()
-
-    stale =
-      KBuckets.to_list(network)
-      |> Enum.reject(fn n -> KBuckets.is_self(n) end)
-      |> Enum.reject(fn n -> is_integer(n.last_connected) and n.last_connected > deadline end)
-
-    if not Enum.empty?(stale) do
-      network =
-        Enum.reduce(stale, network, fn stale_node, network ->
-          KBuckets.delete_item(network, stale_node)
-        end)
-
-      state = %{state | network: network}
-      spawn(__MODULE__, :update_stale_nodes, [stale, network])
-      {:noreply, state}
-    else
-      {:noreply, state}
-    end
+  def handle_cast(:reload_ring, state) do
+    ring = load_ring()
+    write_ets_ring(ring)
+    {:noreply, %{state | ring: ring}}
   end
 
-  def handle_info(:save, state) do
-    spawn(Model.File, :store, [Diode.data_dir(@storage_file), state, true])
-    Process.send_after(self(), :save, :timer.minutes(1))
+  def handle_cast({:register_node, node_id}, state) do
+    KademliaSql.upsert_node_from_connection(node_id, %{known_good: false})
+    ring = load_ring()
+    write_ets_ring(ring)
+    ensure_node_connection(Node.new(node_id))
+    {:noreply, %{state | ring: ring}}
+  end
+
+  def handle_cast({:stable_node, node_id}, state) do
+    KademliaSql.mark_stable(node_id)
+    update_ets_meta(node_id)
+    node = Node.new(node_id)
+    queue_redistribute(node)
     {:noreply, state}
   end
 
-  def handle_info(:contact_seeds, state = %KademliaLight{network: network}) do
-    list = Diode.default_peer_list()
-    Logger.info("Contacting #{length(list)} seeds")
+  def handle_cast({:failed_node, node_id}, state) do
+    next_retry = next_retry_at(KademliaSql.get_node(Wallet.address!(node_id)) || %{failures: 1})
+    KademliaSql.mark_failed(node_id, next_retry)
+    update_ets_meta(node_id)
+    {:noreply, state}
+  end
 
-    for peer_server <- list do
-      %URI{userinfo: node_id, host: address, port: port} = URI.parse(peer_server)
+  @impl true
+  def handle_info(:contact_nodes, state) do
+    ring = state.ring
 
-      id =
-        case node_id do
-          nil -> Wallet.new()
-          str -> Wallet.from_address(Base16.decode(str))
-        end
+    spawn(fn ->
+      found = discover_registry_objects(ring)
+      missing = registry_nodes_missing_object(ring)
 
-      Network.Server.ensure_node_connection(PeerHandlerV2, id, address, port)
-    end
+      if found > 0 or missing > 0 do
+        Logger.info(
+          "Registry discovery: found #{found} objects, #{missing} on-chain nodes still without endpoint"
+        )
+      end
 
-    online = Network.Server.get_connections(PeerHandlerV2)
-    now = System.os_time(:second)
-
-    {online, offline} =
-      KBuckets.to_list(network)
-      |> Enum.split_with(fn %KBuckets.Item{node_id: node_id} ->
-        Map.has_key?(online, Wallet.address!(node_id))
-      end)
-
-    network =
-      Enum.reduce(online, network, fn %KBuckets.Item{} = item, network ->
-        KBuckets.update_item(network, %KBuckets.Item{item | last_connected: now})
-      end)
-
-    offline = Enum.filter(offline, fn item -> next_retry(item) < now end)
-    parent = self()
-
-    spawn_link(fn ->
-      Process.register(self(), :offline_nodes_contacter)
-      Logger.info("Contacting #{length(offline)} offline nodes")
-      Enum.each(offline, fn item -> ensure_node_connection(item) end)
-      Process.send_after(parent, :contact_seeds, :timer.minutes(1))
+      contact_registry_nodes(ring)
     end)
 
-    {:noreply, %{state | network: network}}
+    contact_seed_nodes()
+    {:noreply, state}
+  end
+
+  def handle_info(:scan_redistribution, state) do
+    online = Network.Server.get_connections(PeerHandlerV2)
+
+    for {address, _ring_key} <- KademliaSql.nodes_needing_redistribution() do
+      if not Map.has_key?(online, address) do
+        node = Node.new(Wallet.from_address(address))
+
+        Debouncer.apply(
+          {:redistribute_stale, address},
+          fn -> redistribute_stale(ring_nodes(), node) end,
+          :timer.minutes(2)
+        )
+      end
+    end
+
+    {:noreply, state}
   end
 
   def update_stale_nodes(stale, network) do
     Process.register(self(), :stale_nodes_updater)
     Logger.info("Redistributing #{length(stale)} stale nodes")
-    for stale_node <- stale, do: redistribute_stale(network, stale_node)
-  end
 
-  @impl true
-  def handle_continue(:seed, state) do
-    Process.send_after(self(), :save, 60_000)
-    handle_info(:contact_seeds, state)
-    {:noreply, state}
-  end
-
-  def register_node(node_id, server) do
-    if Model.KademliaSql.maybe_update_object(nil, server) do
-      GenServer.cast(__MODULE__, {:register_node, node_id})
-    end
-  end
-
-  def drop_nodes(keys) when is_list(keys) do
-    GenServerDbg.call(__MODULE__, {:drop_nodes, keys}, 60_000)
-  end
-
-  # Private call used by PeerHandlerV2 when connections are established
-  @impl true
-  def handle_cast({:register_node, node_id}, state) do
-    case KBuckets.item(state.network, node_id) do
-      nil -> {:noreply, do_register_node(state, node_id)}
-      %KBuckets.Item{} -> {:noreply, state}
-    end
-  end
-
-  # Private call used by PeerHandlerV2 when is stable for 10 msgs and 30 seconds
-  def handle_cast({:stable_node, node_id}, state) do
-    case KBuckets.item(state.network, node_id) do
-      nil ->
-        {:noreply, do_register_node(state, node_id)}
-
-      %KBuckets.Item{} = node ->
-        network = KBuckets.update_item(state.network, %KBuckets.Item{node | retries: 0})
-        if node.retries > 0, do: queue_redistribute(node)
-        {:noreply, %{state | network: network}}
-    end
-  end
-
-  # Private call used by PeerHandlerV2 when connections fail
-  def handle_cast({:failed_node, node}, state) do
-    case KBuckets.item(state.network, node) do
-      nil -> {:noreply, state}
-      item -> {:noreply, %{state | network: do_failed_node(item, state.network)}}
-    end
-  end
-
-  def handle_cast(
-        {:update_network, before, new_network},
-        state = %KademliaLight{network: network}
-      ) do
-    if before != network do
-      Logger.warning("Race in KademliaLight.update_network()")
-      {:noreply, state}
-    else
-      {:noreply, %{state | network: new_network}}
-    end
-  end
-
-  defp do_register_node(state = %KademliaLight{network: network}, node_id) do
-    node = %KBuckets.Item{
-      node_id: node_id,
-      last_connected: System.os_time(:second)
-    }
-
-    network = KBuckets.insert_item(network, node)
-    queue_redistribute(node)
-    %{state | network: network}
-  end
-
-  defp next_retry(%KBuckets.Item{retries: failures, last_error: last}) do
-    if failures == 0 or last == nil do
-      -1
-    else
-      factor = min(failures, 7)
-      last + round(:math.pow(5, factor))
+    for stale_node <- stale do
+      redistribute_stale(network, stale_node)
     end
   end
 
@@ -394,17 +338,15 @@ defmodule KademliaLight do
     end)
     |> Enum.map(fn _pid ->
       receive do
-        {^ref, ret} ->
-          ret
+        {^ref, ret} -> ret
       end
     end)
   end
 
-  def rpc(%KBuckets.Item{node_id: node_id} = node, call) do
+  def rpc(%Node{node_id: node_id} = node, call) do
     pid = ensure_node_connection(node)
 
     try do
-      # Don't need to use GenServerDbg.call here because we're regelualry exepcting timeouts
       GenServer.call(pid, {:rpc, call}, 2000)
     rescue
       error ->
@@ -447,13 +389,11 @@ defmodule KademliaLight do
     end
   end
 
-  def rpcast(%KBuckets.Item{} = node, call) do
+  def rpcast(%Node{} = node, call) do
     GenServer.cast(ensure_node_connection(node), {:rpc, call})
   end
 
   defp queue_redistribute(node) do
-    # We want to ensure that all other nodes have also come online
-    # before redistributing
     Debouncer.apply(
       {:redistribute, node.node_id},
       fn -> redistribute(node) end,
@@ -461,30 +401,29 @@ defmodule KademliaLight do
     )
   end
 
-  #  redistribute resends all key/values that are nearer to the given node to
-  #  that node
   @max_key 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF
-  def node_range(node, network \\ network()) do
+
+  def node_range(node, network \\ ring_nodes()) do
     online = Network.Server.get_connections(PeerHandlerV2)
 
     node =
       case node do
-        %KBuckets.Item{} -> node
-        _key -> KBuckets.item(network, node)
+        %Node{} -> node
+        key -> Enum.find(network, fn n -> KademliaRing.key(n) == KademliaRing.key(key) end)
       end
 
     previ =
-      case filter_online(KBuckets.prev(network, node), online) do
-        [prev | _] -> KBuckets.integer(prev)
-        [] -> KBuckets.integer(node)
+      case filter_online(KademliaRing.prev(network, node), online) do
+        [prev | _] -> KademliaRing.integer(prev)
+        [] -> KademliaRing.integer(node)
       end
 
-    nodei = KBuckets.integer(node)
+    nodei = KademliaRing.integer(node)
 
     nexti =
-      case filter_online(KBuckets.next(network, node), online) do
-        [next | _] -> KBuckets.integer(next)
-        [] -> KBuckets.integer(node)
+      case filter_online(KademliaRing.next(network, node), online) do
+        [next | _] -> KademliaRing.integer(next)
+        [] -> KademliaRing.integer(node)
       end
 
     range_start = rem(div(previ + nodei, 2), @max_key)
@@ -493,9 +432,9 @@ defmodule KademliaLight do
   end
 
   defp redistribute(node) do
-    network = network()
+    network = ring_nodes()
 
-    if KBuckets.member?(network, node.node_id) do
+    if KademliaRing.member?(network, node.node_id) do
       {range_start, range_end} = node_range(node, network)
       objs = KademliaSql.objects(range_start, range_end)
       redist = Enum.shuffle(objs) |> Enum.take(100)
@@ -504,15 +443,13 @@ defmodule KademliaLight do
         "Redistributing #{length(redist)} of #{length(objs)} objects to #{inspect(Wallet.printable(node.node_id))}"
       )
 
-      Enum.each(objs, fn {key, value} -> rpcast(node, [PeerHandlerV2.store(), key, value]) end)
+      Enum.each(redist, fn {key, value} ->
+        rpcast(node, [PeerHandlerV2.store(), key, value])
+      end)
     end
   end
 
-  @doc """
-    opposite operation of redistribute() resends all key/values belonged to a now missing
-    node to the still existing neighbouring nodes
-  """
-  def redistribute_stale(network, %KBuckets.Item{} = node) do
+  def redistribute_stale(network, %Node{} = node) do
     {range_start, range_end} = node_range(node, network)
 
     objs = KademliaSql.objects(range_start, range_end)
@@ -523,83 +460,202 @@ defmodule KademliaLight do
       |> Enum.take(100)
 
     Logger.info(
-      "Redistributing #{length(redist)} of #{length(objs)} stale objects to #{inspect(Wallet.printable(node.node_id))}"
+      "Redistributing #{length(redist)} of #{length(objs)} stale objects from #{inspect(Wallet.printable(node.node_id))}"
     )
 
     for {key, value} <- redist do
-      do_find_nodes(key, KBuckets.k(), PeerHandlerV2.find_node())
+      find_nodes(key)
       |> Enum.take(@k)
-      |> Enum.each(fn node -> rpcast(node, [PeerHandlerV2.store(), key, value]) end)
+      |> Enum.each(fn n -> rpcast(n, [PeerHandlerV2.store(), key, value]) end)
     end
   end
 
-  # -------------------------------------------------------------------------------------
-  # Helpers calls
-  # -------------------------------------------------------------------------------------
-  @impl true
-  def init(:ok) do
-    ETSLru.new(__MODULE__, 2048, fn value ->
-      case value do
-        nil -> false
-        [] -> false
-        _ -> true
-      end
+  defp load_ring() do
+    nodes =
+      KademliaSql.list_on_chain_nodes()
+      |> Enum.map(fn {node, _meta} -> node end)
+
+    self_node = Node.new(Diode.wallet())
+
+    if Enum.any?(nodes, fn n -> KademliaRing.is_self(n) end) do
+      nodes
+    else
+      [self_node | nodes]
+    end
+  end
+
+  defp write_ets_ring(ring) do
+    :ets.insert(@ets_table, {:ring, ring})
+
+    for node <- ring do
+      update_ets_meta(node.node_id)
+    end
+  end
+
+  defp update_ets_meta(node_id) do
+    address = Wallet.address!(node_id)
+    meta = KademliaSql.get_node(address) || %{}
+    online = Network.Server.get_connections(PeerHandlerV2)
+
+    meta =
+      Map.merge(meta, %{
+        connected: Map.has_key?(online, address) or KademliaRing.is_self(node_id)
+      })
+
+    :ets.insert(@ets_table, {address, meta})
+  end
+
+  @doc false
+  def discover_registry_objects(ring \\ nil) do
+    ring = ring || ring_nodes()
+
+    if map_size(Network.Server.get_connections(PeerHandlerV2)) == 0 do
+      0
+    else
+      now = System.os_time(:second)
+
+      found =
+        ring
+        |> registry_nodes_missing_object_list()
+        |> Enum.shuffle()
+        |> Enum.take(@discover_batch)
+        |> Enum.reduce(0, fn node, acc ->
+          if discover_throttled?(node.address, now) do
+            acc
+          else
+            :ets.insert(@discover_throttle_table, {node.address, now})
+
+            case discover_one_node(node) do
+              :found -> acc + 1
+              _ -> acc
+            end
+          end
+        end)
+
+      KademliaSql.refresh_known_good_all()
+      found
+    end
+  end
+
+  @doc false
+  def registry_nodes_missing_object(ring \\ nil) do
+    (ring || ring_nodes())
+    |> registry_nodes_missing_object_list()
+    |> length()
+  end
+
+  defp registry_nodes_missing_object_list(ring) do
+    ring
+    |> Enum.reject(&KademliaRing.is_self/1)
+    |> Enum.filter(fn %Node{ring_key: ring_key} ->
+      KademliaSql.object(ring_key) == nil
     end)
+  end
 
-    kb =
-      Model.File.load(Diode.data_dir(@storage_file), fn ->
-        %KademliaLight{network: KBuckets.new()}
-      end)
+  defp discover_throttled?(address, now) do
+    case :ets.lookup(@discover_throttle_table, address) do
+      [{^address, last}] when now - last < @discover_throttle_seconds -> true
+      _ -> false
+    end
+  end
 
-    kb =
-      if Map.get(kb, :version, 0) < 2 do
-        Logger.warning("KademliaLight version is too old, resetting")
-        KademliaSql.archive()
-        %KademliaLight{network: KBuckets.new()}
-      else
-        kb
-      end
+  defp discover_one_node(%Node{address: address, ring_key: ring_key}) do
+    if KademliaSql.object(ring_key) != nil do
+      :already
+    else
+      case find_value(address) do
+        nil ->
+          :miss
 
-    for node <- KBuckets.to_list(kb.network) do
-      if Map.has_key?(node, :object) and is_tuple(node.object) do
-        KademliaSql.maybe_update_object(nil, node.object)
+        value when is_binary(value) ->
+          KademliaSql.maybe_update_object(ring_key, value)
+          KademliaSql.refresh_known_good(address)
+          :found
+
+        _ ->
+          :miss
       end
     end
+  end
 
-    network =
-      Enum.reduce(KBuckets.to_list(kb.network), kb.network, fn node, acc ->
-        if KademliaSql.object(KBuckets.key(node)) == nil do
-          KBuckets.delete_item(acc, node)
+  defp contact_registry_nodes(ring) do
+    online = Network.Server.get_connections(PeerHandlerV2)
+    now = System.os_time(:second)
+
+    for node <- ring, not KademliaRing.is_self(node) do
+      address = node.address
+      meta = KademliaSql.get_node(address)
+
+      if meta != nil and KademliaSql.object(node.ring_key) != nil do
+        if Map.has_key?(online, address) do
+          KademliaSql.upsert_node_from_connection(node.node_id, %{
+            known_good: true,
+            last_connected: now
+          })
+
+          update_ets_meta(node.node_id)
         else
-          acc
+          if should_retry?(meta, now) do
+            ensure_node_connection(node)
+          end
         end
-      end)
-
-    # Clean dead nodes every 10 minutes
-    :timer.send_interval(:timer.minutes(10), :clean)
-
-    {:ok, %{kb | network: network}, {:continue, :seed}}
+      end
+    end
   end
 
-  @doc "Method used for testing"
-  def reset() do
-    GenServerDbg.call(__MODULE__, :reset)
+  defp contact_seed_nodes() do
+    list = Diode.default_peer_list()
+    Logger.info("Contacting #{length(list)} seeds")
+
+    for peer_server <- list do
+      %URI{userinfo: node_id, host: address, port: port} = URI.parse(peer_server)
+
+      id =
+        case node_id do
+          nil -> Wallet.new()
+          str -> Wallet.from_address(Base16.decode(str))
+        end
+
+      Network.Server.ensure_node_connection(PeerHandlerV2, id, address, port)
+    end
   end
 
-  def clean() do
-    send(__MODULE__, :clean)
+  defp should_retry?(nil, _now), do: true
+
+  defp should_retry?(meta, now) do
+    case meta.next_retry do
+      nil -> true
+      t when t <= now -> true
+      _ -> false
+    end
   end
 
-  def append(key, value, store_self \\ false) do
-    GenServerDbg.call(__MODULE__, {:append, key, value, store_self})
+  def next_retry_at(nil), do: System.os_time(:second)
+
+  def next_retry_at(meta) do
+    failures = Map.get(meta, :failures, 0) || 0
+    last = Map.get(meta, :last_error) || System.os_time(:second)
+    last + fib_delay(failures)
   end
 
-  # -------------------------------------------------------------------------------------
-  # Private calls
-  # -------------------------------------------------------------------------------------
+  defp fib_delay(0), do: 0
 
-  defp ensure_node_connection(item = %KBuckets.Item{node_id: node_id}) do
-    if KBuckets.is_self(item) do
+  defp fib_delay(failures) do
+    n = min(failures, @fib_max_index)
+    min(fib(n), @max_retry_seconds)
+  end
+
+  defp fib(n) when n <= 0, do: 0
+  defp fib(1), do: 1
+  defp fib(2), do: 1
+
+  defp fib(n) do
+    {_a, b} = Enum.reduce(2..n, {1, 1}, fn _, {a, b} -> {b, a + b} end)
+    b
+  end
+
+  defp ensure_node_connection(%Node{node_id: node_id} = node) do
+    if KademliaRing.is_self(node) do
       Network.Server.ensure_node_connection(
         PeerHandlerV2,
         node_id,
@@ -607,64 +663,164 @@ defmodule KademliaLight do
         Diode.peer2_port()
       )
     else
-      server = KBuckets.stale_object(item)
-      host = Server.host(server)
-      port = Server.peer_port(server)
-      Network.Server.ensure_node_connection(PeerHandlerV2, node_id, host, port)
+      case KademliaSql.object(node.ring_key) do
+        nil ->
+          :error
+
+        encoded ->
+          server = Object.decode!(encoded)
+          host = Server.host(server)
+          port = Server.peer_port(server)
+          Network.Server.ensure_node_connection(PeerHandlerV2, node_id, host, port)
+      end
     end
   end
 
-  defp do_failed_node(item = %KBuckets.Item{retries: retries}, network) do
-    if KBuckets.is_self(item) do
-      network
+  defp do_find_value(key) do
+    candidates =
+      ring_nodes()
+      |> filter_online()
+      |> KademliaRing.nearest(key)
+
+    do_find_value_waves(key, candidates, %{}, nil, MapSet.new())
+  end
+
+  defp do_find_value_waves(key, candidates, visited, best, queried) do
+    unqueried =
+      Enum.reject(candidates, fn node ->
+        MapSet.member?(queried, KademliaRing.key(node))
+      end)
+
+    cond do
+      unqueried == [] ->
+        finalize_find_value(key, visited, best)
+
+      should_stop_value_search?(key, visited, unqueried, best) ->
+        finalize_find_value(key, visited, best)
+
+      true ->
+        wave = Enum.take(unqueried, @alpha)
+        new_queried = Enum.reduce(wave, queried, &MapSet.put(&2, KademliaRing.key(&1)))
+
+        results = rpc(wave, [PeerHandlerV2.find_value(), key])
+
+        {visited, best} =
+          Enum.zip(wave, results)
+          |> Enum.reduce({visited, best}, fn {node, result}, {vis, b} ->
+            vis = Map.put(vis, KademliaRing.key(node), node)
+            absorb_peer_hints(peer_hint_list(result))
+            {vis, pick_best_value(result, b)}
+          end)
+
+        do_find_value_waves(key, candidates, visited, best, new_queried)
+    end
+  end
+
+  defp should_stop_value_search?(key, visited, unqueried, best) do
+    cond do
+      best != nil and map_size(visited) > 0 ->
+        true
+
+      map_size(visited) >= @k_search and not closer_candidates_remain?(key, visited, unqueried) ->
+        true
+
+      true ->
+        false
+    end
+  end
+
+  defp closer_candidates_remain?(key, visited, unqueried) do
+    if map_size(visited) < @k_search do
+      unqueried != []
     else
-      KBuckets.update_item(network, %KBuckets.Item{
-        item
-        | retries: retries + 1,
-          last_error: System.os_time(:second)
-      })
+      min_dist =
+        visited
+        |> Map.keys()
+        |> Enum.map(fn node_key -> KademliaRing.distance(key, node_key) end)
+        |> Enum.sort()
+        |> Enum.at(@k_search - 1) || @max_oid
+
+      Enum.any?(unqueried, fn node -> KademliaRing.distance(key, node) < min_dist end)
     end
   end
 
-  def do_find_nodes(key, k, cmd) do
-    get_cached(
-      fn {cmd, key} ->
-        KademliaSearch.find_nodes(__MODULE__, key, find_node_lookup(key), k, cmd)
-      end,
-      {cmd, key}
-    )
+  defp finalize_find_value(key, visited, best) do
+    visited =
+      visited
+      |> Map.values()
+      |> KademliaRing.nearest(key)
+
+    if best do
+      {:value, best, visited}
+    else
+      visited
+    end
   end
 
-  def nearest_n(key) do
-    KBuckets.nearest(network(), key)
-    |> filter_online()
-    |> Enum.take(KBuckets.k())
+  defp pick_best_value({:value, value}, best), do: choose_newer_value(value, best)
+  defp pick_best_value(_result, best), do: best
+
+  defp choose_newer_value(value, nil), do: value
+
+  defp choose_newer_value(value, best) do
+    if Object.block_number(Object.decode!(best)) >
+         Object.block_number(Object.decode!(value)) do
+      best
+    else
+      value
+    end
   end
 
-  # If the list is external, we don't filter online because there is likely no connection
-  def nearest_n(key, network) do
-    KBuckets.nearest(network, key)
-    |> Enum.take(KBuckets.k())
-  end
+  defp peer_hint_list({:value, _}), do: []
+  defp peer_hint_list(list) when is_list(list), do: list
+  defp peer_hint_list(_), do: []
 
-  def filter_online(list, online \\ Network.Server.get_connections(PeerHandlerV2)) do
-    Enum.filter(list, fn %KBuckets.Item{node_id: wallet} = item ->
-      KBuckets.is_self(item) or Map.has_key?(online, Wallet.address!(wallet))
+  @doc false
+  def absorb_peer_hints(items) when is_list(items) do
+    Enum.each(items, fn
+      %{object: object} when not is_nil(object) ->
+        KademliaSql.maybe_update_object(nil, object)
+
+      _ ->
+        :ok
     end)
   end
 
-  @cache_timeout 20_000
-  defp get_cached(fun, key) do
-    cache_key = {fun, key}
+  def nearest_n(key) do
+    ring_nodes()
+    |> filter_online()
+    |> KademliaRing.nearest_n(key, @k_search)
+  end
 
-    case ETSLru.get(__MODULE__, cache_key) do
+  def filter_online(list, online \\ Network.Server.get_connections(PeerHandlerV2)) do
+    Enum.filter(list, fn %Node{node_id: wallet} = node ->
+      KademliaRing.is_self(node) or Map.has_key?(online, Wallet.address!(wallet))
+    end)
+  end
+
+  defp node_object(%Node{} = node) do
+    case KademliaSql.object(node.ring_key) do
+      nil -> nil
+      binary -> Object.decode!(binary)
+    end
+  end
+
+  @cache_timeout 20_000
+
+  @doc false
+  def get_cached_test(fun, cache_key, arg), do: get_cached(fun, cache_key, arg)
+
+  defp get_cached(fun, cache_key, arg) do
+    ets_key = {fun, cache_key}
+
+    case ETSLru.get(__MODULE__, ets_key) do
       nil ->
-        ETSLru.fetch(__MODULE__, cache_key, fn -> fun.(key) end)
+        ETSLru.fetch(__MODULE__, ets_key, fn -> fun.(arg) end)
 
       other ->
         Debouncer.immediate(
-          cache_key,
-          fn -> ETSLru.put(__MODULE__, cache_key, fun.(key)) end,
+          ets_key,
+          fn -> ETSLru.put(__MODULE__, ets_key, fun.(arg)) end,
           @cache_timeout
         )
 
@@ -674,9 +830,5 @@ defmodule KademliaLight do
 
   def hash(binary) do
     Diode.hash(binary)
-  end
-
-  defp stale_deadline() do
-    System.os_time(:second) - 60 * 30
   end
 end

@@ -6,7 +6,7 @@ defmodule Contract.NodeRegistry do
     Wrapper for the NodeRegistry contract functions, only deployed on Moonbeam
   """
 
-  alias DiodeClient.{Base16}
+  alias DiodeClient.{ABI, Base16}
   @address "0xc4b466f63c0A31302Bc8A688A7c90e1199Bb6f84" |> Base16.decode()
   @token "0x434116a99619f2B465A137199C38c1Aab0353913" |> Base16.decode()
   @chain_id 1284
@@ -26,6 +26,21 @@ defmodule Contract.NodeRegistry do
       [Diode.address(), accountant_address, stake],
       chainId: @chain_id
     )
+  end
+
+  def nodes_above(stake \\ Shell.ether(1)) do
+    case Shell.call(chain_id(), @address, "getNodesAbove", ["uint256"], [stake]) do
+      nil ->
+        {:error, :rpc_failed}
+
+      result ->
+        [addresses] = ABI.decode_args(["address[]"], Base16.decode(result))
+        addresses
+    end
+  rescue
+    error -> {:error, error}
+  catch
+    :exit, reason -> {:error, reason}
   end
 
   def node_info(address \\ Diode.address()) do

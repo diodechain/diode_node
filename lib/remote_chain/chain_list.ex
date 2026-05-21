@@ -95,7 +95,6 @@ defmodule RemoteChain.ChainList do
       end
 
     RemoteChain.WSConn.close(pid)
-    Logger.info("Tested #{ws_endpoint} for #{chain} and got #{ret}")
     ret
   after
     false

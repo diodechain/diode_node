@@ -268,7 +268,7 @@ defmodule TestHelper do
     peer_uris = for num <- 1..number, do: clone_peer_uri(num, Enum.at(wallets, num))
     Diode.Config.set("DEFAULT_PEER_LIST", Enum.join(peer_uris, " "))
     # Trigger KademliaLight to contact seeds immediately
-    send(KademliaLight, :contact_seeds)
+    send(KademliaLight, :contact_nodes)
     Process.sleep(2000)
     :ok
   end

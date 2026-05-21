@@ -29,6 +29,12 @@ defmodule Cron do
       %Job{name: "Memory report", interval: :timer.hours(1), fun: &Memory.report/0},
       %Job{name: "Memory check", interval: :timer.minutes(10), fun: &Memory.check_rss/0},
       %Job{
+        name: "Sync node registry",
+        interval: :timer.hours(1),
+        fun: &Model.KademliaSql.sync_registry_nodes/0,
+        startup: :timer.minutes(2)
+      },
+      %Job{
         name: "Clear invalid objects",
         interval: :timer.hours(24),
         fun: &Model.KademliaSql.clear_invalid_objects/0
