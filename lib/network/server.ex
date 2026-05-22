@@ -291,8 +291,15 @@ defmodule Network.Server do
           # Otherwise we close the new connection as there is an existing connection already
           cond do
             actual_key == connect_key ->
-              # 'other_pid' might be a just established connection that doesn't have validated the endpoint key yet
-              # e.g. it might be to a different node_id. But 'pid' is validated now, so we keep it.
+              # Outbound dial (or re-register): same node id as the slot we hold — keep this pid.
+              kill_clone(other_pid, actual_key)
+
+              Map.put(clients, actual_key, client_entry(pid, address, port, now))
+              |> Map.put(pid, actual_key)
+
+            is_nil(connect_key) ->
+              # Inbound after TLS (no prior pid→key entry): prefer this connection over whatever
+              # holds the slot (outbound dial from ensure_node_connection, stale handler, etc.).
               kill_clone(other_pid, actual_key)
 
               Map.put(clients, actual_key, client_entry(pid, address, port, now))
