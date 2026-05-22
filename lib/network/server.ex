@@ -19,6 +19,7 @@ defmodule Network.Server do
 
   defstruct sockets: %{},
             clients: %{},
+            ready: %{},
             protocol: nil,
             ports: [],
             opts: %{},
@@ -29,6 +30,7 @@ defmodule Network.Server do
   @type t :: %Network.Server{
           sockets: %{integer() => sslsocket()},
           clients: map(),
+          ready: %{binary() => pid()},
           protocol: atom(),
           ports: [integer()],
           opts: %{},
@@ -101,6 +103,17 @@ defmodule Network.Server do
     end
   end
 
+  @doc """
+  Peers that finished handshake and can accept `{:rpc, _}` (logical Kademlia network).
+  """
+  def get_ready_connections(name) do
+    if pid = Process.whereis(name) do
+      GenServerDbg.call(pid, :get_ready_connections)
+    else
+      %{}
+    end
+  end
+
   def ensure_node_connection(name, node_id, address, port)
       when node_id == nil or is_tuple(node_id) do
     GenServerDbg.call(name, {:ensure_node_connection, node_id, address, port})
@@ -117,15 +130,16 @@ defmodule Network.Server do
 
       key ->
         clients = Map.drop(clients, [pid, key])
+        ready = Map.delete(state.ready, key)
 
         clients =
-          Enum.find(clients, nil, fn {_pid, key0} -> key0 == key end)
+          Enum.find(clients, nil, fn {_entry, key0} -> key0 == key end)
           |> case do
             nil -> clients
             {pid0, key0} -> Map.put(clients, key0, {pid0, System.os_time(:millisecond)})
           end
 
-        {:noreply, %{state | clients: clients}}
+        {:noreply, %{state | clients: clients, ready: ready}}
     end
   end
 
@@ -155,6 +169,17 @@ defmodule Network.Server do
     {:noreply, state}
   end
 
+  @impl true
+  def handle_cast({:mark_ready, address, pid}, state) do
+    ready =
+      case Map.get(state.clients, address) do
+        {^pid, _} -> Map.put(state.ready, address, pid)
+        _ -> state.ready
+      end
+
+    {:noreply, %{state | ready: ready}}
+  end
+
   defp to_key(nil) do
     Wallet.new() |> Wallet.address!()
   end
@@ -173,6 +198,17 @@ defmodule Network.Server do
         end
       end)
       |> Enum.map(fn {key, {pid, _timestamp}} -> {key, pid} end)
+      |> Map.new()
+
+    {:reply, result, state}
+  end
+
+  def handle_call(:get_ready_connections, _from, state) do
+    result =
+      state.ready
+      |> Enum.filter(fn {address, pid} ->
+        match?({^pid, _}, Map.get(state.clients, address)) and Process.alive?(pid)
+      end)
       |> Map.new()
 
     {:reply, result, state}
