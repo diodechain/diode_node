@@ -35,6 +35,61 @@ sudo snap restart diode-node.service
 
 If you do not connect `firewall-control`, set `WIREGUARD_AUTO_NAT=0` and configure NAT on the host (e.g. `scripts/setup-wg-nat.sh`).
 
+## Snap commands
+
+Besides the background service, the snap installs several commands. Arguments you pass after the command name are forwarded to the node (for example `diode-node.rpc Diode.Cmd.status` runs `bin/run elevated rpc Diode.Cmd.status` inside the snap).
+
+| Command | Description |
+| --- | --- |
+| `diode-node.service` | Relay node daemon (managed with `snap services`) |
+| `diode-node.info` | Print node status (wallet, uptime, peers, epoch score) |
+| `diode-node.rpc` | Run any RPC expression on the running node |
+| `diode-node.flush` | Clear in-memory caches |
+| `diode-node.env` | Print effective environment variables |
+| `diode-node.shell` | Attach a remote console to the running node |
+
+Service control:
+
+```bash
+sudo snap services diode-node
+sudo snap start diode-node.service
+sudo snap stop diode-node.service
+sudo snap restart diode-node.service
+```
+
+Status and built-in RPC helpers (no extra arguments needed for `flush`, `info`, and `env`):
+
+```bash
+diode-node.info
+sudo diode-node.flush
+sudo diode-node.env
+```
+
+Generic RPC — pass any Elixir expression as arguments (`rpc`, `flush`, `env`, and `shell` require `sudo` because they run as the snap superuser):
+
+```bash
+sudo diode-node.rpc Diode.Cmd.status
+sudo diode-node.rpc 'Diode.Cmd.configure()'
+sudo diode-node.rpc 'IO.inspect(Diode.wallet())'
+```
+
+Remote console:
+
+```bash
+sudo diode-node.shell
+```
+
+After changing snap configuration, apply settings and restart if needed:
+
+```bash
+sudo snap set diode-node host=203.0.113.1
+sudo snap set diode-node log-level=debug
+sudo diode-node.rpc 'Diode.Cmd.configure()'
+sudo snap restart diode-node.service
+```
+
+Snap config keys use lowercase with hyphens (environment variables use underscores), for example `wireguard-listen-port` maps to `WIREGUARD_LISTEN_PORT`. List current values with `sudo snap get diode-node`.
+
 # Linux Kernel optimization
 
 To optimize Linux for maximum network performance we advise to enable tcp bbr:

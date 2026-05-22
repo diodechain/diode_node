@@ -31,11 +31,13 @@ defmodule KademliaLightQuorumTest do
       [Node.new(Diode.wallet()), Node.new(peer)]
     })
 
+    online = %{Wallet.address!(peer) => self()}
+
     rpc_fun = fn nodes, _call ->
       Enum.map(nodes, fn _ -> ["ok"] end)
     end
 
-    assert :ok = KademliaLight.store_with_rpc(key, value, rpc_fun)
+    assert :ok = KademliaLight.store_with_rpc(key, value, rpc_fun, online)
   end
 
   test "store quorum fallback succeeds on second batch" do
@@ -61,7 +63,12 @@ defmodule KademliaLightQuorumTest do
       end
     end
 
-    assert :ok = KademliaLight.store_with_rpc(key, value, rpc_fun)
+    online =
+      wallets
+      |> Enum.map(fn w -> {Wallet.address!(w), self()} end)
+      |> Map.new()
+
+    assert :ok = KademliaLight.store_with_rpc(key, value, rpc_fun, online)
   end
 
   test "store quorum does not rpc when no peers are RPC-ready" do
@@ -85,7 +92,7 @@ defmodule KademliaLightQuorumTest do
     assert {:error, :quorum_not_met, %{acked: 1, tried: _}} =
              KademliaLight.store_with_rpc(key, value, rpc_fun)
 
-    assert Agent.get(agent) == nil
+    assert Agent.get(agent, fn _ -> nil end) == nil
   end
 
   test "store quorum not met when all remotes fail" do
@@ -100,11 +107,19 @@ defmodule KademliaLightQuorumTest do
              KademliaLight.store_with_rpc(key, value, rpc_fun)
   end
 
-  test "find_value quorum selects newest among R responses" do
+  test "find_value quorum selects newest among R responses in one batch" do
     key = <<13::256>>
     n1 = Node.new(Wallet.new())
     n2 = Node.new(Wallet.new())
     n3 = Node.new(Wallet.new())
+
+    addresses = Enum.map([n1, n2, n3], & &1.address)
+    assert :ok = Model.KademliaSql.sync_registry_nodes(addresses)
+
+    ring = [Node.new(Diode.wallet()), n1, n2, n3]
+    :ets.insert(:kademlia_network, {:ring, ring})
+
+    online = Map.new([n1, n2, n3], fn n -> {n.address, self()} end)
 
     v1 = data_value(1)
     v5 = data_value(5)
@@ -119,14 +134,29 @@ defmodule KademliaLightQuorumTest do
       end)
     end
 
-    result =
-      KademliaLight.find_value_quorum_waves(key, [n1, n2, n3], rpc_fun)
+    result = KademliaLight.find_value_with_rpc(key, rpc_fun, online)
 
     assert result == v5
   end
 
+  test "find_value returns nil when read quorum not met and no local copy" do
+    key = <<16::256>>
+    peer = Wallet.new()
+    assert :ok = Model.KademliaSql.sync_registry_nodes([Wallet.address!(peer)])
+
+    ring = [Node.new(Diode.wallet()), Node.new(peer)]
+    :ets.insert(:kademlia_network, {:ring, ring})
+
+    online = %{Wallet.address!(peer) => self()}
+
+    rpc_fun = fn _nodes, _call -> [[]] end
+
+    assert KademliaLight.find_value_with_rpc(key, rpc_fun, online) == nil
+  end
+
   test "repair_replicas pushes store to connected replica targets" do
     key = <<14::256>>
+    hkey = KademliaLight.hash(key)
     value = data_value(10)
 
     wallets = for _ <- 1..4, do: Wallet.new()
@@ -136,14 +166,16 @@ defmodule KademliaLightQuorumTest do
     ring = [Node.new(Diode.wallet()) | Enum.map(wallets, &Node.new/1)]
     :ets.insert(:kademlia_network, {:ring, ring})
 
-    {replica_remote, _} = KademliaLight.replica_targets(key)
+    online = Map.new(wallets, fn w -> {Wallet.address!(w), self()} end)
+
+    {replica_remote, _} = KademliaLight.replica_targets(key, online)
     assert length(replica_remote) >= 1
 
     parent = self()
 
     rpc_fun = fn nodes, call ->
       case call do
-        [:store, ^key, ^value] ->
+        [:store, ^hkey, ^value] ->
           send(parent, {:repair_store, length(nodes)})
           Enum.map(nodes, fn _ -> ["ok"] end)
 

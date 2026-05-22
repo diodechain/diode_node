@@ -20,9 +20,6 @@ defmodule KademliaLight do
   @n 3
   @w 2
   @r 2
-  @k_search KademliaRing.k()
-  @alpha 3
-  @max_oid 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF + 1
   @ets_table :kademlia_network
   @redistribute_interval :timer.minutes(2)
   @contact_interval :timer.minutes(1)
@@ -32,6 +29,7 @@ defmodule KademliaLight do
   @max_retry_seconds 6 * 3600
   @fib_max_index 28
   @rpc_lookup_timeout 2000
+  @rpc_read_timeout 800
 
   defstruct ring: [], version: 3
 
@@ -54,15 +52,15 @@ defmodule KademliaLight do
   def find_value(key) do
     key = hash(key)
 
-    nodes = get_cached(&do_find_value/1, {:find_value, key}, key)
+    result = get_cached(&do_find_value_quorum/1, {:find_value, key}, key)
 
-    case nodes do
-      {:value, value, _visited} ->
+    case result do
+      {:value, value} ->
         value = merge_local_find_value(key, value)
         repair_replicas(key, value)
         value
 
-      visited when is_list(visited) ->
+      :miss ->
         case KademliaSql.object(key) do
           nil ->
             nil
@@ -98,12 +96,12 @@ defmodule KademliaLight do
 
   def find_nodes(key) do
     key = hash(key)
-    nearest_n(key) |> Enum.take(@k_search)
+    replica_hint_nodes(key)
   end
 
   def find_node_lookup(key) do
     key = hash(key)
-    get_cached(&nearest_n/1, {:find_node_lookup, key}, key)
+    get_cached(&replica_hint_nodes/1, {:find_node_lookup, key}, key)
   end
 
   def network() do
@@ -343,13 +341,13 @@ defmodule KademliaLight do
     Network.Server.get_ready_connections(PeerHandlerV2)
   end
 
-  defp rpc_with_cutoff(node_id, pid, call) do
+  defp rpc_with_cutoff(node_id, pid, call, timeout \\ @rpc_lookup_timeout) do
     parent = self()
     ref = make_ref()
     log_ref = make_ref()
 
     spawn(fn ->
-      logger = spawn(fn -> log_rpc_after_cutoff(node_id, log_ref) end)
+      logger = spawn(fn -> log_rpc_after_cutoff(node_id, log_ref, timeout) end)
 
       t0 = System.monotonic_time(:millisecond)
       result = rpc_call_result(pid, call)
@@ -362,8 +360,36 @@ defmodule KademliaLight do
       {^ref, :done, _ms, result} ->
         normalize_rpc_result(node_id, result)
     after
-      @rpc_lookup_timeout ->
+      timeout ->
         []
+    end
+  end
+
+  defp rpc_read(nodes, call) when is_list(nodes) do
+    me = self()
+    ref = make_ref()
+
+    Enum.map(nodes, fn node ->
+      spawn_link(fn ->
+        send(me, {ref, rpc_read_node(node, call)})
+      end)
+    end)
+    |> Enum.map(fn _pid ->
+      receive do
+        {^ref, ret} -> ret
+      end
+    end)
+  end
+
+  defp rpc_read_node(%Node{node_id: node_id}, call) do
+    address = Wallet.address!(node_id)
+
+    case Map.get(ready_connections(), address) do
+      nil ->
+        []
+
+      pid ->
+        rpc_with_cutoff(node_id, pid, call, @rpc_read_timeout)
     end
   end
 
@@ -404,22 +430,20 @@ defmodule KademliaLight do
   @doc false
   def rpc_with_cutoff_test(node_id, pid, call), do: rpc_with_cutoff(node_id, pid, call)
 
-  defp log_rpc_after_cutoff(node_id, log_ref) do
+  defp log_rpc_after_cutoff(node_id, log_ref, timeout) do
     printable = Wallet.printable(node_id)
 
     receive do
-      {^log_ref, ms, _result} when ms > @rpc_lookup_timeout ->
+      {^log_ref, ms, _result} when ms > timeout ->
         Logger.info(
-          "Slow RPC from #{printable} completed in #{ms}ms (lookup cutoff #{@rpc_lookup_timeout}ms)"
+          "Slow RPC from #{printable} completed in #{ms}ms (lookup cutoff #{timeout}ms)"
         )
 
       {^log_ref, _ms, _result} ->
         :ok
     after
       120_000 ->
-        Logger.info(
-          "RPC from #{printable} did not complete (lookup cutoff #{@rpc_lookup_timeout}ms)"
-        )
+        Logger.info("RPC from #{printable} did not complete (lookup cutoff #{timeout}ms)")
     end
   end
 
@@ -712,89 +736,33 @@ defmodule KademliaLight do
     end
   end
 
-  defp do_find_value(key) do
-    {replica_remote, _} = replica_targets(key)
-
-    candidates =
-      ring_nodes()
-      |> filter_online()
-      |> KademliaRing.nearest(key)
-      |> prioritize_replica_candidates(replica_remote)
-
+  defp do_find_value_quorum(key, rpc_fun \\ &rpc_read/2, online \\ nil) do
     local_value = KademliaSql.object(key)
     value_responses = if local_value, do: [local_value], else: []
 
-    do_find_value_waves(key, candidates, %{}, value_responses, MapSet.new())
-  end
+    {replica_remote, _} = replica_targets(key, online)
 
-  defp do_find_value_waves(key, candidates, visited, value_responses, queried) do
-    unqueried =
-      Enum.reject(candidates, fn node ->
-        MapSet.member?(queried, KademliaRing.key(node))
+    results =
+      if replica_remote == [] do
+        []
+      else
+        rpc_fun.(replica_remote, [PeerHandlerV2.find_value(), key])
+      end
+
+    value_responses =
+      Enum.zip(replica_remote, results)
+      |> Enum.reduce(value_responses, fn {_node, result}, responses ->
+        absorb_peer_hints(peer_hint_list(result))
+        append_value_response(result, responses)
       end)
 
-    cond do
-      unqueried == [] ->
-        finalize_find_value(key, visited, value_responses)
-
-      should_stop_value_search?(key, visited, unqueried, value_responses) ->
-        finalize_find_value(key, visited, value_responses)
-
-      true ->
-        wave = Enum.take(unqueried, @alpha)
-        new_queried = Enum.reduce(wave, queried, &MapSet.put(&2, KademliaRing.key(&1)))
-
-        results = rpc(wave, [PeerHandlerV2.find_value(), key])
-
-        {visited, value_responses} =
-          Enum.zip(wave, results)
-          |> Enum.reduce({visited, value_responses}, fn {node, result}, {vis, responses} ->
-            vis = Map.put(vis, KademliaRing.key(node), node)
-            absorb_peer_hints(peer_hint_list(result))
-            {vis, append_value_response(result, responses)}
-          end)
-
-        do_find_value_waves(key, candidates, visited, value_responses, new_queried)
-    end
-  end
-
-  defp should_stop_value_search?(key, visited, unqueried, value_responses) do
-    cond do
-      length(value_responses) >= @r ->
-        true
-
-      map_size(visited) >= @k_search and not closer_candidates_remain?(key, visited, unqueried) ->
-        true
-
-      true ->
-        false
-    end
-  end
-
-  defp closer_candidates_remain?(key, visited, unqueried) do
-    if map_size(visited) < @k_search do
-      unqueried != []
+    if read_quorum_met?(length(value_responses)) do
+      case quorum_select_value(value_responses) do
+        nil -> :miss
+        best -> {:value, best}
+      end
     else
-      min_dist =
-        visited
-        |> Map.keys()
-        |> Enum.map(fn node_key -> KademliaRing.distance(key, node_key) end)
-        |> Enum.sort()
-        |> Enum.at(@k_search - 1) || @max_oid
-
-      Enum.any?(unqueried, fn node -> KademliaRing.distance(key, node) < min_dist end)
-    end
-  end
-
-  defp finalize_find_value(key, visited, value_responses) do
-    visited =
-      visited
-      |> Map.values()
-      |> KademliaRing.nearest(key)
-
-    case quorum_select_value(value_responses) do
-      nil -> visited
-      best -> {:value, best, visited}
+      :miss
     end
   end
 
@@ -817,9 +785,9 @@ defmodule KademliaLight do
   defp peer_hint_list(_), do: []
 
   @doc false
-  def replica_targets(key) do
+  def replica_targets(key, online \\ nil) do
     key = hash(key)
-    ready = ready_connections()
+    ready = online || ready_connections()
 
     nearest =
       ring_nodes()
@@ -835,9 +803,9 @@ defmodule KademliaLight do
     {remote, self_in_set?}
   end
 
-  defp replica_candidates(key) do
+  defp replica_candidates(key, online) do
     key = hash(key)
-    ready = ready_connections()
+    ready = online || ready_connections()
 
     ring_nodes()
     |> KademliaRing.nearest(key)
@@ -854,24 +822,13 @@ defmodule KademliaLight do
   @doc false
   def sort_connected_first_test(nodes, online), do: sort_connected_first(nodes, online)
 
-  defp prioritize_replica_candidates(candidates, replica_remote) do
-    replica_keys = MapSet.new(replica_remote, &KademliaRing.key/1)
+  defp quorum_store_remote(hkey, value, rpc_fun, online \\ nil) do
+    all_candidates = replica_candidates(hkey, online)
 
-    {replica_first, rest} =
-      Enum.split_with(candidates, fn node ->
-        MapSet.member?(replica_keys, KademliaRing.key(node))
-      end)
-
-    replica_first ++ rest
-  end
-
-  defp quorum_store_remote(hkey, value, rpc_fun) do
-    all_candidates = replica_candidates(hkey)
-
-    {initial, _} = replica_targets(hkey)
+    {initial, _} = replica_targets(hkey, online)
     initial = if initial == [], do: Enum.take(all_candidates, @n), else: initial
 
-    case do_quorum_store(hkey, value, rpc_fun, initial, all_candidates, MapSet.new()) do
+    case do_quorum_store(hkey, value, rpc_fun, initial, all_candidates, MapSet.new(), online) do
       :ok ->
         :ok
 
@@ -882,8 +839,8 @@ defmodule KademliaLight do
     end
   end
 
-  defp do_quorum_store(hkey, value, rpc_fun, batch, all_candidates, tried) do
-    ready = ready_connections()
+  defp do_quorum_store(hkey, value, rpc_fun, batch, all_candidates, tried, online) do
+    ready = online || ready_connections()
 
     ready_batch =
       Enum.filter(batch, fn %Node{address: address} ->
@@ -919,7 +876,7 @@ defmodule KademliaLight do
       if fallback == [] do
         {:error, :quorum_not_met, %{acked: total, tried: MapSet.size(tried)}}
       else
-        do_quorum_store(hkey, value, rpc_fun, fallback, all_candidates, tried)
+        do_quorum_store(hkey, value, rpc_fun, fallback, all_candidates, tried, online)
       end
     end
   end
@@ -941,6 +898,11 @@ defmodule KademliaLight do
   @doc false
   def write_quorum_met?(remote_acks) when is_integer(remote_acks) do
     1 + remote_acks >= @w
+  end
+
+  @doc false
+  def read_quorum_met?(response_count) when is_integer(response_count) do
+    response_count >= @r
   end
 
   @doc false
@@ -986,92 +948,27 @@ defmodule KademliaLight do
   end
 
   @doc false
-  def should_stop_value_search_test(key, visited, unqueried, value_responses) do
-    should_stop_value_search?(key, visited, unqueried, value_responses)
-  end
-
-  @doc false
-  def store_with_rpc(key, value, rpc_fun) when is_function(rpc_fun, 2) do
+  def store_with_rpc(key, value, rpc_fun, online \\ nil) when is_function(rpc_fun, 2) do
     hkey = hash(key)
     KademliaSql.maybe_update_object(hkey, value)
-    quorum_store_remote(hkey, value, rpc_fun)
+    quorum_store_remote(hkey, value, rpc_fun, online)
   end
 
   @doc false
-  def find_value_quorum_waves(key, candidates, rpc_fun) when is_function(rpc_fun, 2) do
+  def find_value_with_rpc(key, rpc_fun, online \\ nil) when is_function(rpc_fun, 2) do
     key = hash(key)
 
-    local_value = KademliaSql.object(key)
-    value_responses = if local_value, do: [local_value], else: []
-
-    case do_find_value_waves_rpc(key, candidates, %{}, value_responses, MapSet.new(), rpc_fun) do
-      {:value, value, _visited} -> value
-      _ -> nil
-    end
-  end
-
-  @doc false
-  def find_value_with_rpc(key, rpc_fun) when is_function(rpc_fun, 2) do
-    key = hash(key)
-    result = do_find_value_with_rpc(key, rpc_fun)
-
-    case result do
-      {:value, value, _visited} ->
+    case do_find_value_quorum(key, rpc_fun, online) do
+      {:value, value} ->
         value = merge_local_find_value(key, value)
         repair_replicas_with_rpc(key, value, rpc_fun)
         value
 
-      _visited ->
+      :miss ->
         case KademliaSql.object(key) do
           nil -> nil
           local_ret -> local_ret
         end
-    end
-  end
-
-  defp do_find_value_with_rpc(key, rpc_fun) do
-    {replica_remote, _} = replica_targets(key)
-
-    candidates =
-      ring_nodes()
-      |> filter_online()
-      |> KademliaRing.nearest(key)
-      |> prioritize_replica_candidates(replica_remote)
-
-    local_value = KademliaSql.object(key)
-    value_responses = if local_value, do: [local_value], else: []
-
-    do_find_value_waves_rpc(key, candidates, %{}, value_responses, MapSet.new(), rpc_fun)
-  end
-
-  defp do_find_value_waves_rpc(key, candidates, visited, value_responses, queried, rpc_fun) do
-    unqueried =
-      Enum.reject(candidates, fn node ->
-        MapSet.member?(queried, KademliaRing.key(node))
-      end)
-
-    cond do
-      unqueried == [] ->
-        finalize_find_value(key, visited, value_responses)
-
-      should_stop_value_search?(key, visited, unqueried, value_responses) ->
-        finalize_find_value(key, visited, value_responses)
-
-      true ->
-        wave = Enum.take(unqueried, @alpha)
-        new_queried = Enum.reduce(wave, queried, &MapSet.put(&2, KademliaRing.key(&1)))
-
-        results = rpc_fun.(wave, [PeerHandlerV2.find_value(), key])
-
-        {visited, value_responses} =
-          Enum.zip(wave, results)
-          |> Enum.reduce({visited, value_responses}, fn {node, result}, {vis, responses} ->
-            vis = Map.put(vis, KademliaRing.key(node), node)
-            absorb_peer_hints(peer_hint_list(result))
-            {vis, append_value_response(result, responses)}
-          end)
-
-        do_find_value_waves_rpc(key, candidates, visited, value_responses, new_queried, rpc_fun)
     end
   end
 
@@ -1117,7 +1014,13 @@ defmodule KademliaLight do
   def nearest_n(key) do
     ring_nodes()
     |> filter_online()
-    |> KademliaRing.nearest_n(key, @k_search)
+    |> KademliaRing.nearest_n(key, @n)
+  end
+
+  defp replica_hint_nodes(key) do
+    ring_nodes()
+    |> KademliaRing.nearest_n(key, @n)
+    |> Enum.reject(&KademliaRing.is_self/1)
   end
 
   def filter_online(list, online \\ ready_connections()) do
