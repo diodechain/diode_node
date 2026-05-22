@@ -1,6 +1,9 @@
 name: diode-node
+title: Diode Network Relay Node
 website: https://diode.io
+contact: https://diode.io
 source-code: https://github.com/diodechain/diode_node
+license: Proprietary
 icon: snap/logo.png
 base: core24
 adopt-info: diode-node
