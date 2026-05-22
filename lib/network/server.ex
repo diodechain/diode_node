@@ -136,7 +136,7 @@ defmodule Network.Server do
           Enum.find(clients, nil, fn {_entry, key0} -> key0 == key end)
           |> case do
             nil -> clients
-            {pid0, key0} -> Map.put(clients, key0, {pid0, System.os_time(:millisecond)})
+            {pid0, key0} -> Map.put(clients, key0, client_entry(pid0))
           end
 
         {:noreply, %{state | clients: clients, ready: ready}}
@@ -236,7 +236,7 @@ defmodule Network.Server do
           worker = start_worker!(state, [:connect, node_id, address, port])
 
           clients =
-            Map.put(state.clients, key, {worker, System.os_time(:millisecond)})
+            Map.put(state.clients, key, client_entry(worker, address, port))
             |> Map.put(worker, key)
 
           {:reply, worker, %{state | clients: clients}}
@@ -270,16 +270,21 @@ defmodule Network.Server do
       case Map.get(clients, actual_key) do
         nil ->
           # best case this is a new connection.
-          Map.put(clients, actual_key, {pid, now})
+          Map.put(clients, actual_key, client_entry(pid, address, port, now))
           |> Map.put(pid, actual_key)
 
-        {^pid, _timestamp} ->
+        {^pid, _} ->
           # also ok, this pid is already registered to this node_id
           Map.put(clients, pid, actual_key)
 
-        {other_pid, _timestamp} ->
-          # hm, another pid is given for the node_id logging this
-          "#{inspect(state.protocol)} Handshake anomaly(#{inspect(pid)}): #{Wallet.printable(node_id)}, address=#{inspect(address)}, port=#{inspect(port)} is already connected to other_pid=#{inspect(other_pid)} connect_key=#{Base16.encode(connect_key)}"
+        other_entry ->
+          other_pid = client_pid(other_entry)
+          other_peer = peer_label(other_entry, other_pid)
+
+          connect_key_str =
+            if connect_key, do: Base16.encode(connect_key), else: "nil"
+
+          "#{inspect(state.protocol)} Handshake anomaly(#{inspect(pid)}): #{Wallet.printable(node_id)}, address=#{inspect(address)}, port=#{inspect(port)} is already connected to other_pid=#{inspect(other_pid)} other_peer=#{other_peer} connect_key=#{connect_key_str}"
           |> Logger.info()
 
           # If the actual key is the same as the "intended" key, then we can update the key
@@ -290,14 +295,14 @@ defmodule Network.Server do
               # e.g. it might be to a different node_id. But 'pid' is validated now, so we keep it.
               kill_clone(other_pid, actual_key)
 
-              Map.put(clients, actual_key, {pid, now})
+              Map.put(clients, actual_key, client_entry(pid, address, port, now))
               |> Map.put(pid, actual_key)
 
             state.protocol == Network.EdgeV2 ->
               # EdgeV2 takes care of duplicate connections. And also has it's own timeout.
               # Duplicate connections are especially useful on mobile and other roaming devices that might loose tcp connections,
               # but keep them open for a while.
-              Map.put(clients, actual_key, {pid, now})
+              Map.put(clients, actual_key, client_entry(pid, address, port, now))
               |> Map.put(pid, actual_key)
 
             true ->
@@ -309,6 +314,22 @@ defmodule Network.Server do
       end
 
     {:reply, {:ok, hd(state.ports)}, %{state | clients: clients}}
+  end
+
+  defp client_entry(pid, peer_addr \\ nil, peer_port \\ nil, now \\ nil) do
+    {pid, now || System.os_time(:millisecond), peer_addr, peer_port}
+  end
+
+  defp client_pid({pid, _}), do: pid
+
+  defp peer_label(entry, pid) do
+    case entry do
+      {_, _, addr, port} when not is_nil(addr) ->
+        Network.Handler.format_endpoint({addr, port}) || "unknown"
+
+      _ ->
+        Network.Handler.format_peer_endpoint(pid)
+    end
   end
 
   defp kill_clone(pid, actual_key) do
