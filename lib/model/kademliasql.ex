@@ -105,27 +105,39 @@ defmodule Model.KademliaSql do
 
       for addr <- removed do
         KademliaLight.redistribute_removed_node(addr)
-        query!("DELETE FROM p2p_nodes WHERE address = ?1", [addr])
       end
 
-      for address <- addresses do
-        ring_key = KademliaRing.key(address)
+      query!("BEGIN IMMEDIATE")
 
-        query!(
-          """
-          INSERT INTO p2p_nodes (address, ring_key, on_chain, synced_at)
-          VALUES (?1, ?2, 1, ?3)
-          ON CONFLICT(address) DO UPDATE SET
-            on_chain = 1,
-            ring_key = excluded.ring_key,
-            synced_at = excluded.synced_at
-          """,
-          [address, ring_key, now]
-        )
+      try do
+        for addr <- removed do
+          query!("DELETE FROM p2p_nodes WHERE address = ?1", [addr])
+        end
+
+        for address <- addresses do
+          ring_key = KademliaRing.key(address)
+
+          query!(
+            """
+            INSERT INTO p2p_nodes (address, ring_key, on_chain, synced_at)
+            VALUES (?1, ?2, 1, ?3)
+            ON CONFLICT(address) DO UPDATE SET
+              on_chain = 1,
+              ring_key = excluded.ring_key,
+              synced_at = excluded.synced_at
+            """,
+            [address, ring_key, now]
+          )
+        end
+
+        ensure_self_node(now)
+        refresh_known_good_all()
+        query!("COMMIT")
+      rescue
+        exception ->
+          _ = query!("ROLLBACK")
+          reraise(exception, __STACKTRACE__)
       end
-
-      ensure_self_node(now)
-      refresh_known_good_all()
       GenServer.cast(KademliaLight, :reload_ring)
       :ok
     end
