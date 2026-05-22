@@ -173,8 +173,12 @@ defmodule Network.Server do
   def handle_cast({:mark_ready, address, pid}, state) do
     ready =
       case Map.get(state.clients, address) do
-        {^pid, _} -> Map.put(state.ready, address, pid)
-        _ -> state.ready
+        entry ->
+          if client_entry?(entry) and client_pid(entry) == pid do
+            Map.put(state.ready, address, pid)
+          else
+            state.ready
+          end
       end
 
     {:noreply, %{state | ready: ready}}
@@ -191,13 +195,9 @@ defmodule Network.Server do
   @impl true
   def handle_call(:get_connections, _from, state) do
     result =
-      Enum.filter(state.clients, fn {_key, value} ->
-        case value do
-          {pid, _timestamp} -> is_pid(pid)
-          _ -> false
-        end
-      end)
-      |> Enum.map(fn {key, {pid, _timestamp}} -> {key, pid} end)
+      state.clients
+      |> Enum.filter(fn {_key, value} -> client_entry?(value) end)
+      |> Enum.map(fn {key, value} -> {key, client_pid(value)} end)
       |> Map.new()
 
     {:reply, result, state}
@@ -207,7 +207,8 @@ defmodule Network.Server do
     result =
       state.ready
       |> Enum.filter(fn {address, pid} ->
-        match?({^pid, _}, Map.get(state.clients, address)) and Process.alive?(pid)
+        entry = Map.get(state.clients, address)
+        client_entry?(entry) and client_pid(entry) == pid and Process.alive?(pid)
       end)
       |> Map.new()
 
@@ -229,17 +230,18 @@ defmodule Network.Server do
       key = to_key(node_id)
 
       case Map.get(state.clients, key) do
-        {pid, _timestamp} ->
-          {:reply, pid, state}
+        entry ->
+          if client_entry?(entry) do
+            {:reply, client_pid(entry), state}
+          else
+            worker = start_worker!(state, [:connect, node_id, address, port])
 
-        _ ->
-          worker = start_worker!(state, [:connect, node_id, address, port])
+            clients =
+              Map.put(state.clients, key, client_entry(worker, address, port))
+              |> Map.put(worker, key)
 
-          clients =
-            Map.put(state.clients, key, client_entry(worker, address, port))
-            |> Map.put(worker, key)
-
-          {:reply, worker, %{state | clients: clients}}
+            {:reply, worker, %{state | clients: clients}}
+          end
       end
     end
   end
@@ -275,6 +277,9 @@ defmodule Network.Server do
 
         {^pid, _} ->
           # also ok, this pid is already registered to this node_id
+          Map.put(clients, pid, actual_key)
+
+        {^pid, _, _, _} ->
           Map.put(clients, pid, actual_key)
 
         other_entry ->
@@ -327,7 +332,11 @@ defmodule Network.Server do
     {pid, now || System.os_time(:millisecond), peer_addr, peer_port}
   end
 
-  defp client_pid({pid, _}), do: pid
+  defp client_entry?({pid, _} = entry) when is_pid(pid) and tuple_size(entry) in [2, 4], do: true
+  defp client_entry?(_), do: false
+
+  defp client_pid({pid, _timestamp}) when is_pid(pid), do: pid
+  defp client_pid({pid, _timestamp, _addr, _port}) when is_pid(pid), do: pid
 
   defp peer_label(entry, pid) do
     case entry do
