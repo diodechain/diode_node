@@ -223,4 +223,55 @@ defmodule Network.Handler do
   def name(nil) do
     "nil"
   end
+
+  @doc """
+  Returns `{peer_address, peer_port}` from a handler GenServer pid, or `nil` if unavailable.
+  """
+  def peer_endpoint(pid) when is_pid(pid) do
+    if Process.alive?(pid) do
+      try do
+        case :sys.get_state(pid) do
+          %{node_address: addr, node_port: port} when not is_nil(addr) -> {addr, port}
+          %{node_address: addr} when not is_nil(addr) -> {addr, nil}
+          _ -> nil
+        end
+      catch
+        :exit, _ -> nil
+      end
+    else
+      nil
+    end
+  end
+
+  def peer_endpoint(_), do: nil
+
+  @doc """
+  Formats `{peer_address, peer_port}` for logs (e.g. `"203.0.113.1:8443"`).
+  """
+  def format_endpoint({addr, port}) when not is_nil(addr) and is_integer(port) do
+    "#{format_inet_address(addr)}:#{port}"
+  end
+
+  def format_endpoint({addr, _}) when not is_nil(addr), do: format_inet_address(addr)
+  def format_endpoint(_), do: nil
+
+  @doc """
+  Formats a handler pid's peer endpoint for logs (e.g. `"203.0.113.1:8443"`).
+  """
+  def format_peer_endpoint(pid) when is_pid(pid) do
+    case peer_endpoint(pid) do
+      endpoint when is_tuple(endpoint) ->
+        format_endpoint(endpoint) || if(Process.alive?(pid), do: "unknown", else: "dead")
+
+      nil ->
+        if Process.alive?(pid), do: "unknown", else: "dead"
+    end
+  end
+
+  def format_peer_endpoint(_), do: "unknown"
+
+  defp format_inet_address(addr) when is_tuple(addr), do: :inet.ntoa(addr) |> List.to_string()
+  defp format_inet_address(addr) when is_list(addr), do: List.to_string(addr)
+  defp format_inet_address(addr) when is_binary(addr), do: addr
+  defp format_inet_address(addr), do: inspect(addr)
 end
