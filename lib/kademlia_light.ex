@@ -631,9 +631,6 @@ defmodule KademliaLight do
           KademliaSql.maybe_update_object(ring_key, value)
           KademliaSql.refresh_known_good(address)
           :found
-
-        _ ->
-          :miss
       end
     end
   end

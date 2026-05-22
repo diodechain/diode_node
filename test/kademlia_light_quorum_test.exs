@@ -169,7 +169,7 @@ defmodule KademliaLightQuorumTest do
     online = Map.new(wallets, fn w -> {Wallet.address!(w), self()} end)
 
     {replica_remote, _} = KademliaLight.replica_targets(key, online)
-    assert length(replica_remote) >= 1
+    assert replica_remote != []
 
     parent = self()
 

@@ -2,6 +2,8 @@ defmodule DiodeClient.Object.Ticket do
   import DiodeClient.Object.TicketV1, only: [ticketv1: 0]
   import DiodeClient.Object.TicketV2, only: [ticketv2: 0]
 
+  @type t :: DiodeClient.Object.TicketV1.t() | DiodeClient.Object.TicketV2.t()
+
   def mod(ticketv1()), do: DiodeClient.Object.TicketV1
   def mod(ticketv2()), do: DiodeClient.Object.TicketV2
 
@@ -11,6 +13,7 @@ defmodule DiodeClient.Object.Ticket do
 
   def device_address?(tck, wallet), do: mod(tck).device_address?(tck, wallet)
   def device_sign(tck, private), do: mod(tck).device_sign(tck, private)
+  @spec server_sign(t(), term()) :: t()
   def server_sign(tck, private), do: mod(tck).server_sign(tck, private)
   def raw(tck), do: mod(tck).raw(tck)
   def summary(tck), do: mod(tck).summary(tck)

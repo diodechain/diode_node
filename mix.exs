@@ -21,7 +21,10 @@ defmodule Diode.Mixfile do
       compilers: Mix.compilers(),
       deps: deps(),
       description: "Diode Network Relay Node",
-      dialyzer: [plt_add_apps: [:mix]],
+      dialyzer: [
+        plt_add_apps: [:mix],
+        ignore_warnings: ".dialyzer_ignore.exs"
+      ],
       docs: docs(vsn),
       elixir: "~> 1.15",
       # warnings_as_errors disabled: vendored xturn (lib/xturn/) upstream is not warning-clean on Elixir 1.19
