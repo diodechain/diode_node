@@ -138,6 +138,7 @@ defmodule Model.KademliaSql do
           _ = query!("ROLLBACK")
           reraise(exception, __STACKTRACE__)
       end
+
       GenServer.cast(KademliaLight, :reload_ring)
       :ok
     end
