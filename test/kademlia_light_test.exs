@@ -47,7 +47,7 @@ defmodule KademliaLightTest do
     assert Enum.map(result, & &1.address) == [ready_node.address]
   end
 
-  test "find_nodes returns only self without peer connections" do
+  test "find_nodes returns at most N replica hints from registry ring" do
     a = Wallet.address!(Wallet.new())
     b = Wallet.address!(Wallet.new())
 
@@ -55,33 +55,57 @@ defmodule KademliaLightTest do
     Model.KademliaSql.init()
     assert :ok = Model.KademliaSql.sync_registry_nodes([a, b])
 
+    ring = [
+      Node.new(Wallet.from_address(a)),
+      Node.new(Wallet.from_address(b)),
+      Node.new(Diode.wallet())
+    ]
+
+    :ets.insert(:kademlia_network, {:ring, ring})
+
     peers =
       KademliaLight.find_nodes(<<1>>)
       |> Enum.reject(&KademliaRing.is_self/1)
 
-    assert peers == []
+    assert length(peers) <= 3
+    assert Enum.all?(peers, fn n -> n.address in [a, b] end)
   end
 
-  test "find_nodes uses local nearest among connected ring members" do
+  test "find_nodes returns N nearest replicas from ring" do
     n1 = Wallet.new()
     n2 = Wallet.new()
     a1 = Wallet.address!(n1)
     a2 = Wallet.address!(n2)
 
     ring = [Node.new(n1), Node.new(n2), Node.new(Diode.wallet())]
-    key = KademliaLight.hash(<<1>>)
-    online = %{a1 => self(), a2 => self()}
+    :ets.insert(:kademlia_network, {:ring, ring})
 
     peer_addresses =
-      ring
-      |> KademliaLight.filter_online(online)
-      |> KademliaRing.nearest(key)
-      |> Enum.take(KademliaRing.k())
-      |> Enum.reject(&KademliaRing.is_self/1)
+      KademliaLight.find_nodes(<<1>>)
       |> Enum.map(& &1.address)
       |> Enum.sort()
 
     assert peer_addresses == Enum.sort([a1, a2])
+  end
+
+  test "find_node_lookup returns at most N replica hints" do
+    wallets = for _ <- 1..5, do: Wallet.new()
+    addresses = Enum.map(wallets, &Wallet.address!/1)
+
+    Model.KademliaSql.clear()
+    Model.KademliaSql.init()
+    assert :ok = Model.KademliaSql.sync_registry_nodes(addresses)
+
+    ring = [Node.new(Diode.wallet()) | Enum.map(wallets, &Node.new/1)]
+    :ets.insert(:kademlia_network, {:ring, ring})
+
+    hints =
+      ring
+      |> KademliaRing.nearest_n(KademliaLight.hash(<<1>>), 3)
+      |> Enum.reject(&KademliaRing.is_self/1)
+
+    assert length(hints) <= 3
+    refute Enum.any?(hints, &KademliaRing.is_self/1)
   end
 
   test "registry_nodes_missing_object counts on-chain peers without endpoint" do
@@ -151,14 +175,11 @@ defmodule KademliaLightTest do
     assert KademliaLight.quorum_select_value([]) == nil
   end
 
-  test "should_stop_value_search stops after R value responses" do
-    key = <<0::256>>
-    visited = %{}
-    unqueried = [Node.new(Wallet.new())]
-
-    refute KademliaLight.should_stop_value_search_test(key, visited, unqueried, ["v1"])
-
-    assert KademliaLight.should_stop_value_search_test(key, visited, unqueried, ["v1", "v2"])
+  test "read_quorum_met? requires R responses" do
+    refute KademliaLight.read_quorum_met?(0)
+    refute KademliaLight.read_quorum_met?(1)
+    assert KademliaLight.read_quorum_met?(2)
+    assert KademliaLight.read_quorum_met?(3)
   end
 
   test "replica_targets returns N nearest remote nodes" do

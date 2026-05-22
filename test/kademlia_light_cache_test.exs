@@ -2,20 +2,10 @@
 # Copyright 2021-2025 Diode
 # Licensed under the Diode License, Version 1.1
 defmodule KademliaLightCacheTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
 
   setup do
     Application.ensure_all_started(:diode_client)
-    DiodeClient.ETSLru.new(KademliaLight, 8, fn _ -> true end)
-
-    on_exit(fn ->
-      try do
-        DiodeClient.ETSLru.destroy(KademliaLight)
-      rescue
-        _ -> :ok
-      end
-    end)
-
     :ok
   end
 
