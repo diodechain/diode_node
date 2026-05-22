@@ -949,7 +949,7 @@ defmodule Network.EdgeV2 do
   defp ensure_node_connection(node_id) do
     key = Wallet.address!(node_id)
 
-    if pid = Network.Server.get_connections(Network.PeerHandlerV2)[key] do
+    if pid = Network.Server.get_ready_connections(Network.PeerHandlerV2)[key] do
       pid
     else
       case KademliaLight.find_value(key) do

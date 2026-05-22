@@ -158,7 +158,9 @@ defmodule Network.PeerHandlerV2 do
 
         case hd(msg) do
           @hello ->
-            handle_msg(msg, state)
+            {:noreply, state} = handle_msg(msg, state)
+            mark_rpc_ready(state)
+            {:noreply, state}
 
           _ ->
             log(state, "expected hello message, but got #{inspect(msg)}")
@@ -363,6 +365,13 @@ defmodule Network.PeerHandlerV2 do
         %{error: "invalid parameters"}
     end
   end
+
+  defp mark_rpc_ready(%{server_pid: server, node_id: node_id}) when node_id != nil do
+    address = Wallet.address!(node_id)
+    GenServer.cast(server, {:mark_ready, address, self()})
+  end
+
+  defp mark_rpc_ready(_state), do: :ok
 
   defp respond(state, msg) do
     {{:value, {_call, from}}, calls} = :queue.out(state.calls)
