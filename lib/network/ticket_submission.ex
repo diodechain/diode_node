@@ -83,9 +83,6 @@ defmodule Network.TicketSubmission do
 
         {:too_low, last} ->
           {:error, "too_low", last}
-
-        other ->
-          other
       end
     end
   end
