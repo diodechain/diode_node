@@ -3,6 +3,7 @@ title: Diode Network Relay Node
 website: https://diode.io
 contact: https://diode.io
 source-code: https://github.com/diodechain/diode_node
+issues: https://github.com/diodechain/diode_node/issues
 license: Proprietary
 icon: snap/logo.png
 base: core24
@@ -22,13 +23,18 @@ description: |
 grade: stable # must be 'stable' to release into candidate/stable channels
 confinement: strict # use 'strict' once you have the right plugs and slots
 
+lint:
+  ignore:
+    - metadata:
+        - donation
+
 parts:
   diode-node:
     # See 'snapcraft plugins'
     plugin: make
     make-parameters: [-f snap/Makefile]
     source: .
-    source-type: git
+    source-type: local
     build-packages:
       - autoconf
       - automake
