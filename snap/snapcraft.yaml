@@ -73,6 +73,10 @@ apps:
     command: bin/run elevated remote
     plugs: [network, network-bind]
 
+  rpc:
+    command: bin/run elevated rpc
+    plugs: [network, network-bind]
+
   flush:
     command: bin/run elevated rpc Diode.Cmd.flush_cache
     plugs: [network, network-bind]
