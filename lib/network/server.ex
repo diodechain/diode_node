@@ -169,21 +169,6 @@ defmodule Network.Server do
     {:noreply, state}
   end
 
-  @impl true
-  def handle_cast({:mark_ready, address, pid}, state) do
-    ready =
-      case Map.get(state.clients, address) do
-        entry ->
-          if client_entry?(entry) and client_pid(entry) == pid do
-            Map.put(state.ready, address, pid)
-          else
-            state.ready
-          end
-      end
-
-    {:noreply, %{state | ready: ready}}
-  end
-
   defp to_key(nil) do
     Wallet.new() |> Wallet.address!()
   end
@@ -229,19 +214,18 @@ defmodule Network.Server do
     else
       key = to_key(node_id)
 
-      case Map.get(state.clients, key) do
-        entry ->
-          if client_entry?(entry) do
-            {:reply, client_pid(entry), state}
-          else
-            worker = start_worker!(state, [:connect, node_id, address, port])
+      case lookup_client_pid(state.clients, key) do
+        pid when is_pid(pid) ->
+          {:reply, pid, state}
 
-            clients =
-              Map.put(state.clients, key, client_entry(worker, address, port))
-              |> Map.put(worker, key)
+        nil ->
+          worker = start_worker!(state, [:connect, node_id, address, port])
 
-            {:reply, worker, %{state | clients: clients}}
-          end
+          clients =
+            Map.put(state.clients, key, client_entry(worker, address, port))
+            |> Map.put(worker, key)
+
+          {:reply, worker, %{state | clients: clients}}
       end
     end
   end
@@ -260,10 +244,38 @@ defmodule Network.Server do
     end
   end
 
+  def handle_call({:mark_ready, address, pid}, _from, state) do
+    {:reply, :ok, %{state | ready: mark_ready(state.ready, state.clients, address, pid)}}
+  end
+
+  @impl true
+  def handle_cast({:mark_ready, address, pid}, state) do
+    {:noreply, %{state | ready: mark_ready(state.ready, state.clients, address, pid)}}
+  end
+
+  defp mark_ready(ready, clients, address, pid) do
+    case Map.get(clients, address) do
+      nil ->
+        ready
+
+      entry ->
+        if client_entry?(entry) and client_pid(entry) == pid do
+          Map.put(ready, address, pid)
+        else
+          ready
+        end
+    end
+  end
+
   defp register_node(node_id, address, port, pid, state) do
     # Checking whether pid is already registered and remove for the update
     connect_key = Map.get(state.clients, pid)
-    clients = Map.delete(state.clients, connect_key)
+
+    clients =
+      state.clients
+      |> Map.delete(pid)
+      |> then(fn c -> if connect_key, do: Map.delete(c, connect_key), else: c end)
+
     actual_key = to_key(node_id)
     now = System.os_time(:millisecond)
 
@@ -271,72 +283,110 @@ defmodule Network.Server do
     clients =
       case Map.get(clients, actual_key) do
         nil ->
-          # best case this is a new connection.
-          Map.put(clients, actual_key, client_entry(pid, address, port, now))
-          |> Map.put(pid, actual_key)
+          put_client(clients, actual_key, pid, address, port, now)
 
-        {^pid, _} ->
-          # also ok, this pid is already registered to this node_id
-          Map.put(clients, pid, actual_key)
-
-        {^pid, _, _, _} ->
-          Map.put(clients, pid, actual_key)
-
-        other_entry ->
-          other_pid = client_pid(other_entry)
-          other_peer = peer_label(other_entry, other_pid)
-
-          connect_key_str =
-            if connect_key, do: Base16.encode(connect_key), else: "nil"
-
-          "#{inspect(state.protocol)} Handshake anomaly(#{inspect(pid)}): #{Wallet.printable(node_id)}, address=#{inspect(address)}, port=#{inspect(port)} is already connected to other_pid=#{inspect(other_pid)} other_peer=#{other_peer} connect_key=#{connect_key_str}"
-          |> Logger.info()
-
-          # If the actual key is the same as the "intended" key, then we can update the key
-          # Otherwise we close the new connection as there is an existing connection already
+        entry ->
           cond do
-            actual_key == connect_key ->
-              # Outbound dial (or re-register): same node id as the slot we hold — keep this pid.
-              kill_clone(other_pid, actual_key)
+            not client_entry?(entry) ->
+              put_client(clients, actual_key, pid, address, port, now)
 
-              Map.put(clients, actual_key, client_entry(pid, address, port, now))
-              |> Map.put(pid, actual_key)
-
-            is_nil(connect_key) ->
-              # Inbound after TLS (no prior pid→key entry): prefer this connection over whatever
-              # holds the slot (outbound dial from ensure_node_connection, stale handler, etc.).
-              kill_clone(other_pid, actual_key)
-
-              Map.put(clients, actual_key, client_entry(pid, address, port, now))
-              |> Map.put(pid, actual_key)
-
-            state.protocol == Network.EdgeV2 ->
-              # EdgeV2 takes care of duplicate connections. And also has it's own timeout.
-              # Duplicate connections are especially useful on mobile and other roaming devices that might loose tcp connections,
-              # but keep them open for a while.
-              Map.put(clients, actual_key, client_entry(pid, address, port, now))
-              |> Map.put(pid, actual_key)
+            client_pid(entry) == pid ->
+              put_client(clients, actual_key, pid, address, port, now)
 
             true ->
-              # This connection was made with a different node_id.
-              # We close it.
-              kill_clone(pid, actual_key)
-              clients
+              resolve_client_conflict(
+                clients,
+                actual_key,
+                pid,
+                address,
+                port,
+                now,
+                connect_key,
+                entry,
+                state
+              )
           end
       end
 
     {:reply, {:ok, hd(state.ports)}, %{state | clients: clients}}
   end
 
+  defp resolve_client_conflict(
+         clients,
+         actual_key,
+         pid,
+         address,
+         port,
+         now,
+         connect_key,
+         other_entry,
+         state
+       ) do
+    other_pid = client_pid(other_entry)
+    other_peer = peer_label(other_entry, other_pid)
+
+    connect_key_str =
+      if connect_key, do: Base16.encode(connect_key), else: "nil"
+
+    "#{inspect(state.protocol)} Handshake anomaly(#{inspect(pid)}): address=#{inspect(address)}, port=#{inspect(port)} is already connected to other_pid=#{inspect(other_pid)} other_peer=#{other_peer} connect_key=#{connect_key_str}"
+    |> Logger.info()
+
+    cond do
+      actual_key == connect_key ->
+        kill_clone(other_pid, actual_key)
+        put_client(clients, actual_key, pid, address, port, now)
+
+      is_nil(connect_key) ->
+        kill_clone(other_pid, actual_key)
+        put_client(clients, actual_key, pid, address, port, now)
+
+      state.protocol == Network.EdgeV2 ->
+        put_client(clients, actual_key, pid, address, port, now)
+
+      true ->
+        kill_clone(pid, actual_key)
+        Map.delete(clients, pid)
+    end
+  end
+
+  defp put_client(clients, key, pid, address, port, now) do
+    clients
+    |> Map.put(key, client_entry(pid, address, port, now))
+    |> Map.put(pid, key)
+  end
+
+  defp lookup_client_pid(clients, key) do
+    case Map.get(clients, key) do
+      entry when not is_nil(entry) ->
+        if client_entry?(entry),
+          do: client_pid(entry),
+          else: find_dialing_client_pid(clients, key)
+
+      nil ->
+        find_dialing_client_pid(clients, key)
+    end
+  end
+
+  defp find_dialing_client_pid(clients, key) do
+    Enum.find_value(clients, fn
+      {pid, ^key} when is_pid(pid) -> pid
+      _ -> nil
+    end)
+  end
+
   defp client_entry(pid, peer_addr \\ nil, peer_port \\ nil, now \\ nil) do
     {pid, now || System.os_time(:millisecond), peer_addr, peer_port}
   end
 
-  defp client_entry?({pid, _} = entry) when is_pid(pid) and tuple_size(entry) in [2, 4], do: true
+  defp client_entry?(entry) when is_tuple(entry) do
+    tuple_size(entry) in [2, 4] and is_pid(elem(entry, 0))
+  end
+
   defp client_entry?(_), do: false
 
-  defp client_pid({pid, _timestamp}) when is_pid(pid), do: pid
-  defp client_pid({pid, _timestamp, _addr, _port}) when is_pid(pid), do: pid
+  defp client_pid(entry) when is_tuple(entry) and tuple_size(entry) in [2, 4] do
+    elem(entry, 0)
+  end
 
   defp peer_label(entry, pid) do
     case entry do
