@@ -30,6 +30,8 @@ defmodule KademliaLight do
   @fib_max_index 28
   @rpc_lookup_timeout 2000
   @rpc_read_timeout 800
+  # Upper bound for GenServer.call to PeerHandler; avoids hung spawns if peer deadlocks.
+  @rpc_peer_call_timeout 30_000
 
   defstruct ring: [], version: 3
 
@@ -185,6 +187,14 @@ defmodule KademliaLight do
       File.rm(old_path)
     end
 
+    ring = load_ring()
+    write_ets_ring(ring)
+
+    {:ok, %__MODULE__{ring: ring, version: 3}, {:continue, :bootstrap}}
+  end
+
+  @impl true
+  def handle_continue(:bootstrap, state) do
     case KademliaSql.sync_registry_nodes() do
       :error -> KademliaSql.ensure_self_node_for_init()
       :ok -> :ok
@@ -192,16 +202,12 @@ defmodule KademliaLight do
 
     ring = load_ring()
     write_ets_ring(ring)
+    state = %{state | ring: ring}
 
     :timer.send_interval(@contact_interval, :contact_nodes)
     :timer.send_interval(@redistribute_interval, :scan_redistribution)
 
-    {:ok, %__MODULE__{ring: ring, version: 3}, {:continue, :seed}}
-  end
-
-  @impl true
-  def handle_continue(:seed, state) do
-    handle_info(:contact_nodes, state)
+    {:noreply, _} = handle_info(:contact_nodes, state)
     {:noreply, state}
   end
 
@@ -395,7 +401,7 @@ defmodule KademliaLight do
 
   defp rpc_call_result(pid, call) do
     try do
-      GenServer.call(pid, {:rpc, call}, :infinity)
+      GenServer.call(pid, {:rpc, call}, @rpc_peer_call_timeout)
     rescue
       error -> {:rpc_error, error}
     catch
