@@ -323,7 +323,15 @@ defmodule Network.Server do
          state
        ) do
     other_pid = client_pid(other_entry)
-    other_peer = peer_label(other_entry, other_pid)
+
+    other_peer =
+      case other_entry do
+        {_, _, addr, port} when not is_nil(addr) ->
+          Network.Handler.format_endpoint({addr, port}) || "unknown"
+
+        _ ->
+          "unknown"
+      end
 
     connect_key_str =
       if connect_key, do: Base16.encode(connect_key), else: "nil"
@@ -386,16 +394,6 @@ defmodule Network.Server do
 
   defp client_pid(entry) when is_tuple(entry) and tuple_size(entry) in [2, 4] do
     elem(entry, 0)
-  end
-
-  defp peer_label(entry, pid) do
-    case entry do
-      {_, _, addr, port} when not is_nil(addr) ->
-        Network.Handler.format_endpoint({addr, port}) || "unknown"
-
-      _ ->
-        Network.Handler.format_peer_endpoint(pid)
-    end
   end
 
   defp kill_clone(pid, actual_key) do
