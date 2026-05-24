@@ -82,6 +82,7 @@ defmodule Shell do
       to: Transaction.to(tx) |> Base16.encode(),
       from: Transaction.from(tx) |> Base16.encode(),
       data: Transaction.payload(tx) |> Base16.encode(),
+      gas: Transaction.gas_limit(tx),
       block: blockRef
     )
   end
@@ -92,6 +93,7 @@ defmodule Shell do
       to: Transaction.to(tx) |> Base16.encode(),
       from: Transaction.from(tx) |> Base16.encode(),
       data: Transaction.payload(tx) |> Base16.encode(),
+      gas: Transaction.gas_limit(tx),
       block: blockRef
     )
   end
