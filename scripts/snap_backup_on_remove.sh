@@ -54,12 +54,14 @@ snap: ${SNAP_NAME}
 snap_data: ${snap_data}
 snap_user_data: ${snap_user_data}
 
-Restore with scripts/restore_snap_backup.sh after reinstalling the snap.
+Restore with bin/restore_snap_backup after reinstalling the snap
+(connect backup-dir: sudo snap connect diode-node:backup-dir).
 If this backup is missing, use "snap saved" within 31 days of removal.
 EOF
 }
 
 main() {
+	umask 077
 	local snap_data="${SNAP_DATA:-}"
 	local snap_user_data="${SNAP_USER_DATA:-}"
 
@@ -86,6 +88,7 @@ main() {
 		log "use 'snap saved' within 31 days to recover data via 'snap restore'"
 		exit 0
 	fi
+	chmod 0700 "$BACKUP_DIR" 2>/dev/null || true
 
 	local timestamp backup_file
 	timestamp=$(date -u +%Y-%m-%d_%H%M%S)
@@ -97,7 +100,6 @@ main() {
 	fi
 
 	chmod 0600 "$backup_file"
-	chmod 0700 "$BACKUP_DIR" 2>/dev/null || true
 
 	log "wallet backup saved to $backup_file"
 }

@@ -128,6 +128,7 @@ To restore from an automatic backup after reinstalling:
 
 ```bash
 sudo snap install diode-node
+sudo snap connect diode-node:backup-dir
 sudo snap stop diode-node.service
 sudo snap run --shell diode-node -c 'bin/restore_snap_backup /var/backups/diode-node/diode_node_backup_YYYY-MM-DD_HHMMSS.tar.gz'
 sudo snap start diode-node.service

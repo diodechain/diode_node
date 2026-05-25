@@ -53,6 +53,7 @@ defmodule SnapBackupOnRemoveTest do
 
     backup_path = Path.join(context.backup_dir, backup_name)
     assert File.stat!(backup_path).mode &&& 0o777 == 0o600
+    assert File.stat!(context.backup_dir).mode &&& 0o777 == 0o700
 
     File.mkdir_p!(context.extract_dir)
 

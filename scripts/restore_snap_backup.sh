@@ -10,8 +10,9 @@ Restores node identity and wallet data from an automatic snap-removal backup.
 Run after reinstalling diode-node and stopping the service:
 
   sudo snap install diode-node
+  sudo snap connect diode-node:backup-dir
   sudo snap stop diode-node.service
-  sudo $0 /var/backups/diode-node/diode_node_backup_YYYY-MM-DD_HHMMSS.tar.gz
+  sudo snap run --shell diode-node -c 'bin/restore_snap_backup /var/backups/diode-node/diode_node_backup_YYYY-MM-DD_HHMMSS.tar.gz'
   sudo snap start diode-node.service
 EOF
 }
@@ -29,11 +30,13 @@ if [[ ! -f "$backup_file" ]]; then
 fi
 
 if [[ -z "${SNAP:-}" || -z "${SNAP_DATA:-}" || -z "${SNAP_USER_DATA:-}" ]]; then
-	echo "Run this script inside the diode-node snap environment (e.g. sudo diode-node.shell)." >&2
-	echo "Or set SNAP, SNAP_DATA, and SNAP_USER_DATA manually." >&2
+	echo "Run inside the diode-node snap (connect backup-dir first):" >&2
+	echo "  sudo snap connect diode-node:backup-dir" >&2
+	echo "  sudo snap run --shell diode-node -c 'bin/restore_snap_backup <backup.tar.gz>'" >&2
 	exit 1
 fi
 
+umask 077
 staging_dir=$(mktemp -d)
 trap 'rm -rf "$staging_dir"' EXIT
 

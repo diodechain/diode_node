@@ -87,7 +87,7 @@ apps:
 
   shell:
     command: bin/run elevated remote
-    plugs: [network, network-bind]
+    plugs: [network, network-bind, backup-dir]
 
   rpc:
     command: bin/run elevated rpc
