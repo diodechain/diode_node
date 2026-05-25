@@ -106,7 +106,7 @@ defmodule Network.TicketSubmission do
         {:error, "signature mismatch"}
 
       true ->
-        :ok
+        FleetValidation.ensure_valid(ticket)
     end
   end
 

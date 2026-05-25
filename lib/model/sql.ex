@@ -24,6 +24,7 @@ defmodule Model.Sql do
     def init(_args) do
       Model.Ets.init(Diode)
       Model.TicketSql.init()
+      Model.FleetSql.init()
       Model.KademliaSql.init()
       {:ok, :done}
     end

@@ -69,6 +69,7 @@ defmodule TicketStore do
 
   def clear() do
     TicketSql.delete_all()
+    Model.FleetSql.delete_all()
     Ets.clear(__MODULE__)
   end
 

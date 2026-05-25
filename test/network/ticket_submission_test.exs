@@ -131,8 +131,35 @@ defmodule Network.TicketSubmissionTest do
     assert {:error, "invalid ticket"} = Network.TicketSubmission.decode_rlp_ticket(["nope"])
   end
 
+  test "rejects ticket with non-contract fleet address" do
+    wallet = clientid(1)
+    invalid_fleet = Wallet.new() |> Wallet.address!()
+
+    ticket =
+      build_ticket(wallet,
+        fleet_contract: invalid_fleet,
+        total_bytes: @ticket_grace,
+        total_connections: 1
+      )
+
+    assert {:error, "invalid fleet contract"} = Network.TicketSubmission.submit(ticket, wallet)
+  end
+
+  test "rejects ticket with zero address fleet" do
+    wallet = clientid(1)
+
+    ticket =
+      build_ticket(wallet,
+        fleet_contract: <<0::160>>,
+        total_bytes: @ticket_grace,
+        total_connections: 1
+      )
+
+    assert {:error, "invalid fleet contract"} = Network.TicketSubmission.submit(ticket, wallet)
+  end
+
   defp build_ticket(wallet, opts) do
-    fleet = RemoteChain.developer_fleet_address(@chain)
+    fleet = Keyword.get(opts, :fleet_contract, RemoteChain.developer_fleet_address(@chain))
     epoch = opts[:epoch] || RemoteChain.epoch(@chain) - 1
     key = Wallet.privkey!(wallet)
 
