@@ -28,6 +28,16 @@ lint:
     - metadata:
         - donation
 
+plugs:
+  backup-dir:
+    interface: system-files
+    write:
+      - /var/backups/diode-node
+
+hooks:
+  remove:
+    plugs: [backup-dir]
+
 parts:
   diode-node:
     # See 'snapcraft plugins'
