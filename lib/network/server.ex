@@ -336,7 +336,9 @@ defmodule Network.Server do
     connect_key_str =
       if connect_key, do: Base16.encode(connect_key), else: "nil"
 
-    "#{inspect(state.protocol)} Handshake anomaly(#{inspect(pid)}): address=#{inspect(address)}, port=#{inspect(port)} is already connected to other_pid=#{inspect(other_pid)} other_peer=#{other_peer} connect_key=#{connect_key_str}"
+    address_str = if is_tuple(address), do: :inet.ntoa(address), else: inspect(address)
+
+    "#{inspect(state.protocol)} Handshake anomaly(#{inspect(pid)}): address=#{address_str}, port=#{port} is already connected to other_pid=#{inspect(other_pid)} other_peer=#{other_peer} connect_key=#{connect_key_str}"
     |> Logger.info()
 
     cond do
