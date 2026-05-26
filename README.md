@@ -112,6 +112,28 @@ sudo sysctl --system
 
 # Operations
 
+## Backup and restore
+
+Before planned maintenance, flush caches and create a snap snapshot:
+
+```bash
+sudo diode-node.flush
+sudo snap stop diode-node
+sudo snap save diode-node
+```
+
+When you remove the snap (`sudo snap remove diode-node`), the remove hook automatically archives critical node files (identity and wallet database) to `/var/backups/diode-node/diode_node_backup_<timestamp>.tar.gz`. The `backup-dir` system-files plug must be connected for this path to work; otherwise rely on `snap saved` within 31 days.
+
+To restore from an automatic backup after reinstalling:
+
+```bash
+sudo snap install diode-node
+sudo snap connect diode-node:backup-dir
+sudo snap stop diode-node.service
+sudo snap run --shell diode-node -c 'bin/restore_snap_backup /var/backups/diode-node/diode_node_backup_YYYY-MM-DD_HHMMSS.tar.gz'
+sudo snap start diode-node.service
+```
+
 ## See last service restart reason
 
 When running the snap installation then it's a two step process to see the last service restart reason:

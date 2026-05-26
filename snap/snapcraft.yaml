@@ -28,6 +28,16 @@ lint:
     - metadata:
         - donation
 
+plugs:
+  backup-dir:
+    interface: system-files
+    write:
+      - /var/backups/diode-node
+
+hooks:
+  remove:
+    plugs: [backup-dir]
+
 parts:
   diode-node:
     # See 'snapcraft plugins'
@@ -77,7 +87,7 @@ apps:
 
   shell:
     command: bin/run elevated remote
-    plugs: [network, network-bind]
+    plugs: [network, network-bind, backup-dir]
 
   rpc:
     command: bin/run elevated rpc
