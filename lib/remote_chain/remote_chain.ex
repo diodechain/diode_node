@@ -40,7 +40,8 @@ defmodule RemoteChain do
 
   @all_chains Enum.uniq([
                 Chains.DiodeDev,
-                Chains.DiodeStaging | @chains
+                Chains.DiodeStaging,
+                Chains.Moonbeam | @chains
               ])
 
   @doc """

@@ -47,7 +47,7 @@ defmodule KademliaLightTest do
     assert Enum.map(result, & &1.address) == [ready_node.address]
   end
 
-  test "find_nodes returns at most N replica hints from registry ring" do
+  test "find_nodes returns at most N online replica hints from registry ring" do
     a = Wallet.address!(Wallet.new())
     b = Wallet.address!(Wallet.new())
 
@@ -63,15 +63,15 @@ defmodule KademliaLightTest do
 
     :ets.insert(:kademlia_network, {:ring, ring})
 
-    peers =
-      KademliaLight.find_nodes(<<1>>)
-      |> Enum.reject(&KademliaRing.is_self/1)
+    ready = %{a => self(), b => self()}
+
+    peers = KademliaLight.find_nodes(<<1>>, ready)
 
     assert length(peers) <= 3
     assert Enum.all?(peers, fn n -> n.address in [a, b] end)
   end
 
-  test "find_nodes returns N nearest replicas from ring" do
+  test "find_nodes returns N nearest online replicas from ring" do
     n1 = Wallet.new()
     n2 = Wallet.new()
     a1 = Wallet.address!(n1)
@@ -80,12 +80,37 @@ defmodule KademliaLightTest do
     ring = [Node.new(n1), Node.new(n2), Node.new(Diode.wallet())]
     :ets.insert(:kademlia_network, {:ring, ring})
 
+    ready = %{a1 => self(), a2 => self()}
+
     peer_addresses =
-      KademliaLight.find_nodes(<<1>>)
+      KademliaLight.find_nodes(<<1>>, ready)
       |> Enum.map(& &1.address)
       |> Enum.sort()
 
     assert peer_addresses == Enum.sort([a1, a2])
+  end
+
+  test "find_nodes excludes offline peers" do
+    online_wallet = Wallet.new()
+    offline_wallet = Wallet.new()
+    online = Wallet.address!(online_wallet)
+    _offline = Wallet.address!(offline_wallet)
+
+    ring = [
+      Node.new(online_wallet),
+      Node.new(offline_wallet),
+      Node.new(Diode.wallet())
+    ]
+
+    :ets.insert(:kademlia_network, {:ring, ring})
+
+    ready = %{online => self()}
+
+    peer_addresses =
+      KademliaLight.find_nodes(<<1>>, ready)
+      |> Enum.map(& &1.address)
+
+    assert peer_addresses == [online]
   end
 
   test "find_node_lookup returns at most N replica hints" do

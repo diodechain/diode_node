@@ -61,7 +61,7 @@ defmodule FleetValidation do
 
     row =
       if refresh_registry? or refresh_stake? do
-        state = Contract.Registry.fleet(row.chain_id, row.fleet)
+        state = registry_fleet(row.chain_id, row.fleet)
 
         row
         |> maybe_update_registry(state, refresh_registry?, now)
@@ -77,7 +77,7 @@ defmodule FleetValidation do
   defp maybe_update_registry(row, _state, false, _now), do: row
 
   defp maybe_update_registry(row, state, true, now) do
-    %{row | registry_exists: bool_to_int(state.exists), registry_checked_at: now}
+    %{row | registry_exists: abi_bool_to_int(state.exists), registry_checked_at: now}
   end
 
   defp maybe_update_stake(row, _state, false, _now), do: row
@@ -164,6 +164,18 @@ defmodule FleetValidation do
 
   defp moonbeam?(chain_id), do: chain_id == Chains.Moonbeam.chain_id()
 
+  defp registry_fleet(chain_id, fleet) do
+    case Application.get_env(:diode, :fleet_validation_registry_fn) do
+      fun when is_function(fun, 2) -> fun.(chain_id, fleet)
+      _ -> Contract.Registry.fleet(chain_id, fleet)
+    end
+  end
+
   defp bool_to_int(true), do: 1
   defp bool_to_int(false), do: 0
+
+  defp abi_bool_to_int(true), do: 1
+  defp abi_bool_to_int(false), do: 0
+  defp abi_bool_to_int(1), do: 1
+  defp abi_bool_to_int(0), do: 0
 end

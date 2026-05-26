@@ -96,9 +96,9 @@ defmodule KademliaLight do
       end
   end
 
-  def find_nodes(key) do
-    key = hash(key)
-    replica_hint_nodes(key)
+  def find_nodes(key, online \\ nil) do
+    nearest_n(hash(key), online)
+    |> Enum.reject(&KademliaRing.is_self/1)
   end
 
   def find_node_lookup(key) do
@@ -1013,9 +1013,11 @@ defmodule KademliaLight do
     end)
   end
 
-  def nearest_n(key) do
+  def nearest_n(key, online \\ nil) do
+    ready = online || ready_connections()
+
     ring_nodes()
-    |> filter_online()
+    |> filter_online(ready)
     |> KademliaRing.nearest_n(key, @n)
   end
 

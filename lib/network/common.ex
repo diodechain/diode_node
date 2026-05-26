@@ -816,7 +816,14 @@ defmodule Network.Common do
             {pid0, key0} -> Map.put(clients, key0, client_entry(pid0))
           end
 
-        {:noreply, %{state | clients: clients, ready: ready}}
+        state =
+          state
+          |> Map.put(:clients, clients)
+          |> then(fn s ->
+            if Map.has_key?(state, :ready), do: Map.put(s, :ready, ready), else: s
+          end)
+
+        {:noreply, state}
     end
   end
 end
