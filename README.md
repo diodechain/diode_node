@@ -122,7 +122,7 @@ sudo snap stop diode-node
 sudo snap save diode-node
 ```
 
-When you remove the snap (`sudo snap remove diode-node`), the remove hook automatically archives critical node files (identity, Erlang DNS config, and wallet database) to `/var/backups/diode-node/diode_node_backup_<timestamp>.tar.gz`. The `backup-dir` system-files plug must be connected for this path to work; otherwise rely on `snap saved` within 31 days.
+When you remove the snap (`sudo snap remove diode-node`), the remove hook automatically archives critical node files (identity and wallet database) to `/var/backups/diode-node/diode_node_backup_<timestamp>.tar.gz`. The `backup-dir` system-files plug must be connected for this path to work; otherwise rely on `snap saved` within 31 days.
 
 To restore from an automatic backup after reinstalling:
 

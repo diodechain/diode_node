@@ -32,17 +32,11 @@ defmodule SnapBackupOnRemoveTest do
     System.cmd("bash", [@script], env: env, stderr_to_stdout: true)
   end
 
-  test "creates tarball with node identity, erl_inetrc, and nodedata", context do
+  test "creates tarball with node identity and nodedata", context do
     File.mkdir_p!(Path.join(context.snap_data, "nodedata_prod"))
     File.mkdir_p!(context.snap_user_data)
 
     File.write!(Path.join(context.snap_user_data, "node"), "diode_node@host.diode\n")
-
-    File.write!(
-      Path.join(context.snap_user_data, "erl_inetrc"),
-      "{host, {127,0,0,1}, [\"host.diode\", \"diode_node@host.diode\"]}.\n"
-    )
-
     File.write!(Path.join(context.snap_data, "nodedata_prod/wallet.dat"), "wallet-secrets")
 
     {output, 0} = run_backup(context)
@@ -63,15 +57,38 @@ defmodule SnapBackupOnRemoveTest do
     assert File.read!(Path.join(context.extract_dir, "snap_user_data/node")) ==
              "diode_node@host.diode\n"
 
-    assert File.read!(Path.join(context.extract_dir, "snap_user_data/erl_inetrc")) =~
-             "{host, {127,0,0,1}"
-
     assert File.read!(Path.join(context.extract_dir, "snap_data/nodedata_prod/wallet.dat")) ==
              "wallet-secrets"
 
     manifest = File.read!(Path.join(context.extract_dir, "manifest.txt"))
     assert manifest =~ "diode-node automatic backup"
     assert manifest =~ context.snap_data
+  end
+
+  test "does not backup erl_inetrc even when present", context do
+    File.mkdir_p!(Path.join(context.snap_data, "nodedata_prod"))
+    File.mkdir_p!(context.snap_user_data)
+
+    File.write!(Path.join(context.snap_user_data, "node"), "diode_node@host.diode\n")
+
+    File.write!(
+      Path.join(context.snap_user_data, "erl_inetrc"),
+      "{host, {127,0,0,1}, [\"host.diode\", \"diode_node@host.diode\"]}.\n"
+    )
+
+    File.write!(Path.join(context.snap_data, "nodedata_prod/wallet.dat"), "wallet-secrets")
+
+    {output, 0} = run_backup(context)
+    assert output =~ "wallet backup saved"
+
+    [backup_name] = File.ls!(context.backup_dir)
+    backup_path = Path.join(context.backup_dir, backup_name)
+    File.mkdir_p!(context.extract_dir)
+
+    {_, 0} =
+      System.cmd("tar", ["-xzf", backup_path, "-C", context.extract_dir], stderr_to_stdout: true)
+
+    refute File.exists?(Path.join(context.extract_dir, "snap_user_data/erl_inetrc"))
   end
 
   test "skips backup when no critical data exists", context do

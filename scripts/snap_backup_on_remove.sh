@@ -23,12 +23,6 @@ stage_critical_files() {
 		has_data=1
 	fi
 
-	if [[ -f "$snap_user_data/erl_inetrc" ]]; then
-		mkdir -p "$staging_dir/snap_user_data"
-		cp "$snap_user_data/erl_inetrc" "$staging_dir/snap_user_data/"
-		has_data=1
-	fi
-
 	if [[ -d "$snap_data" ]]; then
 		for nodedata in "$snap_data"/nodedata_*; do
 			if [[ -d "$nodedata" ]]; then
