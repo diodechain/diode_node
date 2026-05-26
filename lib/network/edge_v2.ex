@@ -461,14 +461,8 @@ defmodule Network.EdgeV2 do
           |> response()
 
         ["getnodes", node] ->
-          KademliaLight.find_nodes(node)
-          |> Enum.map(fn n ->
-            case Model.KademliaSql.object(n.ring_key) do
-              nil -> nil
-              binary -> Object.decode!(binary)
-            end
-          end)
-          |> Enum.filter(&(&1 != nil))
+          node
+          |> KademliaLight.find_node_objects()
           |> Enum.map(&Object.encode_list!/1)
           |> response()
 

@@ -97,8 +97,17 @@ defmodule KademliaLight do
   end
 
   def find_nodes(key, online \\ nil) do
-    nearest_n(hash(key), online)
-    |> Enum.reject(&KademliaRing.is_self/1)
+    nearest_online_n(hash(key), online)
+  end
+
+  def find_node_objects(key, online \\ nil, limit \\ @n) do
+    key = hash(key)
+    ready = online || ready_connections()
+
+    ring_nodes()
+    |> online_ring(ready)
+    |> KademliaRing.nearest(key)
+    |> take_node_objects(limit)
   end
 
   def find_node_lookup(key) do
@@ -1019,6 +1028,33 @@ defmodule KademliaLight do
     ring_nodes()
     |> filter_online(ready)
     |> KademliaRing.nearest_n(key, @n)
+  end
+
+  def nearest_online_n(key, online \\ nil, n \\ @n) do
+    ready = online || ready_connections()
+
+    ring_nodes()
+    |> online_ring(ready)
+    |> KademliaRing.nearest_n(key, n)
+  end
+
+  defp online_ring(nodes, ready) do
+    nodes
+    |> filter_online(ready)
+    |> Enum.reject(&KademliaRing.is_self/1)
+  end
+
+  defp take_node_objects(nodes, limit) do
+    Enum.reduce_while(nodes, [], fn node, acc ->
+      if length(acc) >= limit do
+        {:halt, acc}
+      else
+        case node_object(node) do
+          nil -> {:cont, acc}
+          object -> {:cont, acc ++ [object]}
+        end
+      end
+    end)
   end
 
   defp replica_hint_nodes(key) do

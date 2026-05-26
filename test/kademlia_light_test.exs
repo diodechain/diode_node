@@ -47,6 +47,49 @@ defmodule KademliaLightTest do
     assert Enum.map(result, & &1.address) == [ready_node.address]
   end
 
+  test "find_nodes returns N online peers excluding self from the count" do
+    peers = for _ <- 1..4, do: Wallet.new()
+
+    ring = [Node.new(Diode.wallet()) | Enum.map(peers, &Node.new/1)]
+    :ets.insert(:kademlia_network, {:ring, ring})
+
+    ready = Map.new(peers, fn wallet -> {Wallet.address!(wallet), self()} end)
+
+    assert length(KademliaLight.find_nodes(<<1>>, ready)) == 3
+  end
+
+  test "find_node_objects skips online peers without objects and backfills" do
+    w1 = Wallet.new()
+    w2 = Wallet.new()
+    w3 = Wallet.new()
+    a1 = Wallet.address!(w1)
+    a2 = Wallet.address!(w2)
+    a3 = Wallet.address!(w3)
+
+    ring = [Node.new(w1), Node.new(w2), Node.new(w3), Node.new(Diode.wallet())]
+    :ets.insert(:kademlia_network, {:ring, ring})
+
+    ready = %{a1 => self(), a2 => self(), a3 => self()}
+
+    server =
+      Object.Server.new("example.test", 1234, 5678, "2.3.1", [])
+      |> Object.Server.sign(Wallet.privkey!(w2))
+
+    Model.KademliaSql.put_object(KademliaRing.key(w2), Object.encode!(server))
+
+    server2 =
+      Object.Server.new("example2.test", 1234, 5678, "2.3.1", [])
+      |> Object.Server.sign(Wallet.privkey!(w3))
+
+    Model.KademliaSql.put_object(KademliaRing.key(w3), Object.encode!(server2))
+
+    objects = KademliaLight.find_node_objects(<<1>>, ready, 2)
+
+    assert length(objects) == 2
+    assert Enum.any?(objects, fn o -> Object.Server.host(o) == "example.test" end)
+    assert Enum.any?(objects, fn o -> Object.Server.host(o) == "example2.test" end)
+  end
+
   test "find_nodes returns at most N online replica hints from registry ring" do
     a = Wallet.address!(Wallet.new())
     b = Wallet.address!(Wallet.new())
