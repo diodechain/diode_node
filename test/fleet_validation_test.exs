@@ -41,6 +41,7 @@ defmodule FleetValidationTest do
   test "ensure_valid stores registry_exists when GetFleet returns integer exists" do
     fleet = Chains.Moonbeam.developer_fleet_address()
     now = System.os_time(:second)
+    large_stake = 1_099_000_000_000_000_000_000
 
     Model.FleetSql.upsert(%{
       chain_id: @moonbeam_id,
@@ -56,7 +57,7 @@ defmodule FleetValidationTest do
     Application.put_env(:diode, :fleet_validation_registry_fn, fn _chain_id, _fleet ->
       %{
         exists: 1,
-        currentBalance: 100,
+        currentBalance: large_stake,
         withdrawRequestSize: 0,
         withdrawableBalance: 0,
         currentEpoch: 0,
@@ -80,7 +81,7 @@ defmodule FleetValidationTest do
 
     row = Model.FleetSql.get(@moonbeam_id, fleet)
     assert row.registry_exists == 1
-    assert row.stake == 100
+    assert row.stake == large_stake
     assert row.registry_checked_at > 0
   end
 
