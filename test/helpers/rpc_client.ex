@@ -107,20 +107,23 @@ defmodule RpcClient do
     wallet = clientid(client_num)
     key = Wallet.privkey!(wallet)
     fleet = RemoteChain.developer_fleet_address(@chain)
+    epoch = RemoteChain.epoch(@chain) - 1
 
     {conns, bytes} =
-      case TicketStore.find(Wallet.address!(wallet), fleet, RemoteChain.epoch(@chain)) do
+      case TicketStore.find(Wallet.address!(wallet), fleet, epoch) do
         nil -> {1, 0}
         tck -> {Ticket.total_connections(tck) + 1, Ticket.total_bytes(tck)}
       end
+
+    usage = TicketStore.device_usage(Wallet.address!(wallet))
 
     ticketv2(
       chain_id: @chain.chain_id(),
       server_id: Wallet.address!(Diode.wallet()),
       total_connections: conns,
-      total_bytes: bytes + @ticket_grace,
+      total_bytes: max(bytes, usage) + @ticket_grace,
       local_address: "rpc_test",
-      epoch: RemoteChain.epoch(@chain) - 1,
+      epoch: epoch,
       fleet_contract: fleet
     )
     |> Ticket.device_sign(key)

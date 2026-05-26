@@ -61,7 +61,7 @@ defmodule Network.Stats do
     # Adding common network counters
     counters =
       state.counters
-      |> Map.put(:devices, map_size(Network.Server.get_connections(Network.EdgeV2)))
+      |> Map.put(:devices, map_size(Network.EdgeServer.get_connections()))
       |> Map.put(:ticket_score, TicketStore.epoch_score())
 
     # Roll up the counters

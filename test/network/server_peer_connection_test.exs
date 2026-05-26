@@ -13,11 +13,21 @@ defmodule Network.ServerPeerConnectionTest do
     name = :"peer_server_test_#{port}"
 
     {:ok, _pid} =
-      Network.Server.start_link({[port], Network.PeerHandlerV2, %{name: name}})
+      Network.PeerServer.start_link({[port], %{name: name}})
 
     on_exit(fn ->
-      if pid = Process.whereis(name) do
-        GenServer.stop(pid, :normal, 1000)
+      case Process.whereis(name) do
+        pid when is_pid(pid) ->
+          if Process.alive?(pid) do
+            try do
+              GenServer.stop(pid, :normal, 1000)
+            catch
+              :exit, {:noproc, _} -> :ok
+            end
+          end
+
+        _ ->
+          :ok
       end
     end)
 
@@ -63,7 +73,7 @@ defmodule Network.ServerPeerConnectionTest do
     assert client_entry?(Map.get(st.clients, key))
     assert Map.get(st.clients, handler_pid) == key
 
-    conns = Network.Server.get_connections(server)
+    conns = Network.PeerServer.get_connections(server)
     assert conns[key] == handler_pid
   end
 
@@ -74,13 +84,13 @@ defmodule Network.ServerPeerConnectionTest do
 
     dialer =
       spawn(fn ->
-        pid = Network.Server.ensure_node_connection(server, peer, "127.0.0.1", 59_999)
+        pid = Network.PeerServer.ensure_node_connection(peer, "127.0.0.1", 59_999, server)
         send(parent, {:dial, pid})
         Process.sleep(:infinity)
       end)
 
     assert_receive {:dial, worker}
-    assert Network.Server.ensure_node_connection(server, peer, "127.0.0.1", 59_999) == worker
+    assert Network.PeerServer.ensure_node_connection(peer, "127.0.0.1", 59_999, server) == worker
 
     st = :sys.get_state(server)
     assert client_entry?(Map.get(st.clients, key))
@@ -105,7 +115,6 @@ defmodule Network.ServerPeerConnectionTest do
     assert_receive {:handler, ^handler}
     assert_receive {:registered, ^handler}
 
-    # Simulate ensure_node_connection pre-registering this handler (outbound dial).
     :sys.replace_state(server, fn state ->
       clients =
         state.clients
@@ -115,7 +124,7 @@ defmodule Network.ServerPeerConnectionTest do
       %{state | clients: clients}
     end)
 
-    assert Network.Server.ensure_node_connection(server, peer, "127.0.0.1", 59_999) == handler
+    assert Network.PeerServer.ensure_node_connection(peer, "127.0.0.1", 59_999, server) == handler
 
     Process.exit(handler, :kill)
   end
@@ -130,8 +139,30 @@ defmodule Network.ServerPeerConnectionTest do
 
     :ok = GenServer.call(server, {:mark_ready, key, handler_pid})
 
-    ready = Network.Server.get_ready_connections(server)
+    ready = Network.PeerServer.get_ready_connections(server)
     assert ready[key] == handler_pid
+  end
+
+  test "duplicate register kills stale handler with kill_clone", %{server: server} do
+    peer = Wallet.new()
+    key = Wallet.address!(peer)
+
+    spawn_handler(server, peer, {10, 0, 0, 1}, 11_111)
+    assert_receive {:handler, p1}
+    assert_receive {:registered, ^p1}
+
+    ref = Process.monitor(p1)
+
+    spawn_handler(server, peer, {10, 0, 0, 2}, 22_222)
+    assert_receive {:handler, p2}
+    assert_receive {:registered, ^p2}
+
+    assert_receive {:DOWN, ^ref, :process, ^p1, :kill_clone}, 2000
+    refute Process.alive?(p1)
+    assert Process.alive?(p2)
+    assert Network.PeerServer.get_connections(server)[key] == p2
+
+    Process.exit(p2, :kill)
   end
 
   test "duplicate register does not crash the server", %{server: server} do
@@ -143,15 +174,7 @@ defmodule Network.ServerPeerConnectionTest do
 
     spawn_handler(server, peer, {10, 0, 0, 2}, 22_222)
     assert_receive {:handler, p2}
-
-    assert Process.alive?(Process.whereis(server))
-
-    receive do
-      {:registered, ^p2} -> :ok
-      {:register_failed, _} -> :ok
-    after
-      1000 -> :ok
-    end
+    assert_receive {:registered, ^p2}
 
     assert Process.alive?(Process.whereis(server))
     Process.exit(p1, :kill)

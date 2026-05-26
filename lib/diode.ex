@@ -84,7 +84,7 @@ defmodule Diode do
         Enum.map(RemoteChain.chains(), fn chain ->
           supervisor(RemoteChain.Sup, [chain, [cache: cache]], {RemoteChain.Sup, chain})
         end),
-        Network.Server.child(peer2_port(), Network.PeerHandlerV2),
+        Network.PeerServer.child(peer2_port()),
         supervisor(
           Supervisor,
           [network_children(), [strategy: :one_for_one, name: Network]],
@@ -113,7 +113,7 @@ defmodule Diode do
     host = Diode.Config.get("HOST")
 
     [
-      Network.Server.child(edge2_ports(), Network.EdgeV2),
+      Network.EdgeServer.child(edge2_ports()),
       rpc_api(:http, port: rpc_port()),
       if host != nil and acme_ip_cert_eligible?(host) do
         ssl_opts =

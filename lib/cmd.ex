@@ -27,9 +27,9 @@ defmodule Diode.Cmd do
     IO.puts("Accountant       : #{Base16.encode(Diode.Accountant.config_address())}")
     IO.puts("Uptime           : #{div(Diode.uptime(), 1000)}")
 
-    devcount = Network.Server.get_connections(Network.EdgeV2) |> Enum.count()
+    devcount = Network.EdgeServer.get_connections() |> Enum.count()
     IO.puts("Connected Devices: #{devcount}")
-    peercount = Network.Server.get_connections(Network.PeerHandlerV2) |> Enum.count()
+    peercount = Network.PeerServer.get_connections() |> Enum.count()
     IO.puts("Connected Peers  : #{peercount}")
     IO.puts("")
 

@@ -51,7 +51,7 @@ RemoteChain.RPCCache.call_cache(
 # Jan 2nd
 
 device_id = DiodeClient.Base16.decode("0x84c485c62cdd878ce795aa90f269f84b5ae4fa0e")
-pid = Network.Server.get_connections(Network.EdgeV2)[device_id]
+pid = Network.EdgeServer.get_connections()[device_id]
 fleet_id = :sys.get_state(pid).fleet
 TicketStore.device_unpaid_bytes(device_id, fleet_id)
 tck = TicketStore.find(device_id, fleet_id, RemoteChain.epoch(Chains.Diode.chain_id()))
@@ -210,8 +210,8 @@ cast send --legacy --rpc-url $RPC --private-key $(cat diode_glmr.key) 0xDA92764B
 gateway = DiodeClient.Base16.decode("0x84c485c62cdd878ce795aa90f269f84b5ae4fa0e")
 updater = DiodeClient.Base16.decode("0x35480f4de422827d4fd80c47a5cf5f2f4622f2aa")
 
-updater_pid = Network.Server.get_connections(Network.EdgeV2)[updater]
-gateway_pid = Network.Server.get_connections(Network.EdgeV2)[gateway]
+updater_pid = Network.EdgeServer.get_connections()[updater]
+gateway_pid = Network.EdgeServer.get_connections()[gateway]
 :sys.get_state(updater_pid)
 :sys.get_state(gateway_pid)
 
@@ -245,8 +245,8 @@ node_id = {:wallet, nil,
      234, 206, 70, 152>>}
 port = 51055
 address = "38.148.120.19"
-pid = Network.Server.ensure_node_connection(Network.PeerHandlerV2, node_id, address, port)
-pid = Network.Server.ensure_node_connection(Network.PeerHandlerV2, nil, address, port)
+pid = Network.PeerServer.ensure_node_connection(node_id, address, port)
+pid = Network.PeerServer.ensure_node_connection(nil, address, port)
 
 # Jan 1st
 
@@ -650,7 +650,7 @@ Network.Rpc.execute_dio("dio_usage", [])
 
 :code.load_file(Network.Rpc)
 
-conns = Network.Server.get_connections(Network.EdgeV2)
+conns = Network.EdgeServer.get_connections()
 
 RemoteChain.RPCCache.get_storage(Chains.Diode, "0xaf60faa5cd840b724742f1af116168276112d6a6")
 RemoteChain.RPCCache.get_storage(Chains.Diode, "0xaf60faa5cd840b724742f1af116168276112d6a6")

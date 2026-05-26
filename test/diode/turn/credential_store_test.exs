@@ -8,7 +8,7 @@ defmodule Diode.Turn.CredentialStoreTest do
   @device <<1::160>>
 
   setup do
-    start_supervised!(Diode.Turn.CredentialStore)
+    TestHelper.ensure_credential_store()
     :ok
   end
 

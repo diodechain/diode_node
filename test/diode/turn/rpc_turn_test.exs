@@ -12,7 +12,7 @@ defmodule Network.Rpc.TurnTest do
     prev = System.get_env("TURN_ENABLED")
     System.put_env("TURN_ENABLED", "1")
     Diode.Config.set("TURN_ENABLED", "1")
-    start_supervised!(Diode.Turn.CredentialStore)
+    TestHelper.ensure_credential_store()
 
     on_exit(fn ->
       if prev, do: System.put_env("TURN_ENABLED", prev), else: System.delete_env("TURN_ENABLED")

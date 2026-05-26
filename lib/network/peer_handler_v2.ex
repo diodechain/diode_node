@@ -2,11 +2,13 @@
 # Copyright 2021-2024 Diode
 # Licensed under the Diode License, Version 1.1
 defmodule Network.PeerHandlerV2 do
-  use Network.Handler
-  alias Object.Server, as: Server
+  use GenServer
+  use Network.Common
+  require Logger
   alias Model.KademliaSql
-  alias Network.PortCollection
+  alias Network.{Common, PortCollection}
   alias Network.PortCollection.Port
+  alias DiodeClient.{Object, Object.Server, Rlp, Rlpx, Wallet}
 
   # @hello 0
   # @response 1
@@ -25,6 +27,8 @@ defmodule Network.PeerHandlerV2 do
   @pong :pong
   @call :call
   @reply :reply
+
+  defp log(state, msg), do: Common.log(__MODULE__, state, msg)
 
   def find_node, do: @find_node
   def find_value, do: @find_value
@@ -96,7 +100,7 @@ defmodule Network.PeerHandlerV2 do
   end
 
   def ssl_options(opts) do
-    Network.Server.default_ssl_options(opts)
+    Common.default_ssl_options(opts)
     |> Keyword.put(:packet, 4)
   end
 

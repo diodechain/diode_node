@@ -230,13 +230,12 @@ defmodule Network.Rpc do
         result(Diode.address())
 
       "net_peerCount" ->
-        peers = Network.Server.get_connections(Network.PeerHandlerV2)
+        peers = Network.PeerServer.get_connections()
         result(map_size(peers))
 
       "net_edgeCount" ->
         peers =
-          map_size(Network.Server.get_connections(Network.EdgeV1)) +
-            map_size(Network.Server.get_connections(Network.EdgeV2))
+          map_size(Network.EdgeServer.get_connections())
 
         result(peers)
 
@@ -382,7 +381,7 @@ defmodule Network.Rpc do
           address: Wallet.address!(Diode.wallet()) |> encode16(),
           name: Diode.Config.get("NAME"),
           uptime: encode16(Diode.uptime()),
-          devices: encode16(map_size(Network.Server.get_connections(Network.EdgeV2))),
+          devices: encode16(map_size(Network.EdgeServer.get_connections())),
           incoming: encode16(incoming),
           outgoing: encode16(outgoing),
           total: encode16(incoming + outgoing)
@@ -421,7 +420,7 @@ defmodule Network.Rpc do
       "dio_network" ->
         local = dio_network_local_entry()
 
-        conns = Network.Server.get_connections(Network.PeerHandlerV2)
+        conns = Network.PeerServer.get_connections()
 
         connected =
           Enum.map(conns, fn {address, _conn} ->

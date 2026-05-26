@@ -17,7 +17,7 @@ defmodule Diode.Turn.AuthenticatesTest do
       credential: :unused
     })
 
-    start_supervised!(Diode.Turn.CredentialStore)
+    TestHelper.ensure_credential_store()
 
     device = <<2::160>>
     {:ok, %{username: u, password: p}} = Diode.Turn.CredentialStore.issue_or_get(device)

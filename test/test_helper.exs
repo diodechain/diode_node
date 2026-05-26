@@ -149,6 +149,13 @@ defmodule TestHelper do
   def developer_fleet_address(), do: RemoteChain.developer_fleet_address(@chain)
   def epoch(), do: RemoteChain.epoch(@chain)
 
+  def ensure_credential_store do
+    case Process.whereis(Diode.Turn.CredentialStore) do
+      nil -> ExUnit.Callbacks.start_supervised!(Diode.Turn.CredentialStore)
+      pid when is_pid(pid) -> pid
+    end
+  end
+
   def reset() do
     kill_clones()
     TicketStore.clear()
@@ -293,7 +300,8 @@ defmodule TestHelper do
         {"RPCS_PORT", "#{rpcs_port(num)}"},
         {"EDGE2_PORT", "#{edge2_port(num)}"},
         {"PEER2_PORT", "#{peer_port(num)}"},
-        {"SEED", seed}
+        {"SEED", seed},
+        {"TURN_ENABLED", "0"}
       ]
       |> (fn list ->
             if private_key, do: [{"PRIVATE", private_key} | list], else: list

@@ -2,15 +2,19 @@
 # Copyright 2021-2024 Diode
 # Licensed under the Diode License, Version 1.1
 defmodule Network.EdgeV2 do
-  use Network.Handler
+  use GenServer
+  use Network.Common
   require Logger
-  alias Network.PortCollection
+  alias Network.{Common, EdgeServer, PeerServer, PortCollection}
   alias Network.PortCollection.Port
-  alias DiodeClient.{Base16, Object, Object.Ticket}
+  alias DiodeClient.{Base16, Object, Object.Ticket, Random, Rlp, Rlpx, Wallet}
   import DiodeClient.Object.TicketV1, only: :macros
   import DiodeClient.Object.TicketV2, only: :macros
   import DiodeClient.Object.Channel, only: :macros
   @refresh_interval :timer.hours(8)
+
+  defp log(state, msg), do: Common.log(__MODULE__, state, msg)
+  defp name(state), do: Common.name(state)
 
   @type state :: %{
           blocked: :queue.queue(tuple()),
@@ -82,11 +86,10 @@ defmodule Network.EdgeV2 do
   end
 
   def ssl_options(opts) do
-    Network.Server.default_ssl_options(opts)
+    Common.default_ssl_options(opts)
     |> Keyword.put(:packet, :raw)
   end
 
-  @impl true
   def handle_cast({:pccb_portopen, %Port{ref: ref, portname: portname}, device_address}, state) do
     state =
       send_socket(state, {:port, ref}, random_ref(), ["portopen", portname, ref, device_address])
@@ -151,7 +154,6 @@ defmodule Network.EdgeV2 do
     {:noreply, state}
   end
 
-  @impl true
   def terminate(reason, state = %{sender: sender}) do
     if reason == :normal do
       Network.Sender.stop(sender)
@@ -443,7 +445,7 @@ defmodule Network.EdgeV2 do
           end
 
         ["isonline", key] ->
-          online = Map.get(Network.Server.get_connections(Network.EdgeV2), key) != nil
+          online = Map.get(EdgeServer.get_connections(), key) != nil
           response(online)
 
         ["getobject", key] ->
@@ -615,7 +617,6 @@ defmodule Network.EdgeV2 do
     end
   end
 
-  @impl true
   def handle_info({{RemoteChain.NodeProxy, chain}, :block_number, block_number}, state) do
     msg =
       encode_request(random_ref(), [
@@ -711,6 +712,7 @@ defmodule Network.EdgeV2 do
     end
   end
 
+  @spec handle_ticket(Ticket.t(), state()) :: {[term()], state()} | [term()]
   defp handle_ticket(dl, state) do
     reset_usage? = state.version == 1000 and state.last_ticket == nil
 
@@ -949,7 +951,7 @@ defmodule Network.EdgeV2 do
   defp ensure_node_connection(node_id) do
     key = Wallet.address!(node_id)
 
-    if pid = Network.Server.get_ready_connections(Network.PeerHandlerV2)[key] do
+    if pid = PeerServer.get_ready_connections()[key] do
       pid
     else
       case KademliaLight.find_value(key) do
@@ -959,8 +961,7 @@ defmodule Network.EdgeV2 do
         binary ->
           server = Object.decode!(binary)
 
-          Network.Server.ensure_node_connection(
-            Network.PeerHandlerV2,
+          PeerServer.ensure_node_connection(
             node_id,
             Object.Server.host(server),
             Object.Server.peer_port(server)

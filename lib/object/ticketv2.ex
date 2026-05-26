@@ -21,7 +21,7 @@ defmodule DiodeClient.Object.TicketV2 do
   @type t ::
           record(:ticketv2,
             server_id: binary(),
-            chain_id: binary(),
+            chain_id: integer(),
             epoch: integer(),
             fleet_contract: binary(),
             total_connections: integer(),

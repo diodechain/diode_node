@@ -134,6 +134,9 @@ defmodule KademliaLightQuorumTest do
       end)
     end
 
+    # Live KademliaLight may refresh :ring between insert and read; pin test ring here.
+    :ets.insert(:kademlia_network, {:ring, ring})
+
     result = KademliaLight.find_value_with_rpc(key, rpc_fun, online)
 
     assert result == v5

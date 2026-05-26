@@ -31,8 +31,8 @@ defmodule FleetValidation do
     refresh_fields(
       row,
       now,
-      needs_contract?(nil),
-      needs_registry?(nil, chain_id),
+      needs_contract?(nil, now),
+      needs_registry?(nil, chain_id, now),
       needs_stake?(nil, chain_id, now)
     )
   end
@@ -43,8 +43,8 @@ defmodule FleetValidation do
     refresh_fields(
       row,
       now,
-      needs_contract?(row),
-      needs_registry?(row, chain_id),
+      needs_contract?(row, now),
+      needs_registry?(row, chain_id, now),
       needs_stake?(row, chain_id, now)
     )
   end
@@ -86,11 +86,18 @@ defmodule FleetValidation do
     %{row | stake: state.currentBalance, stake_checked_at: now}
   end
 
-  defp needs_contract?(nil), do: true
-  defp needs_contract?(row), do: row.is_contract != 1
+  defp needs_contract?(nil, _now), do: true
 
-  defp needs_registry?(nil, chain_id), do: get_fleet_chain?(chain_id)
-  defp needs_registry?(row, chain_id), do: get_fleet_chain?(chain_id) and row.registry_exists != 1
+  defp needs_contract?(row, now) do
+    row.is_contract != 1 and now - row.contract_checked_at >= @stake_refresh_seconds
+  end
+
+  defp needs_registry?(nil, chain_id, _now), do: get_fleet_chain?(chain_id)
+
+  defp needs_registry?(row, chain_id, now) do
+    get_fleet_chain?(chain_id) and row.registry_exists != 1 and
+      now - row.registry_checked_at >= @stake_refresh_seconds
+  end
 
   defp needs_stake?(nil, chain_id, _now), do: moonbeam?(chain_id)
 

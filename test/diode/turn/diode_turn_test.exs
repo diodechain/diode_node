@@ -28,7 +28,7 @@ defmodule Diode.TurnTest do
     Diode.Config.set("TURN_ENABLED", "1")
     System.put_env("TURN_REALM", "diode")
     Diode.Config.set("TURN_REALM", "diode")
-    start_supervised!(Diode.Turn.CredentialStore)
+    TestHelper.ensure_credential_store()
 
     assert {:ok, m1} = Diode.Turn.issue_credentials(@device)
     assert {:ok, m2} = Diode.Turn.issue_credentials(@device)

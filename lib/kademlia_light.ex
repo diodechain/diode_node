@@ -289,7 +289,7 @@ defmodule KademliaLight do
   end
 
   def handle_info(:scan_redistribution, state) do
-    ready = Network.Server.get_ready_connections(PeerHandlerV2)
+    ready = Network.PeerServer.get_ready_connections()
 
     for {address, _ring_key} <- KademliaSql.nodes_needing_redistribution() do
       if not Map.has_key?(ready, address) do
@@ -344,7 +344,7 @@ defmodule KademliaLight do
   end
 
   defp ready_connections do
-    Network.Server.get_ready_connections(PeerHandlerV2)
+    Network.PeerServer.get_ready_connections()
   end
 
   defp rpc_with_cutoff(node_id, pid, call, timeout \\ @rpc_lookup_timeout) do
@@ -679,7 +679,7 @@ defmodule KademliaLight do
           str -> Wallet.from_address(Base16.decode(str))
         end
 
-      Network.Server.ensure_node_connection(PeerHandlerV2, id, address, port)
+      Network.PeerServer.ensure_node_connection(id, address, port)
     end
   end
 
@@ -719,8 +719,7 @@ defmodule KademliaLight do
 
   defp ensure_node_connection(%Node{node_id: node_id} = node) do
     if KademliaRing.is_self(node) do
-      Network.Server.ensure_node_connection(
-        PeerHandlerV2,
+      Network.PeerServer.ensure_node_connection(
         node_id,
         "localhost",
         Diode.peer2_port()
@@ -734,7 +733,7 @@ defmodule KademliaLight do
           server = Object.decode!(encoded)
           host = Server.host(server)
           port = Server.peer_port(server)
-          Network.Server.ensure_node_connection(PeerHandlerV2, node_id, host, port)
+          Network.PeerServer.ensure_node_connection(node_id, host, port)
       end
     end
   end
