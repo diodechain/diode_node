@@ -21,6 +21,13 @@ defmodule FleetValidation do
          :ok <- validate_registry(row, chain_id) do
       maybe_warn_zero_stake(row, chain_id)
       :ok
+    else
+      error ->
+        Logger.warning(
+          "Fleet validation failed on: #{Base16.encode(fleet)} @ #{chain_id}: #{inspect(error)}"
+        )
+
+        :ok
     end
   end
 
