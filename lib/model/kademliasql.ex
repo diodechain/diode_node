@@ -358,12 +358,16 @@ defmodule Model.KademliaSql do
     throw(:not_implemented)
   end
 
-  def maybe_update_object(key, encoded_object) when is_binary(encoded_object) do
-    object = Object.decode!(encoded_object)
-    maybe_update_object(key, object)
+  def maybe_update_object(key, object) do
+    maybe_update_object(key, object, false)
   end
 
-  def maybe_update_object(key, object) when is_tuple(object) do
+  def maybe_update_object(key, encoded_object, force_refresh) when is_binary(encoded_object) do
+    object = Object.decode!(encoded_object)
+    maybe_update_object(key, object, force_refresh)
+  end
+
+  def maybe_update_object(key, object, force_refresh) when is_tuple(object) do
     hkey = KademliaLight.hash(Object.key(object))
     # Checking that we got a valid object
     if key == nil or key == hkey do
@@ -386,10 +390,15 @@ defmodule Model.KademliaSql do
               if Object.block_number(existing_object) < Object.block_number(object) do
                 put_object(hkey, Object.encode!(object))
               else
-                if stale? do
-                  nil
+                if force_refresh and
+                     Object.block_number(existing_object) == Object.block_number(object) do
+                  put_object(hkey, Object.encode!(object))
                 else
-                  existing_object
+                  if stale? do
+                    nil
+                  else
+                    existing_object
+                  end
                 end
               end
           end

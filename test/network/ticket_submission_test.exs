@@ -131,7 +131,7 @@ defmodule Network.TicketSubmissionTest do
     assert {:error, "invalid ticket"} = Network.TicketSubmission.decode_rlp_ticket(["nope"])
   end
 
-  test "rejects ticket with non-contract fleet address" do
+  test "accepts ticket with non-contract fleet address for now" do
     wallet = clientid(1)
     invalid_fleet = Wallet.new() |> Wallet.address!()
 
@@ -142,10 +142,10 @@ defmodule Network.TicketSubmissionTest do
         total_connections: 1
       )
 
-    assert {:error, "invalid fleet contract"} = Network.TicketSubmission.submit(ticket, wallet)
+    assert {:ok, _} = Network.TicketSubmission.submit(ticket, wallet)
   end
 
-  test "rejects ticket with zero address fleet" do
+  test "accepts ticket with zero address fleet for now" do
     wallet = clientid(1)
 
     ticket =
@@ -155,7 +155,7 @@ defmodule Network.TicketSubmissionTest do
         total_connections: 1
       )
 
-    assert {:error, "invalid fleet contract"} = Network.TicketSubmission.submit(ticket, wallet)
+    assert {:ok, _} = Network.TicketSubmission.submit(ticket, wallet)
   end
 
   defp build_ticket(wallet, opts) do

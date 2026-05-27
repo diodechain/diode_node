@@ -1,5 +1,6 @@
 defmodule SnapBackupOnRemoveTest do
   use ExUnit.Case, async: true
+  import Bitwise
 
   @script Path.expand("../scripts/snap_backup_on_remove.sh", __DIR__)
 
@@ -46,8 +47,8 @@ defmodule SnapBackupOnRemoveTest do
     assert backup_name =~ ~r/^diode_node_backup_.*\.tar\.gz$/
 
     backup_path = Path.join(context.backup_dir, backup_name)
-    assert File.stat!(backup_path).mode &&& 0o777 == 0o600
-    assert File.stat!(context.backup_dir).mode &&& 0o777 == 0o700
+    assert (File.stat!(backup_path).mode &&& 0o777) == 0o600
+    assert (File.stat!(context.backup_dir).mode &&& 0o777) == 0o700
 
     File.mkdir_p!(context.extract_dir)
 

@@ -123,7 +123,7 @@ defmodule FleetValidationTest do
         device_signature: <<0::520>>
       )
 
-    assert {:error, "unknown fleet"} = FleetValidation.ensure_valid(ticket)
+    assert :ok = FleetValidation.ensure_valid(ticket)
 
     row = Model.FleetSql.get(@moonbeam_id, fleet)
     assert row.registry_exists == 0

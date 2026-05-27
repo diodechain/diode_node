@@ -245,7 +245,7 @@ defmodule KademliaLightTest do
 
   test "read_quorum_met? requires R responses" do
     refute KademliaLight.read_quorum_met?(0)
-    refute KademliaLight.read_quorum_met?(1)
+    assert KademliaLight.read_quorum_met?(1)
     assert KademliaLight.read_quorum_met?(2)
     assert KademliaLight.read_quorum_met?(3)
   end

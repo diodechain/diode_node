@@ -133,7 +133,7 @@ defmodule KademliaLight do
   end
 
   def register_node(node_id, server) do
-    if Model.KademliaSql.maybe_update_object(nil, server) do
+    if Model.KademliaSql.maybe_update_object(nil, server, true) do
       address = Wallet.address!(node_id)
       KademliaSql.refresh_known_good(address)
       KademliaSql.upsert_node_from_connection(node_id, %{known_good: false})
@@ -811,14 +811,13 @@ defmodule KademliaLight do
   defp peer_hint_list(_), do: []
 
   @doc false
-  def replica_targets(key, online \\ nil) do
-    key = hash(key)
+  def replica_targets(hkey, online \\ nil) do
     ready = online || ready_connections()
 
     nearest =
       ring_nodes()
       |> filter_online(ready)
-      |> KademliaRing.nearest_n(key, @n)
+      |> KademliaRing.nearest_n(hkey, @n)
 
     self_in_set? = Enum.any?(nearest, &KademliaRing.is_self/1)
 
@@ -829,12 +828,11 @@ defmodule KademliaLight do
     {remote, self_in_set?}
   end
 
-  defp replica_candidates(key, online) do
-    key = hash(key)
+  defp replica_candidates(hkey, online) do
     ready = online || ready_connections()
 
     ring_nodes()
-    |> KademliaRing.nearest(key)
+    |> KademliaRing.nearest(hkey)
     |> Enum.reject(&KademliaRing.is_self/1)
     |> filter_online(ready)
   end
