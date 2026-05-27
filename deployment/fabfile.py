@@ -45,6 +45,10 @@ def reload(module):
   local("scp ../_build/dev/lib/diode/ebin/Elixir.{}.beam root@{}:/opt/diode_node/".format(module, env.host))
   run("/opt/diode_node/bin/diode_node rpc 'IO.inspect(Shell.reload({}))'".format(module))
 
+def get_object(hexstr):
+  run("/opt/diode_node/bin/diode_node rpc 'IO.inspect(KademliaLight.find_value(DiodeClient.Base16.decode(\"{}\")))'".format(hexstr))
+
+@parallel
 @parallel
 def check():
   with hide('status', 'running'):

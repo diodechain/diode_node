@@ -19,6 +19,32 @@ defmodule KademliaLightQuorumTest do
     |> Object.encode!()
   end
 
+  test "replica_targets skips offline nodes and still returns 3 targets if available" do
+    key = <<18::256>>
+
+    wallets = for _ <- 1..5, do: Wallet.new()
+    addresses = Enum.map(wallets, &Wallet.address!/1)
+    assert :ok = Model.KademliaSql.sync_registry_nodes(addresses)
+
+    ring = [Node.new(Diode.wallet()) | Enum.map(wallets, &Node.new/1)]
+    :ets.insert(:kademlia_network, {:ring, ring})
+
+    # Only 3 nodes are online
+    online_wallets = Enum.take(wallets, 3)
+    online = Map.new(online_wallets, fn w -> {Wallet.address!(w), self()} end)
+
+    {remote, self_in} = KademliaLight.replica_targets(key, online)
+
+    # Since self is not in online (ready_connections), self_in should be false
+    # and remote should contain exactly 3 nodes.
+    assert length(remote) + if(self_in, do: 1, else: 0) == 3
+
+    # All returned nodes should be online
+    Enum.each(remote, fn node ->
+      assert Map.has_key?(online, node.address)
+    end)
+  end
+
   test "store quorum met with one remote ack" do
     value = data_value(1)
     key = <<10::256>>
@@ -116,7 +142,7 @@ defmodule KademliaLightQuorumTest do
     addresses = Enum.map([n1, n2, n3], & &1.address)
     assert :ok = Model.KademliaSql.sync_registry_nodes(addresses)
 
-    ring = [Node.new(Diode.wallet()), n1, n2, n3]
+    ring = [n1, n2, n3]
     :ets.insert(:kademlia_network, {:ring, ring})
 
     online = Map.new([n1, n2, n3], fn n -> {n.address, self()} end)
@@ -125,21 +151,81 @@ defmodule KademliaLightQuorumTest do
     v5 = data_value(5)
     v3 = data_value(3)
 
-    rpc_fun = fn nodes, _call ->
-      Enum.map(nodes, fn
-        %{address: addr} when addr == n1.address -> {:value, v1}
-        %{address: addr} when addr == n2.address -> {:value, v5}
-        %{address: addr} when addr == n3.address -> {:value, v3}
-        _ -> []
-      end)
+    parent = self()
+
+    rpc_fun = fn nodes, call ->
+      case call do
+        [:find_value, _] ->
+          Enum.map(nodes, fn
+            %{address: addr} when addr == n1.address -> {:value, v1}
+            %{address: addr} when addr == n2.address -> {:value, v5}
+            %{address: addr} when addr == n3.address -> {:value, v3}
+            _ -> []
+          end)
+
+        [:store, _key, ^v5] ->
+          send(parent, {:repair, Enum.map(nodes, & &1.address)})
+          Enum.map(nodes, fn _ -> ["ok"] end)
+      end
     end
 
     # Live KademliaLight may refresh :ring between insert and read; pin test ring here.
     :ets.insert(:kademlia_network, {:ring, ring})
 
+    {remote, _} = KademliaLight.replica_targets(key, online)
+    remote_addrs = Enum.map(remote, & &1.address)
+
     result = KademliaLight.find_value_with_rpc(key, rpc_fun, online)
 
     assert result == v5
+
+    assert_receive {:repair, repaired_addresses}
+
+    if n1.address in remote_addrs, do: assert(n1.address in repaired_addresses)
+    if n3.address in remote_addrs, do: assert(n3.address in repaired_addresses)
+    refute n2.address in repaired_addresses
+  end
+
+  test "find_value succeeds with only 1 response (R=1)" do
+    key = <<17::256>>
+    n1 = Node.new(Wallet.new())
+    n2 = Node.new(Wallet.new())
+    n3 = Node.new(Wallet.new())
+
+    addresses = Enum.map([n1, n2, n3], & &1.address)
+    assert :ok = Model.KademliaSql.sync_registry_nodes(addresses)
+
+    ring = [n1, n2, n3]
+    :ets.insert(:kademlia_network, {:ring, ring})
+
+    online = Map.new([n1, n2, n3], fn n -> {n.address, self()} end)
+
+    v1 = data_value(1)
+
+    parent = self()
+
+    rpc_fun = fn nodes, call ->
+      case call do
+        [:find_value, _] ->
+          Enum.map(nodes, fn
+            %{address: addr} when addr == n1.address -> {:value, v1}
+            _ -> []
+          end)
+
+        [:store, _key, ^v1] ->
+          send(parent, {:repair, Enum.map(nodes, & &1.address)})
+          Enum.map(nodes, fn _ -> ["ok"] end)
+      end
+    end
+
+    result = KademliaLight.find_value_with_rpc(key, rpc_fun, online)
+
+    assert result == v1
+
+    assert_receive {:repair, repaired_addresses}
+    assert n2.address in repaired_addresses
+    assert n3.address in repaired_addresses
+    refute n1.address in repaired_addresses
   end
 
   test "find_value returns nil when read quorum not met and no local copy" do

@@ -19,7 +19,7 @@ defmodule KademliaLight do
 
   @n 3
   @w 2
-  @r 2
+  @r 1
   @ets_table :kademlia_network
   @redistribute_interval :timer.minutes(2)
   @contact_interval :timer.minutes(1)
@@ -59,7 +59,6 @@ defmodule KademliaLight do
     case result do
       {:value, value} ->
         value = merge_local_find_value(key, value)
-        repair_replicas(key, value)
         value
 
       :miss ->
@@ -747,7 +746,7 @@ defmodule KademliaLight do
     end
   end
 
-  defp do_find_value_quorum(key, rpc_fun \\ &rpc_read/2, online \\ nil) do
+  defp do_find_value_quorum(key, rpc_fun \\ &rpc_read/2, online \\ nil, repair_fun \\ &rpc/2) do
     local_value = KademliaSql.object(key)
     value_responses = if local_value, do: [local_value], else: []
 
@@ -769,8 +768,24 @@ defmodule KademliaLight do
 
     if read_quorum_met?(length(value_responses)) do
       case quorum_select_value(value_responses) do
-        nil -> :miss
-        best -> {:value, best}
+        nil ->
+          :miss
+
+        best ->
+          needs_repair =
+            Enum.filter(Enum.zip(replica_remote, results), fn {_node, res} ->
+              case res do
+                {:value, val} -> choose_newer_value(val, best) == best and val != best
+                _ -> true
+              end
+            end)
+            |> Enum.map(&elem(&1, 0))
+
+          if needs_repair != [] do
+            spawn(fn -> repair_fun.(needs_repair, [PeerHandlerV2.store(), key, best]) end)
+          end
+
+          {:value, best}
       end
     else
       :miss
@@ -802,6 +817,7 @@ defmodule KademliaLight do
 
     nearest =
       ring_nodes()
+      |> filter_online(ready)
       |> KademliaRing.nearest_n(key, @n)
 
     self_in_set? = Enum.any?(nearest, &KademliaRing.is_self/1)
@@ -809,7 +825,6 @@ defmodule KademliaLight do
     remote =
       nearest
       |> Enum.reject(&KademliaRing.is_self/1)
-      |> filter_online(ready)
 
     {remote, self_in_set?}
   end
@@ -969,10 +984,9 @@ defmodule KademliaLight do
   def find_value_with_rpc(key, rpc_fun, online \\ nil) when is_function(rpc_fun, 2) do
     key = hash(key)
 
-    case do_find_value_quorum(key, rpc_fun, online) do
+    case do_find_value_quorum(key, rpc_fun, online, rpc_fun) do
       {:value, value} ->
         value = merge_local_find_value(key, value)
-        repair_replicas_with_rpc(key, value, rpc_fun)
         value
 
       :miss ->
@@ -981,16 +995,6 @@ defmodule KademliaLight do
           local_ret -> local_ret
         end
     end
-  end
-
-  defp repair_replicas_with_rpc(key, value, rpc_fun) do
-    {remote, _} = replica_targets(key)
-
-    if remote != [] do
-      rpc_fun.(remote, [PeerHandlerV2.store(), key, value])
-    end
-
-    :ok
   end
 
   @doc false
