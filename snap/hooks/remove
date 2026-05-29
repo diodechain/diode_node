@@ -1,3 +1,0 @@
-#!/bin/sh
-# Runs before snap data is deleted. See scripts/snap_backup_on_remove.sh.
-exec "$SNAP/bin/backup_on_remove"
