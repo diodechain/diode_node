@@ -139,6 +139,7 @@ defmodule Diode.Mixfile do
       {:websockex, "~> 0.5"},
       {:rotating_file, "~> 0.1"},
       {:wireguardex, "~> 0.4"},
+      {:rustler, ">= 0.0.0", optional: true},
       # xturn is vendored under lib/xturn/ — Hex/path dep fails to compile on Elixir 1.19
       # xmedialib vendored under vendor/xmedialib (OTP 28+ :crypto.mac in Stun; see docs/vendoring-xturn.md)
       {:xmedialib, path: "vendor/xmedialib", override: true},

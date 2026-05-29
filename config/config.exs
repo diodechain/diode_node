@@ -31,3 +31,15 @@ if Mix.env() != :test and File.exists?("config/diode.exs") do
 end
 
 config :exqlite, force_build: true
+
+# wireguardex only ships precompiled NIFs for x86_64/aarch64 (see deps/wireguardex).
+# On other arches (e.g. s390x), compile the NIF from source when Rust is available.
+arch = :erlang.system_info(:system_architecture) |> List.to_string()
+
+#  String.contains?(arch, "x86_64") or String.contains?(arch, "aarch64")
+wireguard_has_prebuilt? =
+  String.contains?(arch, "aarch64")
+
+unless wireguard_has_prebuilt? do
+  System.put_env("WIREGUARDNIF_BUILD", "true")
+end
