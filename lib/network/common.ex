@@ -68,6 +68,14 @@ defmodule Network.Common do
   defp server_using(server_opts) do
     handler = Keyword.fetch!(server_opts, :handler)
     name = Keyword.fetch!(server_opts, :name)
+    ready_ets = Keyword.get(server_opts, :ready_ets, false)
+
+    init_prelude =
+      if ready_ets do
+        quote do: Network.PeerReadyEts.reset()
+      else
+        quote do: :ok
+      end
 
     conflict_resolver =
       case Keyword.fetch!(server_opts, :conflict) do
@@ -123,6 +131,7 @@ defmodule Network.Common do
       end
 
       def init({ports, opts}) do
+        unquote(init_prelude)
         Network.Common.server_init(__MODULE__, unquote(handler), ports, opts)
       end
 
@@ -808,6 +817,10 @@ defmodule Network.Common do
       key ->
         clients = Map.drop(state.clients, [pid, key])
         ready = Map.get(state, :ready, %{}) |> Map.delete(key)
+
+        if Map.has_key?(state, :ready) and Map.has_key?(state.ready, key) do
+          Network.PeerReadyEts.delete(key)
+        end
 
         clients =
           Enum.find(clients, nil, fn {_entry, key0} -> key0 == key end)

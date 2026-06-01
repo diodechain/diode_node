@@ -52,6 +52,9 @@ defmodule Network.CommonTest do
       ready: %{key => handler}
     }
 
+    Network.PeerReadyEts.reset()
+    Network.PeerReadyEts.insert(key, handler)
+
     assert {:noreply, updated} =
              Common.handle_client_exit_noreply(
                state,
@@ -61,6 +64,7 @@ defmodule Network.CommonTest do
              )
 
     assert updated.ready == %{}
+    assert Network.PeerReadyEts.read() == %{}
     refute Map.has_key?(updated.clients, handler)
     refute Map.has_key?(updated.clients, key)
   end

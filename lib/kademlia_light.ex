@@ -560,16 +560,17 @@ defmodule KademliaLight do
 
   defp write_ets_ring(ring) do
     :ets.insert(@ets_table, {:ring, ring})
+    ready = ready_connections()
 
     for node <- ring do
-      update_ets_meta(node.node_id)
+      update_ets_meta(node.node_id, ready)
     end
   end
 
-  defp update_ets_meta(node_id) do
+  defp update_ets_meta(node_id, ready \\ nil) do
     address = Wallet.address!(node_id)
     meta = KademliaSql.get_node(address) || %{}
-    ready = ready_connections()
+    ready = ready || ready_connections()
 
     meta =
       Map.merge(meta, %{
@@ -583,7 +584,9 @@ defmodule KademliaLight do
   def discover_registry_objects(ring \\ nil) do
     ring = ring || ring_nodes()
 
-    if map_size(ready_connections()) == 0 do
+    ready = ready_connections()
+
+    if map_size(ready) == 0 do
       0
     else
       now = System.os_time(:second)
@@ -664,7 +667,7 @@ defmodule KademliaLight do
             last_connected: now
           })
 
-          update_ets_meta(node.node_id)
+          update_ets_meta(node.node_id, ready)
         else
           if should_retry?(meta, now) do
             ensure_node_connection(node)

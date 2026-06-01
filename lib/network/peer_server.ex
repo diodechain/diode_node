@@ -15,7 +15,8 @@ defmodule Network.PeerServer do
     server: [
       handler: Network.PeerHandlerV2,
       name: Network.PeerHandlerV2,
-      conflict: :peer
+      conflict: :peer,
+      ready_ets: true
     ]
 
   alias Network.Common
@@ -31,20 +32,12 @@ defmodule Network.PeerServer do
             self_conns: []
 
   def get_ready_connections(name \\ @name) do
-    if pid = Process.whereis(name) do
-      GenServerDbg.call(pid, :get_ready_connections)
-    else
-      %{}
-    end
+    if Process.whereis(name), do: Network.PeerReadyEts.read(), else: %{}
   end
 
   def ensure_node_connection(node_id, address, port, name \\ @name)
       when node_id == nil or is_tuple(node_id) do
     GenServerDbg.call(name, {:ensure_node_connection, node_id, address, port})
-  end
-
-  def handle_call(:get_ready_connections, _from, state) do
-    {:reply, Common.get_ready_from_state(state.ready, state.clients), state}
   end
 
   def handle_call({:ensure_node_connection, node_id, address, port}, _from, state)
@@ -86,10 +79,27 @@ defmodule Network.PeerServer do
   end
 
   def handle_call({:mark_ready, address, pid}, _from, state) do
-    {:reply, :ok, %{state | ready: Common.mark_ready(state.ready, state.clients, address, pid)}}
+    {:reply, :ok, apply_mark_ready(state, address, pid)}
   end
 
   def handle_cast({:mark_ready, address, pid}, state) do
-    {:noreply, %{state | ready: Common.mark_ready(state.ready, state.clients, address, pid)}}
+    {:noreply, apply_mark_ready(state, address, pid)}
+  end
+
+  defp apply_mark_ready(state, address, pid) do
+    ready_before = state.ready
+    ready_after = Common.mark_ready(ready_before, state.clients, address, pid)
+    sync_ready_ets(ready_before, ready_after, address)
+    %{state | ready: ready_after}
+  end
+
+  defp sync_ready_ets(ready_before, ready_after, address) do
+    case Map.get(ready_after, address) do
+      pid when is_pid(pid) ->
+        Network.PeerReadyEts.insert(address, pid)
+
+      nil ->
+        if Map.has_key?(ready_before, address), do: Network.PeerReadyEts.delete(address)
+    end
   end
 end
