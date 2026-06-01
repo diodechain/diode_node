@@ -36,6 +36,20 @@ defmodule RemoteChain.NodeProxyTest do
   use ExUnit.Case, async: false
   alias RemoteChain.NodeProxy
 
+  describe "rpc_log_status/1" do
+    test "returns :ok for successful responses" do
+      assert NodeProxy.rpc_log_status(%{"id" => 1, "result" => "0x1"}) == ":ok"
+    end
+
+    test "returns :error for JSON-RPC error responses" do
+      assert NodeProxy.rpc_log_status(%{
+               "id" => 1,
+               "error" => %{"code" => -32000, "message" => "fail"}
+             }) ==
+               ":error"
+    end
+  end
+
   describe "handle_failed_send/2" do
     test "keeps a still-handshaking (alive) WSConn in the pool" do
       # Simulate a WSConn that is doing its async handshake: the process

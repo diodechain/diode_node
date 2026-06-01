@@ -199,7 +199,14 @@ defmodule RemoteChain.NodeProxy do
         Logger.warning("No request found for response: #{inspect(response)}")
         {:noreply, state}
 
-      {%{from: from, start_ms: start_ms, method: method, params: params, conn: conn}, requests} ->
+      {%{
+         from: from,
+         start_ms: start_ms,
+         method: method,
+         params: params,
+         conn: conn,
+         request: request
+       }, requests} ->
         time_ms = System.os_time(:millisecond) - start_ms
 
         if time_ms > 400 do
@@ -218,6 +225,7 @@ defmodule RemoteChain.NodeProxy do
           state = send_request(%{state | requests: requests}, fallback, id, method, params, from)
           {:noreply, state}
         else
+          log_rpc_call(state.log, request, response)
           GenServer.reply(from, response)
           {:noreply, %{state | requests: requests}}
         end
@@ -248,6 +256,16 @@ defmodule RemoteChain.NodeProxy do
     end
   end
 
+  @doc false
+  def rpc_log_status(response) do
+    if Map.has_key?(response, "error"), do: ":error", else: ":ok"
+  end
+
+  defp log_rpc_call(log, request, response) do
+    ts = DateTime.utc_now() |> DateTime.to_iso8601()
+    RotatingFile.write(log, "#{ts} #{request} #{rpc_log_status(response)}\n")
+  end
+
   defp send_request(state, conn, id, method, params, from) do
     request =
       %{
@@ -261,15 +279,14 @@ defmodule RemoteChain.NodeProxy do
     ret = RemoteChain.WSConn.send_request(conn, request)
 
     if :ok == ret do
-      RotatingFile.write(state.log, request <> "\n")
-
       requests =
         Map.put(state.requests, id, %{
           from: from,
           method: method,
           params: params,
           start_ms: System.os_time(:millisecond),
-          conn: conn
+          conn: conn,
+          request: request
         })
 
       %{state | requests: requests}
