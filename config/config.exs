@@ -32,6 +32,7 @@ end
 
 config :exqlite, force_build: true
 
+config :rustler_precompiled, :force_build, wireguardex: true
 # wireguardex only ships precompiled NIFs for x86_64/aarch64 (see deps/wireguardex).
 # On other arches (e.g. s390x), compile the NIF from source when Rust is available.
 arch = :erlang.system_info(:system_architecture) |> List.to_string()

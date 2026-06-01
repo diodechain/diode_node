@@ -21,6 +21,11 @@ fi
 # shellcheck source=/dev/null
 . "${ASDF_DIR}/asdf.sh"
 
+if [ ! -d ${ASDF_DIR}/plugins/rust ]; then
+    asdf plugin add rust
+fi
+asdf install rust
+
 if [ ! -d ${ASDF_DIR}/plugins/erlang ]; then
     asdf plugin add erlang
 fi
