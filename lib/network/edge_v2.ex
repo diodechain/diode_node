@@ -91,6 +91,9 @@ defmodule Network.EdgeV2 do
   def ssl_options(opts) do
     Common.default_ssl_options(opts)
     |> Keyword.put(:packet, :raw)
+    |> Keyword.put(:nodelay, true)
+    |> Keyword.put(:delay_send, false)
+    |> Keyword.put(:buffer, 65_536)
   end
 
   def handle_cast({:pccb_portopen, %Port{ref: ref, portname: portname}, device_address}, state) do
