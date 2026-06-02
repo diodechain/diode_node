@@ -50,18 +50,24 @@ defmodule Network.RpcWsTicketBillingTest do
     end
   end
 
-  describe "should_request?/3" do
+  describe "TicketRequestPolicy.ws_should_request?/3" do
     test "bytes threshold (default 10 MiB)" do
-      state = %{usage_at_last_request: 100, last_request_at: 0}
+      markers = %{usage_at_last_request: 100, last_request_at: 0}
 
-      refute RpcWsTicketBilling.should_request?(state, 1000, 100 + 10_000_000 - 1)
-      assert RpcWsTicketBilling.should_request?(state, 1000, 100 + 10_000_000)
+      refute TicketRequestPolicy.ws_should_request?(
+               markers,
+               1000,
+               100 + 10_000_000 - 1
+             )
+
+      assert TicketRequestPolicy.ws_should_request?(markers, 1000, 100 + 10_000_000)
     end
 
     test "time threshold (default 5 minutes)" do
-      state = %{usage_at_last_request: 0, last_request_at: 0}
-      refute RpcWsTicketBilling.should_request?(state, :timer.minutes(5) - 1, 0)
-      assert RpcWsTicketBilling.should_request?(state, :timer.minutes(5), 0)
+      markers = %{usage_at_last_request: 0, last_request_at: 0}
+
+      refute TicketRequestPolicy.ws_should_request?(markers, :timer.minutes(5) - 1, 0)
+      assert TicketRequestPolicy.ws_should_request?(markers, :timer.minutes(5), 0)
     end
   end
 
@@ -115,8 +121,7 @@ defmodule Network.RpcWsTicketBillingTest do
       assert_receive {:rpc_ws_ticket_deadline, required_version}, 500
 
       Process.sleep(60)
-      assert :ok = RpcWsTicketBilling.on_deadline(required_version)
-      assert_receive :rpc_ws_close_ticket_deadline, 500
+      assert :close = RpcWsTicketBilling.on_deadline(required_version)
     end
 
     test "successful dio_ticket cancels deadline" do

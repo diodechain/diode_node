@@ -27,7 +27,7 @@ defmodule Network.RpcWsTicketBilling do
   @doc "Start billing timers after a successful `dio_ticket` on this connection."
   @spec on_ticket_accepted(binary(), binary()) :: :ok
   def on_ticket_accepted(device, fleet) when is_binary(device) and is_binary(fleet) do
-    now = mono()
+    now = System.monotonic_time(:millisecond)
 
     case Process.get(@state_key) do
       nil ->
@@ -59,7 +59,7 @@ defmodule Network.RpcWsTicketBilling do
   @spec on_device_usage(binary()) :: :ok
   def on_device_usage(device) when is_binary(device) do
     case Process.get(@state_key) do
-      %{device: ^device} = state -> maybe_send_request(state, :usage)
+      %{device: ^device} = state -> maybe_send_request(state)
       _ -> :ok
     end
   end
@@ -72,20 +72,23 @@ defmodule Network.RpcWsTicketBilling do
         :ok
 
       state ->
-        state = %{state | interval_ref: schedule_interval()}
+        state =
+          state
+          |> cancel_interval()
+          |> Map.put(:interval_ref, schedule_interval())
+
         put(state)
-        maybe_send_request(state, :interval)
+        maybe_send_request(state)
     end
   end
 
-  @doc "Close the websocket if the client missed the post-request deadline."
-  @spec on_deadline(non_neg_integer()) :: :ok
+  @doc "Returns `:close` if the client missed the post-request deadline."
+  @spec on_deadline(non_neg_integer()) :: :ok | :close
   def on_deadline(required_version) when is_integer(required_version) and required_version >= 0 do
     case Process.get(@state_key) do
       %{ticket_version: version, pending_ticket_version: ^required_version}
       when version < required_version ->
-        send(self(), :rpc_ws_close_ticket_deadline)
-        :ok
+        :close
 
       _ ->
         :ok
@@ -103,25 +106,6 @@ defmodule Network.RpcWsTicketBilling do
     :ok
   end
 
-  @doc false
-  def should_request?(state, now_ms, usage) do
-    time_elapsed = now_ms - state.last_request_at >= Policy.ws_interval_ms()
-    bytes_elapsed = usage - state.usage_at_last_request >= Policy.ws_usage_bytes()
-    time_elapsed or bytes_elapsed
-  end
-
-  @doc false
-  def notification(usage, fleet) do
-    %{
-      "jsonrpc" => "2.0",
-      "method" => "dio_ticket_request",
-      "params" => %{
-        "usage" => usage,
-        "fleet" => Base16.encode(fleet, false)
-      }
-    }
-  end
-
   defp activate(device, fleet, now) do
     usage = TicketStore.device_usage(device)
 
@@ -137,15 +121,15 @@ defmodule Network.RpcWsTicketBilling do
     }
 
     put(state)
-    maybe_send_request(state, :activate)
+    maybe_send_request(state, usage)
     :ok
   end
 
-  defp maybe_send_request(state, _reason) do
-    usage = TicketStore.device_usage(state.device)
-    now = mono()
+  defp maybe_send_request(state, usage \\ nil) do
+    usage = usage || TicketStore.device_usage(state.device)
+    now = System.monotonic_time(:millisecond)
 
-    if should_request?(state, now, usage) do
+    if Policy.ws_should_request?(state, now, usage) do
       send_request(state, now, usage)
     end
 
@@ -154,7 +138,11 @@ defmodule Network.RpcWsTicketBilling do
 
   defp send_request(state, now, usage) do
     state = cancel_deadline(state)
-    send(self(), {:rpc_ws_push_notification, notification(usage, state.fleet)})
+
+    send(
+      self(),
+      {:rpc_ws_push_notification, ticket_request_notification(usage, state.fleet)}
+    )
 
     required_version = state.ticket_version + 1
 
@@ -176,9 +164,27 @@ defmodule Network.RpcWsTicketBilling do
     :ok
   end
 
+  defp ticket_request_notification(usage, fleet) do
+    %{
+      "jsonrpc" => "2.0",
+      "method" => "dio_ticket_request",
+      "params" => %{
+        "usage" => usage,
+        "fleet" => Base16.encode(fleet, false)
+      }
+    }
+  end
+
   defp schedule_interval do
     Process.send_after(self(), :rpc_ws_ticket_interval, Policy.ws_interval_ms())
   end
+
+  defp cancel_interval(%{interval_ref: ref} = state) when is_reference(ref) do
+    Process.cancel_timer(ref)
+    %{state | interval_ref: nil}
+  end
+
+  defp cancel_interval(state), do: state
 
   defp cancel_deadline(%{deadline_ref: ref} = state) when is_reference(ref) do
     Process.cancel_timer(ref)
@@ -187,14 +193,12 @@ defmodule Network.RpcWsTicketBilling do
 
   defp cancel_deadline(state), do: state
 
-  defp cleanup(%{interval_ref: interval_ref, deadline_ref: deadline_ref} = state) do
+  defp cleanup(%{interval_ref: interval_ref, deadline_ref: deadline_ref}) do
     if is_reference(interval_ref), do: Process.cancel_timer(interval_ref)
     if is_reference(deadline_ref), do: Process.cancel_timer(deadline_ref)
     Process.delete(@state_key)
-    state
+    :ok
   end
 
   defp put(state), do: Process.put(@state_key, state)
-
-  defp mono, do: System.monotonic_time(:millisecond)
 end

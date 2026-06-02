@@ -6,6 +6,14 @@ defmodule Network.RpcWs do
   alias DiodeClient.{Base16, Random}
   require Logger
 
+  @connection_state_methods ~w(
+    dio_ticket
+    dio_message
+    dio_wireguard_open
+    dio_wireguard_close
+    dio_turn_open
+  )
+
   def init(req, state) do
     {:cowboy_websocket, req, state, %{compress: true, idle_timeout: 60 * 60_000}}
   end
@@ -38,7 +46,6 @@ defmodule Network.RpcWs do
 
         _other ->
           if needs_connection_state?(message) do
-            # dio_ticket/dio_message: run in websocket process so Process.put/get works
             opts = [extra: {__MODULE__, :execute_rpc}, connection_state: true]
             {_status, response} = Network.Rpc.handle_jsonrpc(message, opts)
             {:reply, {:text, Poison.encode!(response)}, state}
@@ -63,30 +70,11 @@ defmodule Network.RpcWs do
   end
 
   defp needs_connection_state?(%{"method" => method})
-       when method in [
-              "dio_ticket",
-              "dio_message",
-              "dio_wireguard_open",
-              "dio_wireguard_close",
-              "dio_turn_open"
-            ],
+       when method in @connection_state_methods,
        do: true
 
   defp needs_connection_state?(list) when is_list(list) do
-    Enum.any?(list, fn
-      %{"method" => m}
-      when m in [
-             "dio_ticket",
-             "dio_message",
-             "dio_wireguard_open",
-             "dio_wireguard_close",
-             "dio_turn_open"
-           ] ->
-        true
-
-      _ ->
-        false
-    end)
+    Enum.any?(list, &match?(%{"method" => m} when m in @connection_state_methods, &1))
   end
 
   defp needs_connection_state?(_), do: false
@@ -150,49 +138,33 @@ defmodule Network.RpcWs do
     {:ok, state}
   end
 
-  def websocket_info({:rpc_ws_ticket_deadline, sent_at}, state) do
-    Network.RpcWsTicketBilling.on_deadline(sent_at)
-    {:ok, state}
-  end
+  def websocket_info({:rpc_ws_ticket_deadline, required_version}, state) do
+    case Network.RpcWsTicketBilling.on_deadline(required_version) do
+      :close ->
+        Logger.info("rpc_ws: closing websocket after dio_ticket_request deadline")
+        {:stop, state}
 
-  def websocket_info(:rpc_ws_close_ticket_deadline, state) do
-    Logger.info("rpc_ws: closing websocket after dio_ticket_request deadline")
-    {:stop, state}
+      :ok ->
+        {:ok, state}
+    end
   end
 
   def websocket_info({:rpc_ws_push_notification, notification}, state) do
-    {:reply, {:text, Poison.encode!(notification)}, state}
+    reply_notification(notification, state)
   end
 
   def websocket_info({:send_message, payload, metadata}, state) do
-    # Push JSON-RPC notification for message received
-    metadata_map =
-      case metadata do
-        nil ->
-          %{}
-
-        m when is_map(m) ->
-          m
-
-        m when is_list(m) ->
-          m
-          |> Enum.filter(&match?([_k, _v], &1))
-          |> Map.new(fn [k, v] -> {to_string(k), v} end)
-
-        _ ->
-          %{}
-      end
-
-    notification = %{
-      "jsonrpc" => "2.0",
-      "method" => "dio_message_received",
-      "params" => %{
-        "payload" => Base16.encode(payload, false),
-        "metadata" => metadata_map
-      }
-    }
-
-    {:reply, {:text, Poison.encode!(notification)}, state}
+    reply_notification(
+      %{
+        "jsonrpc" => "2.0",
+        "method" => "dio_message_received",
+        "params" => %{
+          "payload" => Base16.encode(payload, false),
+          "metadata" => metadata_map(metadata)
+        }
+      },
+      state
+    )
   end
 
   def websocket_info(any, state) do
@@ -236,4 +208,19 @@ defmodule Network.RpcWs do
         {:ok, state}
     end
   end
+
+  defp reply_notification(notification, state) do
+    {:reply, {:text, Poison.encode!(notification)}, state}
+  end
+
+  defp metadata_map(nil), do: %{}
+  defp metadata_map(m) when is_map(m), do: m
+
+  defp metadata_map(m) when is_list(m) do
+    m
+    |> Enum.filter(&match?([_k, _v], &1))
+    |> Map.new(fn [k, v] -> {to_string(k), v} end)
+  end
+
+  defp metadata_map(_), do: %{}
 end

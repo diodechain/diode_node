@@ -10,8 +10,7 @@ defmodule Network.TicketRequestPolicy do
 
   @default_ws_usage_bytes 10_000_000
   @default_ws_interval_ms :timer.minutes(5)
-  @default_ws_deadline_ms 20_000
-  @edge_deadline_ms 20_000
+  @ticket_request_deadline_ms 20_000
   @edge_refresh_interval_ms :timer.hours(8)
 
   @doc "WebSocket: minimum additional device usage since last `dio_ticket_request`."
@@ -26,7 +25,17 @@ defmodule Network.TicketRequestPolicy do
 
   @doc "WebSocket: close the session if no `dio_ticket` arrives within this window after a request."
   def ws_deadline_ms do
-    Application.get_env(:diode, :rpc_ws_ticket_deadline_ms, @default_ws_deadline_ms)
+    Application.get_env(:diode, :rpc_ws_ticket_deadline_ms, @ticket_request_deadline_ms)
+  end
+
+  @doc """
+  WebSocket: whether to send `dio_ticket_request` (time or bytes since last notification).
+  `markers` must include `:usage_at_last_request` and `:last_request_at`.
+  """
+  def ws_should_request?(markers, now_ms, usage) when is_map(markers) do
+    time_elapsed = now_ms - markers.last_request_at >= ws_interval_ms()
+    bytes_elapsed = usage - markers.usage_at_last_request >= ws_usage_bytes()
+    time_elapsed or bytes_elapsed
   end
 
   @doc "Edge v2: unpaid bytes above this value trigger `ticket_request` on usage updates."
@@ -39,7 +48,7 @@ defmodule Network.TicketRequestPolicy do
   def edge_refresh_interval_ms, do: @edge_refresh_interval_ms
 
   @doc "Edge v2: close the connection if no new ticket within this window after a request."
-  def edge_deadline_ms, do: @edge_deadline_ms
+  def edge_deadline_ms, do: @ticket_request_deadline_ms
 
   @doc false
   def summary do

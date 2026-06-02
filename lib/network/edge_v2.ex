@@ -629,7 +629,7 @@ defmodule Network.EdgeV2 do
 
   def handle_info({:device_usage, _device}, state) do
     state =
-      if unpaid_bytes(state) > send_threshold() do
+      if unpaid_bytes(state) > Network.TicketRequestPolicy.edge_send_threshold_bytes() do
         must_have_ticket(state)
       else
         state
@@ -996,10 +996,6 @@ defmodule Network.EdgeV2 do
 
   # defp is_portsend({:port, _}), do: true
   # defp is_portsend(_), do: false
-
-  defp send_threshold() do
-    Network.TicketRequestPolicy.edge_send_threshold_bytes()
-  end
 
   defp send_socket(state, partition, request_id, data, trace \\ nil) do
     if data == nil do
