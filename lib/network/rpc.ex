@@ -824,9 +824,12 @@ defmodule Network.Rpc do
              reset_usage?: Process.get({:websocket_ticket_submitted, self()}) != true
            ) do
       device_address = Wallet.address!(wallet)
+      fleet = Ticket.fleet_contract(ticket)
       Process.put({:websocket_device, self()}, device_address)
+      Process.put({:websocket_fleet, self()}, fleet)
       Process.put({:websocket_ticket_submitted, self()}, true)
       PubSub.subscribe({:edge, device_address})
+      Network.RpcWsTicketBilling.on_ticket_accepted(device_address, fleet)
       result(nil)
     else
       {:error, message} when is_binary(message) ->

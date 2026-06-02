@@ -232,6 +232,28 @@ Build the next ticket with `total_bytes >= decode(usage)` and `score(new) > scor
 {"jsonrpc": "2.0", "id": 2, "result": null}
 ```
 
+### dio_ticket_request (server → client notification)
+
+After a successful `dio_ticket`, the server may push a JSON-RPC **notification** (no `id`) asking the client to refresh the ticket:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "dio_ticket_request",
+  "params": {
+    "usage": 10485760,
+    "fleet": "0x6000000000000000000000000000000000000000"
+  }
+}
+```
+
+- `usage` (integer): current `TicketStore.device_usage/1` for the authenticated device.
+- `fleet` (string, optional): `0x`-prefixed fleet contract from the session.
+
+**When sent:** whichever comes first — **10 MiB** additional usage or **5 minutes** since the previous notification — implemented in `Network.RpcWsTicketBilling`. See **`ticket-request-policy.md`** for the full Edge vs WebSocket comparison (Edge uses different thresholds and binary `ticket_request`).
+
+**Deadline:** if no acceptable `dio_ticket` arrives within **20 seconds**, the WebSocket is closed.
+
 ## Testing
 
 ### E2E Test Matrix

@@ -132,11 +132,36 @@ defmodule Network.RpcWs do
   end
 
   def websocket_terminate(_terminate_reason, _arg1, _state) do
+    Network.RpcWsTicketBilling.deactivate()
     :ok
   end
 
   def websocket_info({:reply, reply}, state) do
     {:reply, reply, state}
+  end
+
+  def websocket_info({:device_usage, device}, state) do
+    Network.RpcWsTicketBilling.on_device_usage(device)
+    {:ok, state}
+  end
+
+  def websocket_info(:rpc_ws_ticket_interval, state) do
+    Network.RpcWsTicketBilling.on_interval()
+    {:ok, state}
+  end
+
+  def websocket_info({:rpc_ws_ticket_deadline, sent_at}, state) do
+    Network.RpcWsTicketBilling.on_deadline(sent_at)
+    {:ok, state}
+  end
+
+  def websocket_info(:rpc_ws_close_ticket_deadline, state) do
+    Logger.info("rpc_ws: closing websocket after dio_ticket_request deadline")
+    {:stop, state}
+  end
+
+  def websocket_info({:rpc_ws_push_notification, notification}, state) do
+    {:reply, {:text, Poison.encode!(notification)}, state}
   end
 
   def websocket_info({:send_message, payload, metadata}, state) do

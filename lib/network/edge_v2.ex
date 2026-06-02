@@ -11,7 +11,6 @@ defmodule Network.EdgeV2 do
   import DiodeClient.Object.TicketV1, only: :macros
   import DiodeClient.Object.TicketV2, only: :macros
   import DiodeClient.Object.Channel, only: :macros
-  @refresh_interval :timer.hours(8)
 
   defp log(state, msg), do: Common.log(__MODULE__, state, msg)
   defp name(state), do: Common.name(state)
@@ -61,7 +60,11 @@ defmodule Network.EdgeV2 do
          state = %{last_ticket: last, version: _version, last_warning: last_warning}
        ) do
     if last_warning != {:ticket, last} do
-      Process.send_after(self(), {:must_have_ticket, last}, 20_000)
+      Process.send_after(
+        self(),
+        {:must_have_ticket, last},
+        Network.TicketRequestPolicy.edge_deadline_ms()
+      )
 
       %{state | last_warning: {:ticket, last}}
       |> send_ticket_request()
@@ -728,7 +731,7 @@ defmodule Network.EdgeV2 do
           fn ->
             send(pid, :ticket_refresh)
           end,
-          @refresh_interval
+          Network.TicketRequestPolicy.edge_refresh_interval_ms()
         )
 
         {response("thanks!", bytes),
@@ -995,7 +998,7 @@ defmodule Network.EdgeV2 do
   # defp is_portsend(_), do: false
 
   defp send_threshold() do
-    Diode.ticket_grace() - Diode.ticket_grace() / 4
+    Network.TicketRequestPolicy.edge_send_threshold_bytes()
   end
 
   defp send_socket(state, partition, request_id, data, trace \\ nil) do

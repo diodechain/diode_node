@@ -28,6 +28,7 @@ defmodule Network.RpcDocs do
       dio_get_pool(),
       dio_edgev2(),
       dio_ticket(),
+      dio_ticket_request(),
       dio_message(),
       dio_wireguard_open(),
       dio_wireguard_close(),
@@ -434,6 +435,47 @@ defmodule Network.RpcDocs do
     }
   end
 
+  defp dio_ticket_request do
+    policy = Network.TicketRequestPolicy.summary()[:websocket]
+
+    %{
+      section: "Device (WebSocket)",
+      slug: "dio_ticket_request",
+      title: "dio_ticket_request",
+      method: "dio_ticket_request",
+      auth: :notification,
+      description: """
+      **Server → client notification** (no JSON-RPC `id`). Sent on an authenticated WebSocket when \
+      additional usage reaches **#{div(policy.usage_bytes, 1_000_000)} MiB** since the last notification or \
+      **#{div(policy.interval_ms, 60_000)} minutes** have elapsed, whichever comes first. \
+      The client must call `dio_ticket` with sufficient `total_bytes` within **#{div(policy.deadline_ms, 1000)} seconds** \
+      or the server closes the WebSocket. Edge v2 clients receive binary `ticket_request` instead — see \
+      `docs/specs/ticket-request-policy.md`.
+      """,
+      params: [
+        %{
+          name: "usage",
+          type: "integer",
+          doc: "Current device usage (bytes) for this epoch."
+        },
+        %{
+          name: "fleet",
+          type: "hex string",
+          doc: "Fleet contract address (`0x` + 40 hex digits)."
+        }
+      ],
+      example_request: nil,
+      example_response: %{
+        "jsonrpc" => "2.0",
+        "method" => "dio_ticket_request",
+        "params" => %{
+          "usage" => 10_485_760,
+          "fleet" => "0x6000000000000000000000000000000000000000"
+        }
+      }
+    }
+  end
+
   defp dio_ticket do
     %{
       section: "Device (WebSocket)",
@@ -448,7 +490,8 @@ defmodule Network.RpcDocs do
       On success `result` is `null`. Errors use `code` **-32001** with Edge-aligned `message` strings \
       (e.g. `epoch number too low`, `too many bytes`, `signature mismatch`, `too_old`, `too_low`). \
       For `too_low`, `data` includes `usage` (minimum `total_bytes`, hex) and `summary` (stored ticket fields, hex) \
-      so clients can submit an acceptable follow-up ticket without calling `dio_tickets`.
+      so clients can submit an acceptable follow-up ticket without calling `dio_tickets`. \
+      Mid-session refresh may also be driven by the `dio_ticket_request` notification (see `ticket-request-policy.md`).
       """,
       params: [
         %{
