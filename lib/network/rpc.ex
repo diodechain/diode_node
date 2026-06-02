@@ -834,9 +834,9 @@ defmodule Network.Rpc do
       {:error, message} when is_binary(message) ->
         ticket_error(message)
 
-      {:error, "too_low", last} ->
+      {:error, "too_low", last, usage} ->
         with {:ok, wallet} <- device_wallet_from_ticket(last) do
-          ticket_error("too_low", Network.TicketSubmission.too_low_data(last, wallet))
+          ticket_error("too_low", Network.TicketSubmission.too_low_data(last, wallet, usage))
         else
           {:error, message} -> ticket_error(message)
         end

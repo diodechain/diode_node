@@ -750,7 +750,7 @@ defmodule Network.EdgeV2 do
       {:error, "too_big_jump", min} ->
         response("too_big_jump", min)
 
-      {:error, "too_low", last} ->
+      {:error, "too_low", last, _usage} ->
         response_array(["too_low" | Ticket.summary(last)])
     end
   end
