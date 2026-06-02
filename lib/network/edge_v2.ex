@@ -11,7 +11,6 @@ defmodule Network.EdgeV2 do
   import DiodeClient.Object.TicketV1, only: :macros
   import DiodeClient.Object.TicketV2, only: :macros
   import DiodeClient.Object.Channel, only: :macros
-  @refresh_interval :timer.hours(8)
 
   defp log(state, msg), do: Common.log(__MODULE__, state, msg)
   defp name(state), do: Common.name(state)
@@ -61,7 +60,11 @@ defmodule Network.EdgeV2 do
          state = %{last_ticket: last, version: _version, last_warning: last_warning}
        ) do
     if last_warning != {:ticket, last} do
-      Process.send_after(self(), {:must_have_ticket, last}, 20_000)
+      Process.send_after(
+        self(),
+        {:must_have_ticket, last},
+        Network.TicketRequestPolicy.edge_deadline_ms()
+      )
 
       %{state | last_warning: {:ticket, last}}
       |> send_ticket_request()
@@ -88,6 +91,9 @@ defmodule Network.EdgeV2 do
   def ssl_options(opts) do
     Common.default_ssl_options(opts)
     |> Keyword.put(:packet, :raw)
+    |> Keyword.put(:nodelay, true)
+    |> Keyword.put(:delay_send, false)
+    |> Keyword.put(:buffer, 65_536)
   end
 
   def handle_cast({:pccb_portopen, %Port{ref: ref, portname: portname}, device_address}, state) do
@@ -626,7 +632,7 @@ defmodule Network.EdgeV2 do
 
   def handle_info({:device_usage, _device}, state) do
     state =
-      if unpaid_bytes(state) > send_threshold() do
+      if unpaid_bytes(state) > Network.TicketRequestPolicy.edge_send_threshold_bytes() do
         must_have_ticket(state)
       else
         state
@@ -728,7 +734,7 @@ defmodule Network.EdgeV2 do
           fn ->
             send(pid, :ticket_refresh)
           end,
-          @refresh_interval
+          Network.TicketRequestPolicy.edge_refresh_interval_ms()
         )
 
         {response("thanks!", bytes),
@@ -744,7 +750,7 @@ defmodule Network.EdgeV2 do
       {:error, "too_big_jump", min} ->
         response("too_big_jump", min)
 
-      {:error, "too_low", last} ->
+      {:error, "too_low", last, _usage} ->
         response_array(["too_low" | Ticket.summary(last)])
     end
   end
@@ -993,10 +999,6 @@ defmodule Network.EdgeV2 do
 
   # defp is_portsend({:port, _}), do: true
   # defp is_portsend(_), do: false
-
-  defp send_threshold() do
-    Diode.ticket_grace() - Diode.ticket_grace() / 4
-  end
 
   defp send_socket(state, partition, request_id, data, trace \\ nil) do
     if data == nil do

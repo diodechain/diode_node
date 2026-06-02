@@ -70,6 +70,31 @@ defmodule Network.TicketSubmissionTest do
              Network.TicketSubmission.submit(valid_epoch, bad_wallet)
   end
 
+  test "too_low higher score with insufficient bytes keeps stored ticket and reports usage" do
+    wallet = clientid(1)
+    device = Wallet.address!(wallet)
+    epoch = RemoteChain.epoch(@chain) - 1
+    fleet = RemoteChain.developer_fleet_address(@chain)
+
+    high =
+      build_ticket(wallet, epoch: epoch, total_bytes: 1_000_000, total_connections: 10)
+
+    assert {:ok, _} = Network.TicketSubmission.submit(high, wallet)
+
+    better_score =
+      build_ticket(wallet, epoch: epoch, total_bytes: 50_000, total_connections: 5_000)
+
+    assert {:error, "too_low", last, usage} =
+             Network.TicketSubmission.submit(better_score, wallet)
+
+    assert usage > 0
+    assert usage >= Ticket.total_bytes(last)
+
+    stored = TicketStore.find(device, fleet, epoch)
+    assert Ticket.total_bytes(stored) == Ticket.total_bytes(high)
+    assert Ticket.total_connections(stored) == Ticket.total_connections(high)
+  end
+
   test "too_low when submitting lower-score ticket after higher" do
     wallet = clientid(1)
     epoch = RemoteChain.epoch(@chain) - 1
@@ -81,9 +106,9 @@ defmodule Network.TicketSubmissionTest do
 
     low = build_ticket(wallet, epoch: epoch, total_bytes: @ticket_grace, total_connections: 1)
 
-    assert {:error, "too_low", last} = Network.TicketSubmission.submit(low, wallet)
+    assert {:error, "too_low", last, usage} = Network.TicketSubmission.submit(low, wallet)
 
-    data = Network.TicketSubmission.too_low_data(last, wallet)
+    data = Network.TicketSubmission.too_low_data(last, wallet, usage)
     usage = Base16.decode_int(data["usage"])
     assert usage >= Ticket.total_bytes(last)
 

@@ -59,6 +59,10 @@ defmodule RpcClient do
     WebSockex.send_frame(pid, {:text, Poison.encode!(msg)})
   end
 
+  def disconnect(pid) do
+    WebSockex.cast(pid, :close)
+  end
+
   def get_notifications(pid) do
     send(pid, {:get_notifications, self()})
 
@@ -82,6 +86,10 @@ defmodule RpcClient do
         send(state.owner, {:notification, notification})
         {:ok, %{state | notifications: [notification | state.notifications]}}
 
+      {:ok, %{"method" => "dio_ticket_request"} = notification} ->
+        send(state.owner, {:notification, notification})
+        {:ok, %{state | notifications: [notification | state.notifications]}}
+
       {:ok, %{"id" => _id} = response} ->
         send(state.owner, {:rpc_response, response})
         {:ok, state}
@@ -100,7 +108,14 @@ defmodule RpcClient do
     {:noreply, state}
   end
 
+  @impl true
   def handle_info(_msg, state), do: {:noreply, state}
+
+  @impl true
+  def handle_disconnect(%{reason: reason}, state) do
+    send(state.owner, {:rpc_closed, reason})
+    {:ok, state}
+  end
 
   # Private helpers
   defp create_ticket(client_num) do

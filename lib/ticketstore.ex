@@ -43,8 +43,8 @@ defmodule TicketStore do
     :ets.insert(:device_usage_tracker, {key, value})
   end
 
-  def device_usage(device) do
-    epoch = epoch()
+  def device_usage(device, ticket_epoch \\ nil) do
+    epoch = ticket_epoch || epoch()
 
     case :ets.lookup(:device_usage_tracker, {device, epoch}) do
       [{_, count}] -> count
@@ -219,7 +219,12 @@ defmodule TicketStore do
     fleet = Ticket.fleet_contract(tck)
     last = find(address, fleet, tepoch)
     ticket_usage = if last == nil, do: 0, else: Ticket.total_bytes(last)
-    usage = max(ticket_usage, device_usage(address))
+
+    usage =
+      max(
+        ticket_usage,
+        max(device_usage(address, tepoch), device_usage(address))
+      )
 
     cond do
       tepoch not in recent_epochs(chain_id) ->
@@ -233,11 +238,10 @@ defmodule TicketStore do
         {:too_big_jump, epoch - 1}
 
       Ticket.score(last) < Ticket.score(tck) ->
-        put_ticket(tck, address, fleet, tepoch)
-
         if Ticket.total_bytes(tck) < usage do
-          {:too_low, tck}
+          {:too_low, last, usage}
         else
+          put_ticket(tck, address, fleet, tepoch)
           {:ok, max(0, Ticket.total_bytes(tck) - usage)}
         end
 
@@ -248,7 +252,7 @@ defmodule TicketStore do
         {:ok, Ticket.total_bytes(tck)}
 
       true ->
-        {:too_low, last}
+        {:too_low, last, usage}
     end
   end
 

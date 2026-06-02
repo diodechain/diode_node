@@ -62,6 +62,7 @@ defmodule Network.TicketSubmission do
           {:ok, non_neg_integer()}
           | {:error, String.t()}
           | {:error, String.t(), term()}
+          | {:error, String.t(), Ticket.t(), non_neg_integer()}
   def submit(ticket, device_wallet, opts \\ []) do
     version = Keyword.get(opts, :version, 1000)
     reset_usage? = Keyword.get(opts, :reset_usage?, false)
@@ -81,8 +82,8 @@ defmodule Network.TicketSubmission do
         {:too_big_jump, min} ->
           {:error, "too_big_jump", min}
 
-        {:too_low, last} ->
-          {:error, "too_low", last}
+        {:too_low, last, usage} ->
+          {:error, "too_low", last, usage}
       end
     end
   end
@@ -139,7 +140,12 @@ defmodule Network.TicketSubmission do
 
     last = TicketStore.find(device, fleet, epoch)
     ticket_usage = if last == nil, do: 0, else: Ticket.total_bytes(last)
-    max(ticket_usage, TicketStore.device_usage(device))
+    te = Ticket.epoch(ticket)
+
+    max(
+      ticket_usage,
+      max(TicketStore.device_usage(device, te), TicketStore.device_usage(device))
+    )
   end
 
   @doc "JSON-safe named fields from `Ticket.summary/1` (hex-encoded)."
@@ -170,12 +176,16 @@ defmodule Network.TicketSubmission do
   end
 
   @doc "RPC `data` payload for `dio_ticket` too_low errors."
-  @spec too_low_data(Ticket.t(), Wallet.t()) :: map()
-  def too_low_data(ticket, device_wallet) do
+  @spec too_low_data(Ticket.t(), Wallet.t(), non_neg_integer() | nil) :: map()
+  def too_low_data(ticket, device_wallet, required_usage \\ nil) do
     device = Wallet.address!(device_wallet)
 
+    usage =
+      required_usage ||
+        usage_for_device(device, ticket)
+
     %{
-      "usage" => encode16(usage_for_device(device, ticket)),
+      "usage" => encode16(usage),
       "summary" => encode_summary(ticket)
     }
   end
