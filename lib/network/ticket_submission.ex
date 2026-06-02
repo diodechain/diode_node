@@ -62,6 +62,7 @@ defmodule Network.TicketSubmission do
           {:ok, non_neg_integer()}
           | {:error, String.t()}
           | {:error, String.t(), term()}
+          | {:error, String.t(), Ticket.t(), non_neg_integer()}
   def submit(ticket, device_wallet, opts \\ []) do
     version = Keyword.get(opts, :version, 1000)
     reset_usage? = Keyword.get(opts, :reset_usage?, false)
