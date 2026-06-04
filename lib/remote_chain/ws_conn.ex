@@ -16,15 +16,21 @@ defmodule RemoteChain.WSConn do
     :conn,
     :lastblock_at,
     :subscription_id,
+    :started_at,
     lastblock_number: 0
   ]
+
+  @handshake_timeout_ms 15_000
+
+  def handshake_timeout_ms(), do: @handshake_timeout_ms
 
   def start(owner, chain, ws_url) do
     state = %__MODULE__{
       owner: owner,
       chain: chain,
       ws_url: ws_url,
-      lastblock_at: DateTime.utc_now()
+      lastblock_at: DateTime.utc_now(),
+      started_at: DateTime.utc_now()
     }
 
     {:ok, pid} =
@@ -71,23 +77,14 @@ defmodule RemoteChain.WSConn do
   end
 
   @impl true
-  def handle_disconnect(%{reason: {:local, :normal}}, state) do
-    {:ok, state}
-  end
-
   def handle_disconnect(%{reason: reason}, state) do
-    Logger.warning(
-      "WSConn disconnected from #{inspect(state.chain)} for reason: #{inspect(reason)} [#{inspect(state.ws_url)}]"
-    )
+    if reason != {:local, :normal} do
+      Logger.warning(
+        "WSConn disconnected from #{inspect(state.chain)} for reason: #{inspect(reason)} [#{inspect(state.ws_url)}]"
+      )
+    end
 
-    {:ok, state}
-  end
-
-  def handle_disconnect(status, state) do
-    Logger.warning(
-      "WSConn disconnected from #{inspect(state.chain)} for #{inspect(status)} [#{inspect(state.ws_url)}]"
-    )
-
+    clear_connection()
     {:ok, state}
   end
 
@@ -155,6 +152,36 @@ defmodule RemoteChain.WSConn do
     Globals.get({__MODULE__, pid}) != nil
   end
 
+  def handshake_stale?(pid, timeout_ms \\ @handshake_timeout_ms) when is_pid(pid) do
+    Process.alive?(pid) and not ready?(pid) and handshake_age_ms(pid) > timeout_ms
+  end
+
+  def wsconn_process?(pid) when is_pid(pid) do
+    match?(%WSConn{}, try_get_state(pid))
+  end
+
+  defp handshake_age_ms(pid) when is_pid(pid) do
+    case try_get_state(pid) do
+      %WSConn{started_at: started_at} ->
+        DateTime.diff(DateTime.utc_now(), started_at, :millisecond)
+
+      _ ->
+        0
+    end
+  end
+
+  defp try_get_state(pid) do
+    try do
+      :sys.get_state(pid, 1)
+    catch
+      :exit, _ -> nil
+    end
+  end
+
+  defp clear_connection() do
+    Globals.pop({__MODULE__, self()})
+  end
+
   @impl true
   def handle_info(
         :ping,
@@ -181,7 +208,6 @@ defmodule RemoteChain.WSConn do
 
   defp new_block(hex_number, state) do
     block_number = String.to_integer(hex_number, 16)
-    # Logger.info("WSConn received block #{block_number} from #{state.ws_url}")
     send(state.owner, {:new_block, state.ws_url, block_number})
     %{state | lastblock_at: DateTime.utc_now(), lastblock_number: block_number}
   end

@@ -3,38 +3,29 @@
 # Licensed under the Diode License, Version 1.1
 defmodule RemoteChain.NodeProxyTest do
   @moduledoc """
-  Regression tests for the `:not_connected` retry storm described in
-  `lib/remote_chain/node_proxy.ex`.
+  Regression tests for Moonbeam/NodeProxy `:not_connected` handling.
 
-  Background:
-
-  When `RemoteChain.WSConn.send_request/3` fails to deliver the frame it
-  returns `{:error, :not_connected}`. This can happen for two distinct
-  reasons:
-
-    1. The WSConn process is dead (crashed, exited before `handle_connect`
-       fired, etc.).
-    2. The WSConn process is still alive but its async handshake (TCP +
-       TLS + WebSocket upgrade) has not completed within the 500 ms
-       `Globals.await` budget yet.
-
-  Until this fix `RemoteChain.NodeProxy.send_request/6` always treated
-  every failed send as case (1) and evicted the connection, then asked
-  `ensure_connections` to spawn a fresh WSConn. Under case (2) that fresh
-  WSConn is *also* mid-handshake, so the next request hits the same
-  `:not_connected` -> evict -> respawn loop and the warning
-
-      Failed to send request to #PID<...>: ... {:error, :not_connected}
-
-  followed by
-
-      ** (RuntimeError) RPC error in ChainImpl.eth_getBlockByNumber(...): {:error, :disconnect}
-
-  keeps repeating instead of healing once the in-flight handshake
-  finishes.
+  `WSConn.send_request/3` returns `{:error, :not_connected}` when the pid is
+  dead or still handshaking. NodeProxy must not evict young handshakes, but
+  must evict stale ones and ready sockets that fail to send.
   """
   use ExUnit.Case, async: false
-  alias RemoteChain.NodeProxy
+  alias RemoteChain.{NodeProxy, WSConn}
+
+  defmodule WSConnStateStub do
+    use GenServer
+
+    def start(started_at) do
+      GenServer.start(__MODULE__, started_at)
+    end
+
+    @impl true
+    def init(started_at), do: {:ok, %WSConn{started_at: started_at}}
+  end
+
+  defp stale_started_at do
+    DateTime.utc_now() |> DateTime.add(-WSConn.handshake_timeout_ms() - 1, :millisecond)
+  end
 
   describe "rpc_log_status/1" do
     test "returns :ok for successful responses" do
@@ -123,6 +114,52 @@ defmodule RemoteChain.NodeProxyTest do
       assert_receive {^from_ref, {:error, :disconnect}}, 1_000
     end
 
+    test "evicts a ready WSConn after send failure (stale socket)" do
+      conn =
+        spawn(fn ->
+          receive do
+            :stop -> :ok
+          end
+        end)
+
+      Globals.put({WSConn, conn}, :fake_conn)
+
+      try do
+        assert WSConn.ready?(conn)
+
+        state = %NodeProxy{
+          chain: Chains.Anvil,
+          connections: %{"ws://localhost:28822" => conn},
+          fallback: nil,
+          fallback_url: nil,
+          requests: %{}
+        }
+
+        new_state = NodeProxy.handle_failed_send(state, conn)
+        assert new_state.connections == %{}
+      after
+        Globals.pop({WSConn, conn})
+        send(conn, :stop)
+      end
+    end
+
+    test "evicts a handshake-stale WSConn" do
+      {:ok, conn} = WSConnStateStub.start(stale_started_at())
+
+      assert WSConn.handshake_stale?(conn)
+
+      state = %NodeProxy{
+        chain: Chains.Anvil,
+        connections: %{"ws://localhost:28822" => conn},
+        fallback: nil,
+        fallback_url: nil,
+        requests: %{}
+      }
+
+      new_state = NodeProxy.handle_failed_send(state, conn)
+      assert new_state.connections == %{}
+    end
+
     test "evicts a dead fallback WSConn and resets fallback_url" do
       conn = spawn(fn -> :ok end)
       ref = Process.monitor(conn)
@@ -144,23 +181,7 @@ defmodule RemoteChain.NodeProxyTest do
     end
   end
 
-  # Second symptom of the same root cause:
-  #
-  #     00:15:45.880 [warning] Failed to send request to #PID<0.109448870.0>: ... {:error, :not_connected}
-  #     00:15:45.881 [info] Awaiting undefined key: {RemoteChain.WSConn, #PID<0.109449407.0>}
-  #     ** (RuntimeError) RPC error in Chains.Moonbeam.eth_getBlockByNumber(...): {:error, :disconnect}
-  #
-  # Two distinct WSConn pids in two consecutive log lines: one had
-  # `send_request/3` time out, then `RPCCache`'s retry picked a *second*
-  # still-handshaking WSConn from the pool and timed out again.
-  #
-  # `NodeProxy.handle_call({:rpc, ...})` used to pick blindly with
-  # `Enum.random(Map.values(state.connections))`, so when several
-  # WSConns were handshaking simultaneously every random pick paid the
-  # full 500 ms `Globals.await` budget and failed. The fix is
-  # `pick_connection/1`, which prefers WSConns whose handshake has
-  # already completed (`WSConn.ready?/1`).
-  describe "pick_connection/1 (regression: avoid still-handshaking conns)" do
+  describe "pick_connection/1" do
     test "prefers ready WSConns over still-handshaking ones" do
       ready_pid =
         spawn(fn ->
@@ -185,17 +206,16 @@ defmodule RemoteChain.NodeProxyTest do
         assert RemoteChain.WSConn.ready?(ready_pid)
         refute RemoteChain.WSConn.ready?(handshaking_pid)
 
-        connections = %{
-          "ws://ready/" => ready_pid,
-          "ws://handshaking/" => handshaking_pid
+        proxy = %NodeProxy{
+          connections: %{
+            "ws://ready/" => ready_pid,
+            "ws://handshaking/" => handshaking_pid
+          },
+          fallback: nil
         }
 
-        # Run many picks. Without the fix this is uniform random over
-        # the two pids, so on a 2-conn pool the handshaking pid would be
-        # chosen ~50% of the time. With the fix it must be picked 0% of
-        # the time as long as a ready peer exists.
         for _ <- 1..200 do
-          assert NodeProxy.pick_connection(connections) == ready_pid,
+          assert {:ok, ^ready_pid} = NodeProxy.pick_connection(proxy),
                  "must never route to a still-handshaking WSConn while a ready one is available"
         end
       after
@@ -205,31 +225,79 @@ defmodule RemoteChain.NodeProxyTest do
       end
     end
 
-    test "falls back to the full pool when no WSConn is ready yet" do
-      # Right after start-up (or after both conns were just respawned)
-      # every pid in the pool is handshaking. We must still attempt the
-      # request -- not crash on an empty list -- so callers get a
-      # well-defined `{:error, :disconnect}` rather than a process exit.
+    test "returns no_ready when every primary handshake is stale" do
+      {:ok, pid_a} = WSConnStateStub.start(stale_started_at())
+      {:ok, pid_b} = WSConnStateStub.start(stale_started_at())
+
+      proxy = %NodeProxy{
+        connections: %{"ws://a/" => pid_a, "ws://b/" => pid_b},
+        fallback: nil
+      }
+
+      for _ <- 1..20 do
+        assert {:error, :no_ready_connection} = NodeProxy.pick_connection(proxy)
+      end
+    end
+
+    test "still routes to a young handshaking primary when nothing is ready yet" do
       pid_a = spawn(fn -> receive do: (:stop -> :ok) end)
       pid_b = spawn(fn -> receive do: (:stop -> :ok) end)
 
       try do
-        refute RemoteChain.WSConn.ready?(pid_a)
-        refute RemoteChain.WSConn.ready?(pid_b)
-
-        connections = %{"ws://a/" => pid_a, "ws://b/" => pid_b}
+        proxy = %NodeProxy{
+          connections: %{"ws://a/" => pid_a, "ws://b/" => pid_b},
+          fallback: nil
+        }
 
         seen =
-          for _ <- 1..200, into: MapSet.new() do
-            NodeProxy.pick_connection(connections)
+          for _ <- 1..50, into: MapSet.new() do
+            {:ok, pid} = NodeProxy.pick_connection(proxy)
+            pid
           end
 
         assert MapSet.subset?(seen, MapSet.new([pid_a, pid_b]))
-        assert MapSet.size(seen) >= 1
       after
         send(pid_a, :stop)
         send(pid_b, :stop)
       end
+    end
+
+    test "uses ready fallback when primaries are still handshaking" do
+      handshaking = spawn(fn -> receive do: (:stop -> :ok) end)
+
+      ready_fallback =
+        spawn(fn ->
+          receive do
+            :stop -> :ok
+          end
+        end)
+
+      Globals.put({WSConn, ready_fallback}, :fake_conn)
+
+      try do
+        proxy = %NodeProxy{
+          connections: %{"ws://primary/" => handshaking},
+          fallback: ready_fallback
+        }
+
+        assert {:ok, ^ready_fallback} = NodeProxy.pick_connection(proxy)
+      after
+        Globals.pop({WSConn, ready_fallback})
+        send(handshaking, :stop)
+        send(ready_fallback, :stop)
+      end
+    end
+  end
+
+  describe "WSConn.handshake_stale?/1" do
+    test "is false for a young handshaking pid" do
+      {:ok, pid} = WSConnStateStub.start(DateTime.utc_now())
+      refute WSConn.handshake_stale?(pid)
+    end
+
+    test "is true after handshake_timeout_ms" do
+      {:ok, pid} = WSConnStateStub.start(stale_started_at())
+      assert WSConn.handshake_stale?(pid)
     end
   end
 

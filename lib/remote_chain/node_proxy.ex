@@ -62,41 +62,48 @@ defmodule RemoteChain.NodeProxy do
   @impl true
   def handle_call({:rpc, method, params}, from, state) do
     state = ensure_connections(state)
-    conn = pick_connection(state.connections)
-    id = state.req + 1
-    state = send_request(state, conn, id, method, params, from)
-    {:noreply, %{state | req: id}}
+
+    case pick_connection(state) do
+      {:ok, conn} ->
+        id = state.req + 1
+        state = send_request(state, conn, id, method, params, from)
+        {:noreply, %{state | req: id}}
+
+      {:error, :no_ready_connection} ->
+        {:reply, {:error, :disconnect}, state}
+    end
   end
 
-  # Prefer a WSConn whose async handshake has already completed.
-  #
-  # `RemoteChain.WSConn.send_request/3` blocks for up to 500&nbsp;ms in
-  # `Globals.await({WSConn, pid}, 500)` waiting for `handle_connect/2` to
-  # publish the underlying connection. While the handshake is in flight
-  # there is no point routing a request through that pid: the call will
-  # just time out, log
-  #
-  #     Failed to send request to #PID<...>: ... {:error, :not_connected}
-  #     Awaiting undefined key: {RemoteChain.WSConn, #PID<...>}
-  #
-  # and bubble `{:error, :disconnect}` back to `RPCCache.rpc!/3`. If
-  # several WSConns happen to be handshaking simultaneously (e.g. right
-  # after a fallback was added or after a slow upstream rejected the
-  # previous conn) every random pick fails for ~500&nbsp;ms and the
-  # warning keeps repeating without healing.
-  #
-  # Filter the pool to the connections that have completed their
-  # handshake. Only fall back to the full pool when none are ready, so
-  # the empty-pool behaviour (a crash, since there is nothing we can do)
-  # is preserved.
+  # Prefer WSConns that finished `handle_connect/2` (see `WSConn.ready?/1`).
   @doc false
-  def pick_connection(connections) do
-    pids = Map.values(connections)
+  def pick_connection(%NodeProxy{connections: connections, fallback: fallback}) do
+    ready =
+      connections
+      |> Map.values()
+      |> Enum.filter(&RemoteChain.WSConn.ready?/1)
 
-    case Enum.filter(pids, &RemoteChain.WSConn.ready?/1) do
-      [] -> Enum.random(pids)
-      ready -> Enum.random(ready)
+    cond do
+      ready != [] ->
+        {:ok, Enum.random(ready)}
+
+      fallback != nil and RemoteChain.WSConn.ready?(fallback) ->
+        {:ok, fallback}
+
+      true ->
+        handshaking =
+          connections
+          |> Map.values()
+          |> Enum.filter(&young_handshake?/1)
+
+        case handshaking do
+          [] -> {:error, :no_ready_connection}
+          pids -> {:ok, Enum.random(pids)}
+        end
     end
+  end
+
+  defp young_handshake?(pid) do
+    not RemoteChain.WSConn.ready?(pid) and not RemoteChain.WSConn.handshake_stale?(pid)
   end
 
   @impl true
@@ -180,13 +187,7 @@ defmodule RemoteChain.NodeProxy do
         )
       end
 
-      pid = self()
-
-      Debouncer.immediate({__MODULE__, pid, :ensure_connections}, fn ->
-        GenServer.cast(pid, :ensure_connections)
-      end)
-
-      {:noreply, remove_connection(state, down_pid)}
+      {:noreply, state |> remove_connection(down_pid) |> schedule_ensure_connections()}
     end
   end
 
@@ -220,7 +221,8 @@ defmodule RemoteChain.NodeProxy do
           Logger.debug("RPC #{method} #{inspect(params)} took #{time_ms}ms")
         end
 
-        if fallback != nil and conn != fallback and is_fallback_candidate(method, response) do
+        if fallback != nil and RemoteChain.WSConn.ready?(fallback) and conn != fallback and
+             is_fallback_candidate(method, response) do
           Logger.info("RPC #{method} #{inspect(params)} retrying with fallback")
           state = send_request(%{state | requests: requests}, fallback, id, method, params, from)
           {:noreply, state}
@@ -300,38 +302,13 @@ defmodule RemoteChain.NodeProxy do
     end
   end
 
-  # Decide what to do with a connection after a failed send.
-  #
-  # `WSConn.send_request/3` returns `{:error, :not_connected}` in two very
-  # different situations:
-  #
-  #   1. The WSConn process is dead (crashed, exited before `handle_connect`).
-  #   2. The WSConn process is still alive but its async handshake has not
-  #      completed yet (slow TCP/TLS, slow DNS, the first 500ms after
-  #      `WSConn.start/3`).
-  #
-  # If we treat (2) as (1) and eagerly evict the conn, the next request will
-  # spawn a brand new WSConn that is also mid-handshake, and the warning
-  # `Failed to send request ... :not_connected` keeps repeating instead of
-  # healing as soon as the in-flight handshake completes.
-  #
-  # We only evict (and trigger `ensure_connections`) when the WSConn pid is
-  # really dead. If it is still alive we keep it in the pool; either its
-  # handshake completes on its own, or its own ping watchdog
-  # (`WSConn.handle_info(:ping, _)`) tears it down and the existing
-  # `:DOWN` monitor in `NodeProxy` cleans the pool up.
+  # See moduledoc in `node_proxy_test.exs` for the `:not_connected` handshake cases.
   @doc false
   def handle_failed_send(state, conn) do
-    if Process.alive?(conn) do
-      state
+    if not Process.alive?(conn) or RemoteChain.WSConn.ready?(conn) or
+         RemoteChain.WSConn.handshake_stale?(conn) do
+      state |> close_and_remove(conn) |> schedule_ensure_connections()
     else
-      state = remove_connection(state, conn)
-      pid = self()
-
-      Debouncer.immediate({__MODULE__, pid, :ensure_connections}, fn ->
-        GenServer.cast(pid, :ensure_connections)
-      end)
-
       state
     end
   end
@@ -370,21 +347,73 @@ defmodule RemoteChain.NodeProxy do
     }
   end
 
-  defp ensure_connections(
-         state = %NodeProxy{chain: chain, connections: connections, fallback: fallback}
+  defp prune_stale_connections(
+         state = %NodeProxy{
+           connections: connections,
+           fallback: fallback,
+           fallback_url: fallback_url
+         }
        ) do
+    pool =
+      if fallback_url && fallback,
+        do: Map.put(connections, fallback_url, fallback),
+        else: connections
+
+    Enum.reduce(pool, state, fn {url, pid}, state ->
+      if RemoteChain.WSConn.handshake_stale?(pid) do
+        Logger.warning(
+          "Evicting stale WSConn #{inspect(pid)} for #{inspect(state.chain)} [#{url}]"
+        )
+
+        close_and_remove(state, pid)
+      else
+        state
+      end
+    end)
+  end
+
+  defp close_and_remove(state, pid) do
+    if Process.alive?(pid) do
+      if RemoteChain.WSConn.wsconn_process?(pid) do
+        RemoteChain.WSConn.close(pid)
+      else
+        Process.exit(pid, :kill)
+      end
+    end
+
+    remove_connection(state, pid)
+  end
+
+  defp schedule_ensure_connections(state) do
+    pid = self()
+
+    Debouncer.immediate({__MODULE__, pid, :ensure_connections}, fn ->
+      GenServer.cast(pid, :ensure_connections)
+    end)
+
+    state
+  end
+
+  defp ensure_connections(state = %NodeProxy{chain: chain}) do
+    state = prune_stale_connections(state)
+    %NodeProxy{connections: connections, fallback: fallback} = state
     urls = MapSet.new(RemoteChain.ws_endpoints(chain))
-    existing = MapSet.new(Map.keys(connections) ++ [state.fallback_url])
-    new_urls = MapSet.difference(urls, existing) |> Enum.shuffle()
+    existing = MapSet.new(Map.keys(connections))
+    new_urls = MapSet.difference(urls, existing) |> Enum.to_list() |> Enum.shuffle()
     fallback_url = List.first(Enum.shuffle(RemoteChain.ws_fallback_endpoints(chain)) ++ new_urls)
 
     cond do
       map_size(connections) < @security_level ->
-        new_url = Enum.random(new_urls)
-        pid = RemoteChain.WSConn.start(self(), chain, new_url)
-        Process.monitor(pid)
-        state = %{state | connections: Map.put(connections, new_url, pid)}
-        ensure_connections(state)
+        case pick_url(urls, existing, new_urls) do
+          nil ->
+            state
+
+          new_url ->
+            pid = RemoteChain.WSConn.start(self(), chain, new_url)
+            Process.monitor(pid)
+            state = %{state | connections: Map.put(connections, new_url, pid)}
+            ensure_connections(state)
+        end
 
       fallback == nil and fallback_url != nil ->
         pid = RemoteChain.WSConn.start(self(), chain, fallback_url)
@@ -394,6 +423,24 @@ defmodule RemoteChain.NodeProxy do
 
       true ->
         state
+    end
+  end
+
+  # Prefer never-used URLs, then any configured URL not in the live pool
+  # (allows reconnecting the same endpoint after eviction).
+  defp pick_url(urls, existing, new_urls) do
+    cond do
+      new_urls != [] ->
+        Enum.random(new_urls)
+
+      true ->
+        urls
+        |> MapSet.difference(existing)
+        |> Enum.to_list()
+        |> case do
+          [] -> nil
+          available -> Enum.random(available)
+        end
     end
   end
 
