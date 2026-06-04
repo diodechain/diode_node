@@ -20,9 +20,10 @@ defmodule RemoteChain.WSConn do
     lastblock_number: 0
   ]
 
-  @handshake_timeout_ms 15_000
+  @connection_timeout_ms 20_000
 
-  def handshake_timeout_ms(), do: @handshake_timeout_ms
+  def connection_timeout_ms(), do: @connection_timeout_ms
+  def handshake_timeout_ms(), do: @connection_timeout_ms
 
   def start(owner, chain, ws_url) do
     state = %__MODULE__{
@@ -34,7 +35,12 @@ defmodule RemoteChain.WSConn do
     }
 
     {:ok, pid} =
-      WebSockex.start(ws_url, __MODULE__, state, async: true, handle_initial_conn_failure: true)
+      WebSockex.start(ws_url, __MODULE__, state,
+        async: true,
+        handle_initial_conn_failure: true,
+        socket_connect_timeout: @connection_timeout_ms,
+        socket_recv_timeout: @connection_timeout_ms
+      )
 
     :timer.send_interval(:timer.seconds(chain.expected_block_intervall()) * 2, pid, :ping)
     pid
@@ -152,7 +158,7 @@ defmodule RemoteChain.WSConn do
     Globals.get({__MODULE__, pid}) != nil
   end
 
-  def handshake_stale?(pid, timeout_ms \\ @handshake_timeout_ms) when is_pid(pid) do
+  def handshake_stale?(pid, timeout_ms \\ @connection_timeout_ms) when is_pid(pid) do
     Process.alive?(pid) and not ready?(pid) and handshake_age_ms(pid) > timeout_ms
   end
 
