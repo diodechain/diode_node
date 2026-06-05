@@ -295,7 +295,7 @@ defmodule Model.KademliaSql do
         meta.first_failure || now
       end
 
-    failures = (meta.failures || 0) + 1
+    failures = meta.failures + 1
 
     query!(
       """

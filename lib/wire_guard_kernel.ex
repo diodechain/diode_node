@@ -255,7 +255,7 @@ defmodule WireGuardKernel do
       rest::binary>> = data
 
     payload_size = len - 16
-    <<payload::binary-size(payload_size), tail::binary>> = rest
+    <<payload::binary-size(^payload_size), tail::binary>> = rest
 
     cond do
       type == @nlmsg_error and seq == expected_seq ->

@@ -10,6 +10,8 @@ defmodule Chains.Anvil do
   def epoch_progress(n),
     do: rem(RemoteChain.blocktime(__MODULE__, n), epoch_duration()) / epoch_duration()
 
+  def epoch_block(epoch), do: Chains.epoch_block(__MODULE__, epoch)
+
   def epoch_duration(), do: 2_592_000
   def chain_prefix(), do: "av"
 

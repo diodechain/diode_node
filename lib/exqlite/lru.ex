@@ -2,7 +2,6 @@
 # Copyright 2021-2025 Diode
 # Licensed under the Diode License, Version 1.1
 defmodule Exqlite.LRU do
-  require Logger
   use GenServer
 
   defstruct conn: nil, statements: %{}, max_items: 1_000_000, file_path: nil

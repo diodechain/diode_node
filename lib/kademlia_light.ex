@@ -694,8 +694,6 @@ defmodule KademliaLight do
     end
   end
 
-  defp should_retry?(nil, _now), do: true
-
   defp should_retry?(meta, now) do
     case meta.next_retry do
       nil -> true

@@ -6,7 +6,6 @@ defmodule Network.Stats do
   Network statistics for bandwidth usage.
   """
   use GenServer
-  require Logger
   @seconds_per_tick 60
   def init(_args) do
     :timer.send_interval(@seconds_per_tick * 1000, :tick)

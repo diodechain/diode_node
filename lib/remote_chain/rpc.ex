@@ -3,7 +3,6 @@
 # Licensed under the Diode License, Version 1.1
 defmodule RemoteChain.RPC do
   alias DiodeClient.Base16
-  require Logger
 
   def get_proof(chain, address, keys, block \\ "latest") do
     # requires https://eips.ethereum.org/EIPS/eip-1186

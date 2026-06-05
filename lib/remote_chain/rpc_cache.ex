@@ -73,7 +73,7 @@ defmodule RemoteChain.RPCCache do
 
   # Retrieves all storage slots for an address, only available on Diode
   def get_storage(chain, address, block \\ "latest")
-      when chain in [Chains.Diode, Chains.DiodeDev, Chains.DiodeStaging] do
+      when chain in [Chains.Diode, Chains.DiodeDev, Chains.DiodeStaging, Chains.Anvil] do
     block = resolve_block(chain, block)
 
     # for storage requests we use the last change block as the base

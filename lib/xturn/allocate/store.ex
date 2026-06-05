@@ -26,8 +26,8 @@ defmodule Xirsys.XTurn.Allocate.Store do
   @moduledoc """
 
   """
+
   # import Exts
-  require Logger
 
   @vsn "0"
 

@@ -1,6 +1,4 @@
 defmodule RemoteChain.HTTP do
-  require Logger
-
   def send_raw_transaction(url, tx) do
     case rpc(url, "eth_sendRawTransaction", [tx]) do
       {:ok, tx_hash} ->

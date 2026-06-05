@@ -5,7 +5,6 @@
 defmodule Diode.Turn.AccountingHook do
   @moduledoc false
   use GenServer
-  require Logger
 
   def start_link(_opts \\ []) do
     GenServer.start_link(__MODULE__, [], name: __MODULE__)

@@ -4,7 +4,6 @@
 defmodule Network.PeerHandlerV2 do
   use GenServer
   use Network.Common
-  require Logger
   alias Model.KademliaSql
   alias Network.{Common, PortCollection}
   alias Network.PortCollection.Port

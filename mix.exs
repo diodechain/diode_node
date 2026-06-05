@@ -27,8 +27,7 @@ defmodule Diode.Mixfile do
       ],
       docs: docs(vsn),
       elixir: "~> 1.20",
-      # warnings_as_errors off: vendored xturn (lib/xturn/) and path deps are not warning-clean on 1.20 yet
-      elixirc_options: [warnings_as_errors: false],
+      elixirc_options: [warnings_as_errors: true],
       elixirc_paths: elixirc_paths(Mix.env()),
       package: package(),
       releases: [
