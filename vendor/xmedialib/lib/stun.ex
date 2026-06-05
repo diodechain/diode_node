@@ -189,18 +189,21 @@ defmodule XMediaLib.Stun do
   @external_resource methods_path = Path.join([__DIR__, "../priv/turn-methods.txt"])
   @external_resource classes_path = Path.join([__DIR__, "../priv/turn-classes.txt"])
 
-  # Encodes an attribute tuple into a new tuple representing its type and
-  # an encoded binary representation of its value
-  for line <- File.stream!(attrs_path, [], :line) do
-    [byte, name, type] = line |> String.split("\t") |> Enum.map(&String.trim(&1))
+  @attr_defs (
+    attrs_path
+    |> File.read!()
+    |> String.split("\n", trim: true)
+    |> Enum.map(fn line -> line |> String.split("\t") |> Enum.map(&String.trim/1) end)
+  )
 
+  @attr_encode_defs Enum.uniq_by(@attr_defs, fn [_byte, name, _type] -> name end)
+
+  # Decodes/stringifies every attribute type id (including duplicate names, e.g. alternate_server).
+  for [byte, name, type] <- @attr_defs do
     case type do
       "value" ->
         defp decode_attribute(unquote(String.to_integer(byte)), value, _),
           do: {String.to_atom(unquote(name)), value}
-
-        defp encode_attribute(unquote(String.to_atom(name)), value, _),
-          do: {String.to_integer(unquote(byte)), value}
 
         defp stringify_attribute(unquote(String.to_integer(byte)), value, _),
           do:
@@ -211,18 +214,12 @@ defmodule XMediaLib.Stun do
         defp decode_attribute(unquote(String.to_integer(byte)), value, _),
           do: {String.to_atom(unquote(name)), decode_attr_addr(value)}
 
-        defp encode_attribute(unquote(String.to_atom(name)), value, _),
-          do: {String.to_integer(unquote(byte)), encode_attr_addr(value)}
-
         defp stringify_attribute(unquote(String.to_integer(byte)), value, _),
           do: {String.to_atom(unquote(name)), stringify_attr_addr(value)}
 
       "xattribute" ->
         defp decode_attribute(unquote(String.to_integer(byte)), value, tid),
           do: {String.to_atom(unquote(name)), decode_attr_xaddr(value, tid)}
-
-        defp encode_attribute(unquote(String.to_atom(name)), value, tid),
-          do: {String.to_integer(unquote(byte)), encode_attr_xaddr(value, tid)}
 
         defp stringify_attribute(unquote(String.to_integer(byte)), value, tid),
           do: {String.to_atom(unquote(name)), stringify_attr_xaddr(value, tid)}
@@ -231,9 +228,6 @@ defmodule XMediaLib.Stun do
         defp decode_attribute(unquote(String.to_integer(byte)), value, _),
           do: {String.to_atom(unquote(name)), decode_attr_err(value)}
 
-        defp encode_attribute(unquote(String.to_atom(name)), value, _),
-          do: {String.to_integer(unquote(byte)), encode_attr_err(value)}
-
         defp stringify_attribute(unquote(String.to_integer(byte)), value, _),
           do: {String.to_atom(unquote(name)), stringify_attr_err(value)}
 
@@ -241,11 +235,33 @@ defmodule XMediaLib.Stun do
         defp decode_attribute(unquote(String.to_integer(byte)), value, _),
           do: {String.to_atom(unquote(name)), decode_change_req(value)}
 
-        defp encode_attribute(unquote(String.to_atom(name)), value, _),
-          do: {String.to_integer(unquote(byte)), encode_change_req(value)}
-
         defp stringify_attribute(unquote(String.to_integer(byte)), value, _),
           do: {String.to_atom(unquote(name)), stringify_change_req(value)}
+    end
+  end
+
+  # Encodes by atom name; first definition wins when names repeat (e.g. alternate_server).
+  for [byte, name, type] <- @attr_encode_defs do
+    case type do
+      "value" ->
+        defp encode_attribute(unquote(String.to_atom(name)), value, _),
+          do: {String.to_integer(unquote(byte)), value}
+
+      "attribute" ->
+        defp encode_attribute(unquote(String.to_atom(name)), value, _),
+          do: {String.to_integer(unquote(byte)), encode_attr_addr(value)}
+
+      "xattribute" ->
+        defp encode_attribute(unquote(String.to_atom(name)), value, tid),
+          do: {String.to_integer(unquote(byte)), encode_attr_xaddr(value, tid)}
+
+      "error_attribute" ->
+        defp encode_attribute(unquote(String.to_atom(name)), value, _),
+          do: {String.to_integer(unquote(byte)), encode_attr_err(value)}
+
+      "request" ->
+        defp encode_attribute(unquote(String.to_atom(name)), value, _),
+          do: {String.to_integer(unquote(byte)), encode_change_req(value)}
     end
   end
 
@@ -265,7 +281,7 @@ defmodule XMediaLib.Stun do
   end
 
   # Provides packet method type based on id and vice versa
-  for line <- File.stream!(methods_path, [], :line) do
+  for line <- File.stream!(methods_path, :line, []) do
     [id, name] = line |> String.split("\t") |> Enum.map(&String.trim(&1))
 
     defp get_method(<<unquote(String.to_integer(id))::size(12)>>),
@@ -282,7 +298,7 @@ defmodule XMediaLib.Stun do
     do: o
 
   # Provides packet class type based on id and vice versa
-  for line <- File.stream!(classes_path, [], :line) do
+  for line <- File.stream!(classes_path, :line, []) do
     [id, name] = line |> String.split("\t") |> Enum.map(&String.trim(&1))
 
     defp get_class(<<unquote(String.to_integer(id))::size(2)>>),
@@ -322,7 +338,7 @@ defmodule XMediaLib.Stun do
         other -> 4 - other
       end
 
-    <<value::binary-size(item_length), _::binary-size(padding_length), rest::binary>> = bin
+    <<value::binary-size(^item_length), _::binary-size(^padding_length), rest::binary>> = bin
     {t, v} = decode_attribute(type, value, tid)
     new_length = len - (2 + 2 + item_length + padding_length)
     decode_attrs(rest, new_length, tid, Map.put(attrs, t, v))
@@ -478,7 +494,7 @@ defmodule XMediaLib.Stun do
         other -> 4 - other
       end
 
-    <<value::binary-size(item_length), _::binary-size(padding_length), rest::binary>> = bin
+    <<value::binary-size(^item_length), _::binary-size(^padding_length), rest::binary>> = bin
     {t, v} = stringify_attribute(type, value, tid)
     new_length = length - (2 + 2 + item_length + padding_length)
     stringify_attrs(rest, new_length, tid, Map.put(attrs, t, v))
@@ -549,7 +565,7 @@ defmodule XMediaLib.Stun do
     s = byte_size(stun_binary) - 8
 
     case stun_binary do
-      <<message::binary-size(s), 0x80::8, 0x28::8, 0x00::8, 0x04::8, crc::32>> ->
+      <<message::binary-size(^s), 0x80::8, 0x28::8, 0x00::8, 0x04::8, crc::32>> ->
         expected_crc = bxor(:erlang.crc32(message), 0x5354554E)
 
         if crc == expected_crc do
@@ -594,7 +610,7 @@ defmodule XMediaLib.Stun do
     s = byte_size(stun_binary) - 24
 
     case stun_binary do
-      <<message::binary-size(s), 0x00::size(8), 0x08::size(8), 0x00::size(8), 0x14::size(8),
+      <<message::binary-size(^s), 0x00::size(8), 0x08::size(8), 0x00::size(8), 0x14::size(8),
         integrity::binary-size(20)>>
       when byte_size(stun_binary) > 20 + 24 and not is_nil(key) ->
         do_check_integrity(stun_binary, integrity, message, key)
@@ -618,9 +634,6 @@ defmodule XMediaLib.Stun do
   end
 
   # Inserts a valid integrity marker and value to the end of a STUN binary (RFC 3489)
-  defp insert_integrity(stun_binary, nil),
-    do: stun_binary
-
   defp insert_integrity(stun_binary, key) do
     <<h::size(16), _::size(16), message::binary>> = stun_binary
     s = byte_size(stun_binary) + 24 - 20

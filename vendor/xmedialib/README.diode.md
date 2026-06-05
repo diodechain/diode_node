@@ -8,5 +8,6 @@ Upstream: [Hex xmedialib 0.1.2](https://hex.pm/packages/xmedialib) / [xirsys/xme
 
 - MESSAGE-INTEGRITY uses `:crypto.mac(:hmac, :sha, key, data)` instead of removed `:crypto.hmac/3`.
 - `import Bitwise` instead of deprecated `use Bitwise`.
+- Elixir 1.20: `@attr_defs` / `@attr_encode_defs` for duplicate STUN attribute names; `File.stream!/3` argument order; `^` pins in bitstring sizes.
 
 See `docs/vendoring-xturn.md` in the diode node repo.

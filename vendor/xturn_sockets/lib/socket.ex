@@ -331,7 +331,7 @@ defmodule Xirsys.Sockets.Socket do
 
   defp process_data(bin, required_size, socket, {{cip, cport}, {sip, sport}} = addr, callback) do
     # parse TURN message
-    <<turn::binary-size(required_size), tail::binary>> = bin
+    <<turn::binary-size(^required_size), tail::binary>> = bin
     Logger.debug("Tail is: #{inspect(tail)}")
     # ns = process_turn_msg(turn, %{state | turn_msg_buffer: bin})
     process_msg(callback, turn, {self(), socket, cip, cport, sip, sport})
