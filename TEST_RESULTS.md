@@ -3,7 +3,7 @@
 ## Environment Setup
 
 ✅ **mise installed** - Version 2026.3.9  
-✅ **Elixir installed** - Version 1.19.5 (OTP 28)  
+✅ **Elixir installed** - Version 1.20.0 (OTP 28)  
 ✅ **Erlang installed** - Version 28.3.1  
 ✅ **Dependencies fetched** - All packages including wireguardex ~> 0.4  
 ✅ **Build tools installed** - autoconf, automake, libtool, build-essential  

@@ -26,9 +26,9 @@ defmodule Diode.Mixfile do
         ignore_warnings: ".dialyzer_ignore.exs"
       ],
       docs: docs(vsn),
-      elixir: "~> 1.15",
-      # warnings_as_errors disabled: vendored xturn (lib/xturn/) upstream is not warning-clean on Elixir 1.19
-      elixirc_options: [warnings_as_errors: Mix.target() == :host],
+      elixir: "~> 1.20",
+      # warnings_as_errors off: vendored xturn (lib/xturn/) and path deps are not warning-clean on 1.20 yet
+      elixirc_options: [warnings_as_errors: false],
       elixirc_paths: elixirc_paths(Mix.env()),
       package: package(),
       releases: [
@@ -140,8 +140,8 @@ defmodule Diode.Mixfile do
       {:rotating_file, "~> 0.1"},
       {:wireguardex, "~> 0.4"},
       {:rustler, ">= 0.0.0", optional: true},
-      # xturn is vendored under lib/xturn/ — Hex/path dep fails to compile on Elixir 1.19
-      # xmedialib vendored under vendor/xmedialib (OTP 28+ :crypto.mac in Stun; see docs/vendoring-xturn.md)
+      # xturn is vendored under lib/xturn/ — Hex/path dep fails to compile on recent Elixir (remote struct patterns)
+      # xmedialib and xturn_sockets vendored under vendor/ (see docs/vendoring-xturn.md)
       {:xmedialib, path: "vendor/xmedialib", override: true},
       {:xturn_sockets, path: "vendor/xturn_sockets", override: true},
       {:xturn_cache, "~> 0.1.0"},
