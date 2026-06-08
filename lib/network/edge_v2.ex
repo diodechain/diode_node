@@ -677,6 +677,16 @@ defmodule Network.EdgeV2 do
     {:noreply, state}
   end
 
+  def handle_info({:device_notify, level, code, message}, state) do
+    if state.version > 1001 do
+      msg = encode_request(random_ref(), ["notify", level, code, message])
+      :ok = do_send_socket(state, :message, msg, nil)
+      account_outgoing(state, msg)
+    end
+
+    {:noreply, state}
+  end
+
   def handle_info(msg, state) do
     case PortCollection.maybe_handle_info(msg, state.ports) do
       ports = %PortCollection{} ->

@@ -90,6 +90,10 @@ defmodule RpcClient do
         send(state.owner, {:notification, notification})
         {:ok, %{state | notifications: [notification | state.notifications]}}
 
+      {:ok, %{"method" => "dio_notify"} = notification} ->
+        send(state.owner, {:notification, notification})
+        {:ok, %{state | notifications: [notification | state.notifications]}}
+
       {:ok, %{"id" => _id} = response} ->
         send(state.owner, {:rpc_response, response})
         {:ok, state}

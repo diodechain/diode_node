@@ -153,6 +153,21 @@ defmodule Network.RpcWs do
     reply_notification(notification, state)
   end
 
+  def websocket_info({:device_notify, level, code, message}, state) do
+    reply_notification(
+      %{
+        "jsonrpc" => "2.0",
+        "method" => "dio_notify",
+        "params" => %{
+          "level" => level,
+          "code" => code,
+          "message" => message
+        }
+      },
+      state
+    )
+  end
+
   def websocket_info({:send_message, payload, metadata}, state) do
     reply_notification(
       %{

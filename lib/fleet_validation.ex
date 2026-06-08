@@ -22,11 +22,12 @@ defmodule FleetValidation do
       maybe_warn_zero_stake(row, chain_id)
       :ok
     else
-      error ->
+      {:error, reason} ->
         Logger.warning(
-          "Fleet validation failed on: #{Base16.encode(fleet)} @ #{chain_id}: #{inspect(error)}"
+          "Fleet validation failed on: #{Base16.encode(fleet)} @ #{chain_id}: #{inspect({:error, reason})}"
         )
 
+        Network.DeviceNotify.notify_fleet_issue(ticket, reason)
         :ok
     end
   end

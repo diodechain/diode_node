@@ -29,6 +29,7 @@ defmodule Network.RpcDocs do
       dio_edgev2(),
       dio_ticket(),
       dio_ticket_request(),
+      dio_notify(),
       dio_message(),
       dio_wireguard_open(),
       dio_wireguard_close(),
@@ -471,6 +472,50 @@ defmodule Network.RpcDocs do
         "params" => %{
           "usage" => 10_485_760,
           "fleet" => "0x6000000000000000000000000000000000000000"
+        }
+      }
+    }
+  end
+
+  defp dio_notify do
+    %{
+      section: "Device (WebSocket)",
+      slug: "dio_notify",
+      title: "dio_notify",
+      method: "dio_notify",
+      auth: :notification,
+      description: """
+      **Server → client notification** (no JSON-RPC `id`). Informational events from the relay \
+      (fleet validation warnings, etc.). Tickets and sessions are not rejected solely because of \
+      this notification. Edge v2 clients receive binary `notify` instead when protocol version is \
+      greater than 1001. Notifications are rate-limited per device, chain, fleet, and code \
+      (default **1 hour**).
+      """,
+      params: [
+        %{
+          name: "level",
+          type: "string",
+          doc: "One of `debug`, `notice`, `warning`, `error`."
+        },
+        %{
+          name: "code",
+          type: "string",
+          doc: "Stable snake_case identifier, e.g. `fleet_not_found`."
+        },
+        %{
+          name: "message",
+          type: "string",
+          doc: "Fixed English description for the code."
+        }
+      ],
+      example_request: nil,
+      example_response: %{
+        "jsonrpc" => "2.0",
+        "method" => "dio_notify",
+        "params" => %{
+          "level" => "warning",
+          "code" => "fleet_not_found",
+          "message" => "Fleet is not registered on this chain"
         }
       }
     }

@@ -254,6 +254,30 @@ After a successful `dio_ticket`, the server may push a JSON-RPC **notification**
 
 **Deadline:** if no acceptable `dio_ticket` arrives within **20 seconds**, the WebSocket is closed.
 
+### dio_notify (server → client notification)
+
+Informational server events (e.g. fleet validation warnings). Does **not** reject tickets or close the session.
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "dio_notify",
+  "params": {
+    "level": "warning",
+    "code": "fleet_not_found",
+    "message": "Fleet is not registered on this chain"
+  }
+}
+```
+
+- `level` (string): `debug`, `notice`, `warning`, or `error`.
+- `code` (string): stable snake_case identifier (`fleet_not_found`, `invalid_fleet_contract`, …).
+- `message` (string): fixed English text for the code.
+
+**Edge v2:** binary request `["notify", level, code, message]` when protocol version **> 1001**.
+
+**Delivery:** all authenticated sessions for the device (`PubSub` topic `{:edge, device}`). Rate-limited per `(device, chain_id, fleet, code)` (default **1 hour**).
+
 ## Testing
 
 ### E2E Test Matrix
