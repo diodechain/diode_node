@@ -640,7 +640,7 @@ defmodule KademliaLight do
     if KademliaSql.object(ring_key) != nil do
       :already
     else
-      case find_value(address) do
+      case discover_find_value(address) do
         nil ->
           :miss
 
@@ -650,6 +650,74 @@ defmodule KademliaLight do
           :found
       end
     end
+  end
+
+  defp discover_find_value(address) do
+    find_value(address) || find_value_via_bootstrap_peers(address)
+  end
+
+  @doc false
+  def bootstrap_peer_nodes(ready \\ nil, ring \\ nil) do
+    ready = ready || ready_connections()
+    ring_address_set = ring_address_set(ring || ring_nodes())
+
+    ready
+    |> Map.keys()
+    |> Enum.reject(fn addr ->
+      addr == Diode.address() or MapSet.member?(ring_address_set, addr)
+    end)
+    |> Enum.map(&bootstrap_peer_node/1)
+  end
+
+  @doc false
+  def find_value_via_bootstrap_peers(address, ready \\ nil, ring \\ nil) do
+    key = hash(address)
+    ready = ready || ready_connections()
+    nodes = bootstrap_peer_nodes(ready, ring)
+
+    if nodes == [] do
+      nil
+    else
+      nodes
+      |> rpc_read_ready([PeerHandlerV2.find_value(), key], ready)
+      |> Enum.reduce([], &append_value_response/2)
+      |> quorum_select_value()
+    end
+  end
+
+  defp rpc_read_ready(nodes, call, ready) when is_list(nodes) do
+    me = self()
+    ref = make_ref()
+
+    Enum.map(nodes, fn node ->
+      spawn_link(fn ->
+        send(me, {ref, rpc_read_ready_node(node, call, ready)})
+      end)
+    end)
+    |> Enum.map(fn _pid ->
+      receive do
+        {^ref, ret} -> ret
+      end
+    end)
+  end
+
+  defp rpc_read_ready_node(%Node{node_id: node_id, address: address}, call, ready) do
+    case Map.get(ready, address) do
+      nil -> []
+      pid -> rpc_with_cutoff(node_id, pid, call, @rpc_read_timeout)
+    end
+  end
+
+  defp bootstrap_peer_node(address) do
+    %Node{
+      address: address,
+      node_id: Wallet.from_address(address),
+      ring_key: KademliaRing.key(address)
+    }
+  end
+
+  defp ring_address_set(ring) do
+    ring |> Enum.map(& &1.address) |> MapSet.new()
   end
 
   defp contact_registry_nodes(ring) do

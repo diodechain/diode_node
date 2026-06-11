@@ -286,4 +286,60 @@ defmodule KademliaLightTest do
     assert first.address == n2.address
     assert second.address == n1.address
   end
+
+  test "bootstrap_peer_nodes returns connected peers not in the on-chain ring" do
+    seed = Wallet.new()
+    ring_member = Wallet.new()
+    ring = [Node.new(Diode.wallet()), Node.new(ring_member)]
+    :ets.insert(:kademlia_network, {:ring, ring})
+
+    ready = %{
+      Wallet.address!(seed) => self(),
+      Wallet.address!(ring_member) => self()
+    }
+
+    result = KademliaLight.bootstrap_peer_nodes(ready, ring)
+    addresses = Enum.map(result, & &1.address)
+
+    assert Wallet.address!(seed) in addresses
+    refute Wallet.address!(ring_member) in addresses
+    refute Diode.address() in addresses
+  end
+
+  test "find_value_via_bootstrap_peers reads from connected bootstrap peers" do
+    target = Wallet.new()
+    bootstrap = Wallet.new()
+    ring = [Node.new(Diode.wallet())]
+    :ets.insert(:kademlia_network, {:ring, ring})
+
+    server =
+      Object.Server.new("bootstrap.test", 1234, 5678, "2.3.1", [])
+      |> Object.Server.sign(Wallet.privkey!(target))
+
+    encoded = Object.encode!(server)
+
+    {:ok, peer} = BootstrapPeer.start_link(encoded)
+    ready = %{Wallet.address!(bootstrap) => peer}
+
+    assert ^encoded =
+             KademliaLight.find_value_via_bootstrap_peers(
+               Wallet.address!(target),
+               ready,
+               ring
+             )
+  end
+end
+
+defmodule BootstrapPeer do
+  use GenServer
+
+  def start_link(value), do: GenServer.start_link(__MODULE__, value)
+
+  @impl true
+  def init(value), do: {:ok, value}
+
+  @impl true
+  def handle_call({:rpc, _call}, _from, value) do
+    {:reply, {:value, value}, value}
+  end
 end
