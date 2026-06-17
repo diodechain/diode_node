@@ -8,7 +8,11 @@ defmodule TicketStore do
   use GenServer
   require Logger
 
+  import DiodeClient.Object.TicketV1, only: [ticketv1: 1]
+  import DiodeClient.Object.TicketV2, only: [ticketv2: 1]
+
   @ticket_value_cache :ticket_value_cache
+  @empty_estimate_ctx %{fleet_values: %{}, fleet_scores: %{}}
 
   def start_link(_args) do
     GenServer.start_link(__MODULE__, [], name: __MODULE__)
@@ -142,7 +146,7 @@ defmodule TicketStore do
     # Submit max 10 tickets at a time
     tickets =
       tickets
-      |> Enum.sort_by(&estimate_ticket_value/1, :desc)
+      |> tickets_by_estimated_value()
       |> Stream.filter(fn tck -> validate_ticket(tck) == :ok end)
       |> Enum.take(10)
 
@@ -290,16 +294,118 @@ defmodule TicketStore do
   end
 
   def estimate_ticket_score(tck) do
-    ticket_score(tck) - ETSLru.get(@ticket_value_cache, ets_key(tck), 0)
+    {score, _ctx} = estimate_ticket_score_fast(tck, @empty_estimate_ctx)
+    score
   end
 
   def estimate_ticket_value(tck) do
-    div(estimate_ticket_score(tck) * fleet_value(tck), fleet_score(tck))
+    {value, _ctx} = estimate_ticket_value_fast(tck, @empty_estimate_ctx)
+    value
+  end
+
+  @doc false
+  def tickets_with_estimated_values(tickets) when is_list(tickets) do
+    tickets_with_estimated_values_impl(tickets)
+  end
+
+  @doc false
+  def tickets_by_estimated_value(tickets) when is_list(tickets) do
+    tickets
+    |> tickets_with_estimated_values_impl()
+    |> Enum.sort_by(fn {value, _tck} -> value end, :desc)
+    |> Enum.map(fn {_value, tck} -> tck end)
+  end
+
+  defp tickets_with_estimated_values_impl(tickets) do
+    Enum.map_reduce(tickets, @empty_estimate_ctx, fn tck, ctx ->
+      {value, ctx} = estimate_ticket_value_fast(tck, ctx)
+      {{value, tck}, ctx}
+    end)
+    |> elem(0)
+  end
+
+  defp estimate_ticket_value_fast(tck, ctx) do
+    {chain_id, fleet, epoch, device, ticket_score} = ticket_fields_and_score(tck)
+    submitted = ETSLru.get(@ticket_value_cache, {:ticket, chain_id, fleet, device, epoch}, 0)
+    score = ticket_score - submitted
+    {fleet_value, ctx} = fleet_value_cached(ctx, chain_id, fleet, epoch + 1)
+    {fleet_score, ctx} = fleet_score_cached(ctx, chain_id, fleet, epoch)
+    {div(score * fleet_value, fleet_score), ctx}
+  end
+
+  defp estimate_ticket_score_fast(tck, ctx) do
+    {chain_id, fleet, epoch, device, ticket_score} = ticket_fields_and_score(tck)
+    submitted = ETSLru.get(@ticket_value_cache, {:ticket, chain_id, fleet, device, epoch}, 0)
+    {ticket_score - submitted, ctx}
+  end
+
+  defp fleet_value_cached(ctx, chain_id, fleet, epoch) do
+    key = {chain_id, fleet, epoch}
+
+    case Map.fetch(ctx.fleet_values, key) do
+      {:ok, value} ->
+        {value, ctx}
+
+      :error ->
+        value = fleet_value(chain_id, fleet, epoch)
+        {value, put_in(ctx.fleet_values[key], value)}
+    end
+  end
+
+  defp fleet_score_cached(ctx, chain_id, fleet, epoch) do
+    key = {chain_id, fleet, epoch}
+
+    case Map.fetch(ctx.fleet_scores, key) do
+      {:ok, score} ->
+        {score, ctx}
+
+      :error ->
+        score =
+          ETSLru.get(@ticket_value_cache, {:fleet_score, fleet, chain_id, epoch}) ||
+            update_fleet_scores(chain_id, epoch)[fleet] || 0
+
+        {score, put_in(ctx.fleet_scores[key], score)}
+    end
+  end
+
+  defp ticket_fields_and_score(
+         ticketv2(
+           chain_id: chain_id,
+           epoch: epoch,
+           fleet_contract: fleet,
+           device_address: <<_::160>> = device,
+           total_connections: total_connections,
+           total_bytes: total_bytes
+         )
+       ) do
+    {chain_id, fleet, epoch, device, total_connections * 1024 + total_bytes}
+  end
+
+  defp ticket_fields_and_score(
+         ticketv1(
+           block_number: block_number,
+           fleet_contract: fleet,
+           device_address: <<_::160>> = device,
+           total_connections: total_connections,
+           total_bytes: total_bytes
+         )
+       ) do
+    chain_id = RemoteChain.diode_l1_fallback().chain_id()
+    epoch = RemoteChain.epoch(chain_id, block_number)
+    {chain_id, fleet, epoch, device, total_connections * 1024 + total_bytes}
+  end
+
+  defp ticket_fields_and_score(tck) do
+    chain_id = Ticket.chain_id(tck)
+    fleet = Ticket.fleet_contract(tck)
+    epoch = Ticket.epoch(tck)
+    device = Ticket.device_address(tck)
+    {chain_id, fleet, epoch, device, Ticket.score(tck)}
   end
 
   defp ets_key(tck) do
-    {:ticket, Ticket.chain_id(tck), Ticket.fleet_contract(tck), Ticket.device_address(tck),
-     Ticket.epoch(tck)}
+    {chain_id, fleet, epoch, device, _score} = ticket_fields_and_score(tck)
+    {:ticket, chain_id, fleet, device, epoch}
   end
 
   def fetch_submitted_ticket_score(tck) do
