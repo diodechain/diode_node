@@ -14,7 +14,8 @@ defmodule DiodeClient.Object.TicketV1 do
     total_bytes: nil,
     local_address: nil,
     device_signature: nil,
-    server_signature: nil
+    server_signature: nil,
+    device_address: nil
   )
 
   @type ticket ::
@@ -26,7 +27,8 @@ defmodule DiodeClient.Object.TicketV1 do
             total_bytes: integer(),
             local_address: binary(),
             device_signature: Secp256k1.signature(),
-            server_signature: Secp256k1.signature() | nil
+            server_signature: Secp256k1.signature() | nil,
+            device_address: binary() | nil
           )
   @type t ::
           record(:ticketv1,
@@ -37,10 +39,34 @@ defmodule DiodeClient.Object.TicketV1 do
             total_bytes: integer(),
             local_address: binary(),
             device_signature: Secp256k1.signature(),
-            server_signature: Secp256k1.signature() | nil
+            server_signature: Secp256k1.signature() | nil,
+            device_address: binary() | nil
           )
+  @type raw :: t() | tuple()
+
+  @spec normalize(tuple()) :: t()
+  def normalize(t = ticketv1()), do: t
+
+  def normalize(
+        {:ticketv1, server_id, block_number, fleet_contract, total_connections, total_bytes,
+         local_address, device_signature, server_signature}
+      ) do
+    ticketv1(
+      server_id: server_id,
+      block_number: block_number,
+      fleet_contract: fleet_contract,
+      total_connections: total_connections,
+      total_bytes: total_bytes,
+      local_address: local_address,
+      device_signature: device_signature,
+      server_signature: server_signature,
+      device_address: nil
+    )
+  end
+
   @impl true
-  def key(tck = ticketv1()) do
+  def key(tck) do
+    tck = normalize(tck)
     device_address(tck)
   end
 
@@ -50,7 +76,16 @@ defmodule DiodeClient.Object.TicketV1 do
     true
   end
 
-  def device_address(tck = ticketv1()) do
+  @spec device_address(raw()) :: binary()
+  def device_address(tck) do
+    tck = normalize(tck)
+
+    device_address_cached(tck)
+  end
+
+  defp device_address_cached(_tck = ticketv1(device_address: <<_::160>> = addr)), do: addr
+
+  defp device_address_cached(tck = ticketv1()) do
     Secp256k1.recover!(
       device_signature(tck),
       device_blob(tck),
@@ -60,7 +95,14 @@ defmodule DiodeClient.Object.TicketV1 do
     |> Wallet.address!()
   end
 
-  def device_address?(tck = ticketv1(), wallet) do
+  @spec with_device_address(raw(), binary()) :: t()
+  def with_device_address(tck, device = <<_::160>>) do
+    ticketv1(normalize(tck), device_address: device)
+  end
+
+  def device_address?(tck, wallet) do
+    tck = normalize(tck)
+
     Secp256k1.verify(
       Wallet.pubkey!(wallet),
       device_blob(tck),
@@ -69,18 +111,21 @@ defmodule DiodeClient.Object.TicketV1 do
     )
   end
 
-  def device_sign(tck = ticketv1(), private) do
+  def device_sign(tck, private) do
+    tck = normalize(tck)
     ticketv1(tck, device_signature: Secp256k1.sign(private, device_blob(tck), :kec))
   end
 
-  def server_sign(tck = ticketv1(), private) do
+  def server_sign(tck, private) do
+    tck = normalize(tck)
     ticketv1(tck, server_signature: Secp256k1.sign(private, server_blob(tck), :kec))
   end
 
   @doc """
     Format for putting into a transaction with "SubmitTicketRaw"
   """
-  def raw(tck = ticketv1()) do
+  def raw(tck) do
+    tck = normalize(tck)
     [rec, r, s] = Secp256k1.bitcoin_to_rlp(device_signature(tck))
 
     [
@@ -106,7 +151,8 @@ defmodule DiodeClient.Object.TicketV1 do
     ]
   end
 
-  def device_blob(tck = ticketv1()) do
+  def device_blob(tck) do
+    tck = normalize(tck)
     # From DiodeRegistry.sol:
     #   bytes32[] memory message = new bytes32[](6);
     #   message[0] = blockhash(blockHeight);
@@ -127,22 +173,63 @@ defmodule DiodeClient.Object.TicketV1 do
     |> :erlang.iolist_to_binary()
   end
 
-  def server_blob(tck = ticketv1()) do
+  def server_blob(tck) do
+    tck = normalize(tck)
+
     [device_blob(tck), device_signature(tck)]
     |> :erlang.iolist_to_binary()
   end
 
-  def server_id(ticketv1(server_id: id)), do: id
+  def server_id(tck) do
+    ticketv1(server_id: id) = normalize(tck)
+    id
+  end
+
   def chain_id(_ \\ nil), do: RemoteChain.diode_l1_fallback().chain_id()
-  def epoch(t = ticketv1(block_number: n)), do: RemoteChain.epoch(chain_id(t), n)
+
+  def epoch(tck) do
+    ticketv1(block_number: n) = normalize(tck)
+    RemoteChain.epoch(chain_id(), n)
+  end
 
   @impl true
-  def block_number(ticketv1(block_number: n)), do: n
-  def block_hash(ticketv1(block_number: n)), do: RemoteChain.blockhash(chain_id(), n)
-  def device_signature(ticketv1(device_signature: signature)), do: signature
-  def server_signature(ticketv1(server_signature: signature)), do: signature
-  def fleet_contract(ticketv1(fleet_contract: fc)), do: fc
-  def total_connections(ticketv1(total_connections: tc)), do: tc
-  def total_bytes(ticketv1(total_bytes: tb)), do: tb
-  def local_address(ticketv1(local_address: la)), do: la
+  def block_number(tck) do
+    ticketv1(block_number: n) = normalize(tck)
+    n
+  end
+
+  def block_hash(tck) do
+    ticketv1(block_number: n) = normalize(tck)
+    RemoteChain.blockhash(chain_id(), n)
+  end
+
+  def device_signature(tck) do
+    ticketv1(device_signature: signature) = normalize(tck)
+    signature
+  end
+
+  def server_signature(tck) do
+    ticketv1(server_signature: signature) = normalize(tck)
+    signature
+  end
+
+  def fleet_contract(tck) do
+    ticketv1(fleet_contract: fc) = normalize(tck)
+    fc
+  end
+
+  def total_connections(tck) do
+    ticketv1(total_connections: tc) = normalize(tck)
+    tc
+  end
+
+  def total_bytes(tck) do
+    ticketv1(total_bytes: tb) = normalize(tck)
+    tb
+  end
+
+  def local_address(tck) do
+    ticketv1(local_address: la) = normalize(tck)
+    la
+  end
 end

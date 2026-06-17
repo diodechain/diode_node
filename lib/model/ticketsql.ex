@@ -28,12 +28,13 @@ defmodule Model.TicketSql do
   end
 
   def put_ticket(ticket) do
+    device = Ticket.device_address(ticket)
     ticket_data = BertInt.encode!(ticket)
 
     query!(
       "REPLACE INTO tickets (device, fleet, epoch, ticket) VALUES(?1, ?2, ?3, ?4)",
       [
-        Ticket.device_address(ticket),
+        device,
         Ticket.fleet_contract(ticket),
         Ticket.epoch(ticket),
         ticket_data
@@ -46,18 +47,18 @@ defmodule Model.TicketSql do
   def tickets_raw() do
     query!("SELECT device, fleet, epoch, ticket FROM tickets")
     |> Enum.map(fn [dev, fleet, epoch, ticket] ->
-      {dev, fleet, epoch, BertInt.decode!(ticket)}
+      {dev, fleet, epoch, decode_ticket(ticket, dev)}
     end)
   end
 
   def tickets(epoch) do
-    query!("SELECT ticket FROM tickets WHERE epoch = ?1", [epoch])
-    |> Enum.map(fn [ticket] -> BertInt.decode!(ticket) end)
+    query!("SELECT device, ticket FROM tickets WHERE epoch = ?1", [epoch])
+    |> Enum.map(fn [device, ticket] -> decode_ticket(ticket, device) end)
   end
 
   def tickets() do
-    query!("SELECT ticket FROM tickets")
-    |> Enum.map(fn [ticket] -> BertInt.decode!(ticket) end)
+    query!("SELECT device, ticket FROM tickets")
+    |> Enum.map(fn [device, ticket] -> decode_ticket(ticket, device) end)
   end
 
   def find(tck) do
@@ -65,11 +66,14 @@ defmodule Model.TicketSql do
   end
 
   def find(device = <<_::160>>, fleet = <<_fl::160>>, epoch) when is_integer(epoch) do
-    Sql.fetch!(
-      __MODULE__,
-      "SELECT ticket FROM tickets WHERE device = ?1 AND fleet = ?2 AND epoch = ?3",
-      [device, fleet, epoch]
-    )
+    case Sql.lookup!(
+           __MODULE__,
+           "SELECT ticket FROM tickets WHERE device = ?1 AND fleet = ?2 AND epoch = ?3",
+           [device, fleet, epoch]
+         ) do
+      nil -> nil
+      ticket -> decode_ticket(ticket, device)
+    end
   end
 
   def delete(tck) do
@@ -94,5 +98,12 @@ defmodule Model.TicketSql do
   def count(epoch) do
     [[c]] = query!("SELECT COUNT(*) as c FROM tickets WHERE epoch = ?1", [epoch])
     c
+  end
+
+  defp decode_ticket(ticket, device) do
+    ticket
+    |> BertInt.decode!()
+    |> Ticket.normalize()
+    |> Ticket.with_device_address(device)
   end
 end

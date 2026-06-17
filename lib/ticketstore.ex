@@ -263,10 +263,11 @@ defmodule TicketStore do
   end
 
   defp put_ticket(tck, device = <<_::160>>, fleet = <<_f::160>>, epoch) when is_integer(epoch) do
+    tck = Ticket.with_device_address(tck, device)
     key = {device, fleet, epoch}
 
     Debouncer.delay(key, fn ->
-      addr = Ticket.device_address(tck) |> Base16.encode()
+      addr = Base16.encode(device)
       bytes = Ticket.total_bytes(tck)
       conns = Ticket.total_connections(tck)
       epoch = Ticket.epoch(tck)
