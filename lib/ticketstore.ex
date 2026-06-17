@@ -119,10 +119,16 @@ defmodule TicketStore do
     blocknum = RemoteChain.peaknumber(chain_id)
 
     if not Diode.dev_mode?() and
-         RemoteChain.epoch_progress(chain_id, blocknum) > 0.5 do
+         RemoteChain.epoch_progress(chain_id, blocknum) > 0.1 do
       epoch = RemoteChain.epoch(chain_id, blocknum)
       submit_tickets(chain_id, epoch - 1)
     end
+  end
+
+  def submit_tickets() do
+    chain_id = Chains.Moonbeam
+    epoch = RemoteChain.epoch(chain_id) - 1
+    submit_tickets(chain_id, epoch)
   end
 
   def submit_tickets(chain_id, epoch) do
