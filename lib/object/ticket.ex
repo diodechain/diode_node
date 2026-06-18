@@ -114,6 +114,12 @@ defmodule DiodeClient.Object.Ticket do
   @spec local_address(raw_t()) :: binary()
   def local_address(tck), do: dispatch(tck, :local_address, [])
 
+  @spec wire_encode!(raw_t()) :: binary()
+  def wire_encode!(tck), do: DiodeClient.BertExt.encode!(wire_encode_list!(tck))
+
+  @spec wire_encode_list!(raw_t()) :: list()
+  def wire_encode_list!(tck), do: dispatch(tck, :wire_list, [])
+
   def score(tck), do: total_connections(tck) * 1024 + total_bytes(tck)
 
   def too_many_bytes?(tck) do

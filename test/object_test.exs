@@ -101,7 +101,7 @@ defmodule ObjectTest do
         device_signature: <<0::520>>,
         server_signature: <<0::520>>
       )
-      |> Object.encode!()
+      |> Object.Wire.encode!()
 
     Model.KademliaSql.put_object(key, ticket)
     key

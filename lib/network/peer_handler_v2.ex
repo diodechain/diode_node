@@ -153,7 +153,7 @@ defmodule Network.PeerHandlerV2 do
     # We don't have server registration atm
     chain_id = 0
 
-    {:noreply, state} = ssl_send(state, [@hello, Object.encode!(hello), chain_id, []])
+    {:noreply, state} = ssl_send(state, [@hello, Object.Wire.encode!(hello), chain_id, []])
 
     receive do
       {:ssl, _socket, msg} ->

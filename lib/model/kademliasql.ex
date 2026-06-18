@@ -374,25 +374,25 @@ defmodule Model.KademliaSql do
       # querying stale objects to ensure we won't re-store a stale object
       case stale_object_ext(hkey) do
         nil ->
-          put_object(hkey, Object.encode!(object))
+          put_object(hkey, Object.Wire.encode!(object))
 
         {existing, stale?} ->
           existing_object = Object.decode!(existing)
 
           case {Object.modname(existing_object), Object.modname(object)} do
             {Object.TicketV1, Object.TicketV2} ->
-              put_object(hkey, Object.encode!(object))
+              put_object(hkey, Object.Wire.encode!(object))
 
             {Object.TicketV2, Object.TicketV1} ->
               existing_object
 
             _ ->
               if Object.block_number(existing_object) < Object.block_number(object) do
-                put_object(hkey, Object.encode!(object))
+                put_object(hkey, Object.Wire.encode!(object))
               else
                 if force_refresh and
                      Object.block_number(existing_object) == Object.block_number(object) do
-                  put_object(hkey, Object.encode!(object))
+                  put_object(hkey, Object.Wire.encode!(object))
                 else
                   if stale? do
                     nil
