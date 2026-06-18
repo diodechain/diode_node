@@ -17,7 +17,7 @@ defmodule DiodeClient.Object.Wire do
   def encode_list!(object) when is_tuple(object) do
     case elem(object, 0) do
       type when type in @ticket_tags ->
-        Ticket.wire_encode_list!(Ticket.normalize(object))
+        Ticket.wire_encode_list!(object)
 
       _ ->
         Object.encode_list!(object)
