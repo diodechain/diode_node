@@ -6,7 +6,7 @@ defmodule DiodeClient.Object.TicketDeviceAddressCacheTest do
   import TestHelper
   alias DiodeClient.Object.Ticket
   alias DiodeClient.Object.TicketV2
-  alias DiodeClient.{Secp256k1, Wallet}
+  alias DiodeClient.{Object, Secp256k1, Wallet}
   import TicketV2, only: [ticketv2: 1]
   import Edge2Client, only: [clientid: 1]
 
@@ -136,6 +136,31 @@ defmodule DiodeClient.Object.TicketDeviceAddressCacheTest do
     Supervisor.terminate_child(Diode.Supervisor, TicketStore)
 
     assert {:ok, _pid} = Supervisor.restart_child(Diode.Supervisor, TicketStore)
+  end
+
+  test "wire encode excludes internal device_address from edge object format" do
+    wallet = clientid(1)
+    device = Wallet.address!(wallet)
+    ticket = build_ticket(wallet)
+    cached = Ticket.with_device_address(ticket, device)
+
+    assert Ticket.device_address(cached) == device
+
+    assert length(Object.encode_list!(cached)) == 11
+
+    wire = Object.Wire.encode_list!(cached)
+    assert length(wire) == 10
+    assert hd(wire) == "ticketv2"
+    assert List.last(wire) == Ticket.server_signature(cached)
+
+    legacy = legacy_tuple(ticket)
+    assert Object.Wire.encode_list!(legacy) == wire
+
+    roundtrip = Object.decode!(Object.Wire.encode!(cached))
+    assert Ticket.mod(roundtrip) == DiodeClient.Object.TicketV2
+    assert Ticket.server_id(roundtrip) == Ticket.server_id(cached)
+    assert Ticket.epoch(roundtrip) == Ticket.epoch(cached)
+    assert Ticket.device_signature(roundtrip) == Ticket.device_signature(cached)
   end
 
   test "submit and too_low behaviour unchanged with cached device_address" do

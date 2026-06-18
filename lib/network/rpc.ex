@@ -279,7 +279,7 @@ defmodule Network.Rpc do
 
         case KademliaLight.find_value(key) do
           nil -> result(nil, 404)
-          binary -> result(Object.encode_list!(Object.decode!(binary)))
+          binary -> result(Object.Wire.encode_list!(Object.decode!(binary)))
         end
 
       "dio_getNode" ->
@@ -287,7 +287,7 @@ defmodule Network.Rpc do
 
         case KademliaLight.find_node_object(node) do
           nil -> result(nil, 404)
-          object -> result(Object.encode_list!(object))
+          object -> result(Object.Wire.encode_list!(object))
         end
 
       "dio_traffic" ->
@@ -362,7 +362,7 @@ defmodule Network.Rpc do
 
         tickets =
           TicketStore.tickets(chain_id, epoch)
-          |> Enum.map(&Object.encode!/1)
+          |> Enum.map(&Object.Wire.encode!/1)
           |> Enum.map(&Base16.encode/1)
 
         result(%{

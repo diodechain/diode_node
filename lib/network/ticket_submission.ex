@@ -196,7 +196,7 @@ defmodule Network.TicketSubmission do
     Debouncer.immediate(
       key,
       fn ->
-        Model.KademliaSql.put_object(KademliaLight.hash(key), Object.encode!(ticket))
+        Model.KademliaSql.put_object(KademliaLight.hash(key), Object.Wire.encode!(ticket))
         KademliaLight.store(ticket)
       end,
       15_000

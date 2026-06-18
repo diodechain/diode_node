@@ -41,7 +41,7 @@ defmodule KademliaLight do
 
   def store(object) when is_tuple(object) do
     key = Object.key(object)
-    value = Object.encode!(object)
+    value = Object.Wire.encode!(object)
     store(key, value)
   end
 

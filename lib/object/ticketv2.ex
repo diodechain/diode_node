@@ -55,6 +55,25 @@ defmodule DiodeClient.Object.TicketV2 do
     )
   end
 
+  @doc false
+  @spec wire_list(raw()) :: list()
+  def wire_list(tck) do
+    tck = normalize(tck)
+
+    [
+      "ticketv2",
+      server_id(tck),
+      chain_id(tck),
+      epoch(tck),
+      fleet_contract(tck),
+      total_connections(tck),
+      total_bytes(tck),
+      local_address(tck),
+      device_signature(tck),
+      server_signature(tck)
+    ]
+  end
+
   @impl true
   def key(tck) do
     tck = normalize(tck)

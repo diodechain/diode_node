@@ -44,6 +44,24 @@ defmodule DiodeClient.Object.TicketV1 do
           )
   @type raw :: t() | tuple()
 
+  @doc false
+  @spec wire_list(raw()) :: list()
+  def wire_list(tck) do
+    tck = normalize(tck)
+
+    [
+      "ticket",
+      server_id(tck),
+      block_number(tck),
+      fleet_contract(tck),
+      total_connections(tck),
+      total_bytes(tck),
+      local_address(tck),
+      device_signature(tck),
+      server_signature(tck)
+    ]
+  end
+
   @spec normalize(tuple()) :: t()
   def normalize(t = ticketv1()), do: t
 

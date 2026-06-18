@@ -442,10 +442,10 @@ defmodule Network.EdgeV2 do
               case KademliaLight.find_value(key) do
                 nil ->
                   KademliaLight.store(obj)
-                  Object.encode_list!(obj)
+                  Object.Wire.encode_list!(obj)
 
                 binary ->
-                  Object.encode_list!(Object.decode!(binary))
+                  Object.Wire.encode_list!(Object.decode!(binary))
               end
               |> response()
           end
@@ -456,20 +456,20 @@ defmodule Network.EdgeV2 do
 
         ["getobject", key] ->
           with binary when binary != nil <- KademliaLight.find_value(key) do
-            Object.encode_list!(Object.decode!(binary))
+            Object.Wire.encode_list!(Object.decode!(binary))
           end
           |> response()
 
         ["getnode", node] ->
           with object when object != nil <- KademliaLight.find_node_object(node) do
-            Object.encode_list!(object)
+            Object.Wire.encode_list!(object)
           end
           |> response()
 
         ["getnodes", node] ->
           node
           |> KademliaLight.find_node_objects()
-          |> Enum.map(&Object.encode_list!/1)
+          |> Enum.map(&Object.Wire.encode_list!/1)
           |> response()
 
         ["portopen", device_id, port, flags] ->
