@@ -2,6 +2,8 @@
 # Copyright 2021-2024 Diode
 # Licensed under the Diode License, Version 1.1
 defmodule Chains do
+  @epoch_block_cache :chains_epoch_block_cache
+
   def epoch(chain, block_height) do
     div(RemoteChain.blocktime(chain, block_height), chain.epoch_duration())
   end
@@ -11,15 +13,63 @@ defmodule Chains do
       chain.epoch_duration()
   end
 
-  def epoch_block(chain, epoch) do
-    # last block with 12s: 6593037 Jul-15-2024 01:01:12 PM +UTC => 1721048472
-    base_height = RemoteChain.peaknumber(chain)
-    base_timestamp = RemoteChain.blocktime(chain, base_height)
-    epoch_time = epoch * chain.epoch_duration()
+  @doc """
+  Returns the first block whose timestamp is at or after `epoch * epoch_duration()`.
 
-    timestamp_block(base_height, base_timestamp, epoch_time, chain.expected_block_intervall())
+  Uses binary search over real block timestamps instead of extrapolating from a
+  fixed block interval. Moonbeam's RT3000 upgrade (block 7_299_818) halved block
+  time from 12s to 6s; a single-interval estimate drifts by weeks for older epochs.
+  """
+  def epoch_block(chain, epoch) when is_atom(chain) do
+    ensure_epoch_block_cache()
+
+    DiodeClient.ETSLru.fetch(@epoch_block_cache, {chain, epoch}, fn ->
+      epoch_block_uncached(chain, epoch)
+    end)
   end
 
+  @doc false
+  def first_block_at_or_after_timestamp(blocktime_fun, target, lo, hi)
+      when is_function(blocktime_fun, 1) and is_integer(target) and lo <= hi do
+    first_block_at_or_after_timestamp_loop(blocktime_fun, target, lo, hi)
+  end
+
+  defp first_block_at_or_after_timestamp_loop(blocktime_fun, target, lo, hi) when lo < hi do
+    mid = div(lo + hi, 2)
+
+    if blocktime_fun.(mid) < target do
+      first_block_at_or_after_timestamp_loop(blocktime_fun, target, mid + 1, hi)
+    else
+      first_block_at_or_after_timestamp_loop(blocktime_fun, target, lo, mid)
+    end
+  end
+
+  defp first_block_at_or_after_timestamp_loop(_blocktime_fun, _target, lo, _hi), do: lo
+
+  defp epoch_block_uncached(chain, epoch) do
+    target = epoch * chain.epoch_duration()
+    peak = RemoteChain.peaknumber(chain)
+    peak_ts = RemoteChain.blocktime(chain, peak)
+
+    if target > peak_ts do
+      peak
+    else
+      first_block_at_or_after_timestamp(
+        fn n -> RemoteChain.blocktime(chain, n) end,
+        target,
+        1,
+        peak
+      )
+    end
+  end
+
+  defp ensure_epoch_block_cache() do
+    if :ets.info(@epoch_block_cache) == :undefined do
+      DiodeClient.ETSLru.new(@epoch_block_cache, 512)
+    end
+  end
+
+  # Approximate inverse of epoch/1; kept for reference and tests.
   def timestamp_block(base_height, base_timestamp, search_timestamp, block_intervall) do
     base_height - floor((base_timestamp - search_timestamp) / block_intervall)
   end
@@ -87,13 +137,7 @@ defmodule Chains.Moonbeam do
   def epoch(n), do: Chains.epoch(__MODULE__, n)
   def epoch_progress(n), do: Chains.epoch_progress(__MODULE__, n)
 
-  def epoch_block(epoch) do
-    epoch_time = epoch * epoch_duration()
-    # last block with 12s: 6593037 Jul-15-2024 01:01:12 PM +UTC => 1721048472
-    # after that all blocks have 6s
-    expected_block_intervall = if epoch_time > 1_721_048_472, do: 12, else: 6
-    Chains.timestamp_block(6_593_037, 1_721_048_472, epoch_time, expected_block_intervall)
-  end
+  def epoch_block(epoch), do: Chains.epoch_block(__MODULE__, epoch)
 
   def epoch_duration(), do: 2_592_000
   def chain_prefix(), do: "glmr"
