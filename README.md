@@ -90,6 +90,18 @@ sudo snap restart diode-node.service
 
 Snap config keys use lowercase with hyphens (environment variables use underscores), for example `wireguard-listen-port` maps to `WIREGUARD_LISTEN_PORT`. List current values with `sudo snap get diode-node`.
 
+# Development
+
+Contributors and coding agents should read [AGENTS.md](AGENTS.md) before making changes. **Bug fixes and new behavior require regression tests** in the same PR.
+
+```bash
+mix deps.get
+mix lint
+mix test test/path/to/your_test.exs
+```
+
+See [docs/testing.md](docs/testing.md) for test layout, `Plug.Test` examples, and isolated test commands.
+
 # Linux Kernel optimization
 
 To optimize Linux for maximum network performance we advise to enable tcp bbr:

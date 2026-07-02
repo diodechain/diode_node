@@ -465,15 +465,12 @@ defmodule Network.RpcDocs do
           doc: "Fleet contract address (`0x` + 40 hex digits)."
         }
       ],
-      example_request: nil,
-      example_response: %{
-        "jsonrpc" => "2.0",
-        "method" => "dio_ticket_request",
-        "params" => %{
+      example_request: rpc("dio_ticket", ["0x0102…"]),
+      example_response:
+        notify("dio_ticket_request", %{
           "usage" => 10_485_760,
           "fleet" => "0x6000000000000000000000000000000000000000"
-        }
-      }
+        })
     }
   end
 
@@ -487,7 +484,8 @@ defmodule Network.RpcDocs do
       description: """
       **Server → client notification** (no JSON-RPC `id`). Informational events from the relay \
       (fleet validation warnings, etc.). Tickets and sessions are not rejected solely because of \
-      this notification. Edge v2 clients receive binary `notify` instead when protocol version is \
+      this notification. Clients may continue other device methods (e.g. `dio_message`) without replying to the notify. \
+      Edge v2 clients receive binary `notify` instead when protocol version is \
       greater than 1001. Notifications are rate-limited per device, chain, fleet, and code \
       (default **1 hour**).
       """,
@@ -508,16 +506,13 @@ defmodule Network.RpcDocs do
           doc: "Fixed English description for the code."
         }
       ],
-      example_request: nil,
-      example_response: %{
-        "jsonrpc" => "2.0",
-        "method" => "dio_notify",
-        "params" => %{
+      example_request: rpc("dio_message", ["0xRecipient…", "0xDEADBEEF"]),
+      example_response:
+        notify("dio_notify", %{
           "level" => "warning",
           "code" => "fleet_not_found",
           "message" => "Fleet is not registered on this chain"
-        }
-      }
+        })
     }
   end
 
@@ -647,6 +642,10 @@ defmodule Network.RpcDocs do
 
   defp ok(result) do
     pretty(%{"jsonrpc" => "2.0", "id" => 1, "result" => result})
+  end
+
+  defp notify(method, params) do
+    pretty(%{"jsonrpc" => "2.0", "method" => method, "params" => params})
   end
 
   defp pretty(term), do: Poison.encode!(term)
