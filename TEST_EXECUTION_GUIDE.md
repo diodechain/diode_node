@@ -40,6 +40,8 @@ This runs:
 
 ### 4. Run Unit Tests
 
+Regression tests are required for bug fixes and new behavior. See [AGENTS.md](AGENTS.md) and [docs/testing.md](docs/testing.md).
+
 #### WireGuardService Tests
 
 ```bash
