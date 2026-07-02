@@ -465,15 +465,11 @@ defmodule Network.RpcDocs do
           doc: "Fleet contract address (`0x` + 40 hex digits)."
         }
       ],
-      example_request: nil,
-      example_response: %{
-        "jsonrpc" => "2.0",
-        "method" => "dio_ticket_request",
-        "params" => %{
+      example_response:
+        notify("dio_ticket_request", %{
           "usage" => 10_485_760,
           "fleet" => "0x6000000000000000000000000000000000000000"
-        }
-      }
+        })
     }
   end
 
@@ -508,16 +504,12 @@ defmodule Network.RpcDocs do
           doc: "Fixed English description for the code."
         }
       ],
-      example_request: nil,
-      example_response: %{
-        "jsonrpc" => "2.0",
-        "method" => "dio_notify",
-        "params" => %{
+      example_response:
+        notify("dio_notify", %{
           "level" => "warning",
           "code" => "fleet_not_found",
           "message" => "Fleet is not registered on this chain"
-        }
-      }
+        })
     }
   end
 
@@ -647,6 +639,10 @@ defmodule Network.RpcDocs do
 
   defp ok(result) do
     pretty(%{"jsonrpc" => "2.0", "id" => 1, "result" => result})
+  end
+
+  defp notify(method, params) do
+    pretty(%{"jsonrpc" => "2.0", "method" => method, "params" => params})
   end
 
   defp pretty(term), do: Poison.encode!(term)
