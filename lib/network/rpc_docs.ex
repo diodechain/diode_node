@@ -465,6 +465,7 @@ defmodule Network.RpcDocs do
           doc: "Fleet contract address (`0x` + 40 hex digits)."
         }
       ],
+      example_request: rpc("dio_ticket", ["0x0102…"]),
       example_response:
         notify("dio_ticket_request", %{
           "usage" => 10_485_760,
@@ -483,7 +484,8 @@ defmodule Network.RpcDocs do
       description: """
       **Server → client notification** (no JSON-RPC `id`). Informational events from the relay \
       (fleet validation warnings, etc.). Tickets and sessions are not rejected solely because of \
-      this notification. Edge v2 clients receive binary `notify` instead when protocol version is \
+      this notification. Clients may continue other device methods (e.g. `dio_message`) without replying to the notify. \
+      Edge v2 clients receive binary `notify` instead when protocol version is \
       greater than 1001. Notifications are rate-limited per device, chain, fleet, and code \
       (default **1 hour**).
       """,
@@ -504,6 +506,7 @@ defmodule Network.RpcDocs do
           doc: "Fixed English description for the code."
         }
       ],
+      example_request: rpc("dio_message", ["0xRecipient…", "0xDEADBEEF"]),
       example_response:
         notify("dio_notify", %{
           "level" => "warning",

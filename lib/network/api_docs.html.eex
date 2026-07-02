@@ -233,13 +233,24 @@
     <aside class="code-rail" aria-label="Request and response examples">
 <%= for doc <- docs do %>
       <div class="anchor" id="code-<%= Plug.HTML.html_escape(doc.slug) %>">
+<%= if doc.auth == :notification do %>
+<%= if doc.example_response do %>
+        <p class="label">Example notification</p>
+        <pre><%= Plug.HTML.html_escape(doc.example_response) %></pre>
+<% end %>
+<%= if doc[:example_request] do %>
+        <p class="label">Example client request</p>
+        <pre><%= Plug.HTML.html_escape(doc[:example_request]) %></pre>
+<% end %>
+<% else %>
 <%= if doc[:example_request] do %>
         <p class="label">Example request</p>
         <pre><%= Plug.HTML.html_escape(doc[:example_request]) %></pre>
 <% end %>
 <%= if doc.example_response do %>
-        <p class="label"><%= if doc[:example_request], do: "Example response", else: "Example notification" %></p>
+        <p class="label">Example response</p>
         <pre><%= Plug.HTML.html_escape(doc.example_response) %></pre>
+<% end %>
 <% end %>
       </div>
 <% end %>
