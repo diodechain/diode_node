@@ -27,6 +27,37 @@ defmodule RemoteChain.NodeProxyTest do
     DateTime.utc_now() |> DateTime.add(-WSConn.handshake_timeout_ms() - 1, :millisecond)
   end
 
+  describe "pending_request_info/2" do
+    test "returns method, provider url, and age for an in-flight caller" do
+      caller = self()
+      started = System.os_time(:millisecond) - 12_345
+
+      state = %NodeProxy{
+        chain: Chains.Anvil,
+        connections: %{"wss://moonbeam.example/ws" => spawn(fn -> :timer.sleep(:infinity) end)},
+        requests: %{
+          1 => %{
+            from: caller,
+            method: "eth_call",
+            ws_url: "wss://moonbeam.example/ws",
+            start_ms: started
+          }
+        }
+      }
+
+      info = NodeProxy.pending_request_info(state, caller)
+
+      assert info.method == "eth_call"
+      assert info.ws_url == "wss://moonbeam.example/ws"
+      assert info.age_ms >= 12_000
+    end
+
+    test "returns nil when caller has no in-flight request" do
+      state = %NodeProxy{chain: Chains.Anvil, requests: %{}}
+      assert NodeProxy.pending_request_info(state, self()) == nil
+    end
+  end
+
   describe "rpc_log_status/1" do
     test "returns :ok for successful responses" do
       assert NodeProxy.rpc_log_status(%{"id" => 1, "result" => "0x1"}) == ":ok"

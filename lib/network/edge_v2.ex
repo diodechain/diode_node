@@ -340,17 +340,42 @@ defmodule Network.EdgeV2 do
           Base16.encode(device_address(state))
         end
 
+      label = "Peer #{address}: handle_async_msg(#{inspect(msg)})"
+
       Profiler.warn_if_stuck(
         fn ->
           do_handle_async_msg(msg, state)
         end,
         timeout: 10_000,
-        label: "Peer #{address}: handle_async_msg(#{inspect(msg)})"
+        fun: fn ->
+          Logger.warning(
+            "#{label} stuck for 10000#{slow_rpc_provider_hint(msg)}\n" <>
+              Profiler.format_stacktrace(self())
+          )
+        end
       )
     catch
       :block_not_found -> error("block not found")
     end
   end
+
+  defp slow_rpc_provider_hint(msg) do
+    with chain when not is_nil(chain) <- chain_from_async_msg(msg),
+         info when not is_nil(info) <- RemoteChain.NodeProxy.pending_for_caller(chain, self()) do
+      " (upstream #{info.method} via #{info.ws_url}, #{info.age_ms}ms)"
+    else
+      _ -> ""
+    end
+  end
+
+  defp chain_from_async_msg([cmd | _]) when is_binary(cmd) do
+    Enum.find(RemoteChain.chains(), fn chain ->
+      prefix = chain.chain_prefix() <> ":"
+      String.starts_with?(cmd, prefix)
+    end)
+  end
+
+  defp chain_from_async_msg(_), do: nil
 
   defp do_handle_async_msg([cmd | rest] = msg, state) do
     chain =

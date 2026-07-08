@@ -43,6 +43,31 @@ defmodule RemoteChain.NodeProxy do
     GenServerDbg.call(name(chain), {:rpc, method, params}, @default_timeout)
   end
 
+  @doc """
+  Returns in-flight upstream RPC info for `caller_pid`, if any.
+
+  Used by slow-path diagnostics (e.g. EdgeV2 `Profiler.warn_if_stuck`) to
+  report which provider a blocked caller is waiting on.
+  """
+  def pending_for_caller(chain, caller_pid) do
+    try do
+      GenServer.call(name(chain), {:pending_for, caller_pid}, 1_000)
+    catch
+      :exit, _ -> nil
+    end
+  end
+
+  @doc false
+  def pending_request_info(%NodeProxy{requests: requests}, caller_pid) do
+    now = System.os_time(:millisecond)
+
+    Enum.find_value(requests, fn {_id, req} ->
+      if req.from == caller_pid do
+        %{method: req.method, ws_url: req.ws_url, age_ms: now - req.start_ms}
+      end
+    end)
+  end
+
   def subscribe_block(chain, opts \\ []) do
     GenServer.cast(name(chain), {:subscribe_block, self(), opts})
   end
@@ -72,6 +97,10 @@ defmodule RemoteChain.NodeProxy do
       {:error, :no_ready_connection} ->
         {:reply, {:error, :disconnect}, state}
     end
+  end
+
+  def handle_call({:pending_for, caller_pid}, _from, state) do
+    {:reply, pending_request_info(state, caller_pid), state}
   end
 
   # Prefer WSConns that finished `handle_connect/2` (see `WSConn.ready?/1`).
@@ -206,6 +235,7 @@ defmodule RemoteChain.NodeProxy do
          method: method,
          params: params,
          conn: conn,
+         ws_url: ws_url,
          request: request
        }, requests} ->
         time_ms = System.os_time(:millisecond) - start_ms
@@ -218,7 +248,7 @@ defmodule RemoteChain.NodeProxy do
               params
             end
 
-          Logger.debug("RPC #{method} #{inspect(params)} took #{time_ms}ms")
+          Logger.debug("RPC #{method} #{inspect(params)} via #{ws_url} took #{time_ms}ms")
         end
 
         if fallback != nil and RemoteChain.WSConn.ready?(fallback) and conn != fallback and
@@ -288,6 +318,7 @@ defmodule RemoteChain.NodeProxy do
           params: params,
           start_ms: System.os_time(:millisecond),
           conn: conn,
+          ws_url: conn_url(state, conn),
           request: request
         })
 
@@ -382,6 +413,14 @@ defmodule RemoteChain.NodeProxy do
     end
 
     remove_connection(state, pid)
+  end
+
+  defp conn_url(
+         %NodeProxy{connections: connections, fallback: fallback, fallback_url: fallback_url},
+         conn
+       ) do
+    Enum.find_value(connections, fn {url, pid} -> if pid == conn, do: url end) ||
+      if fallback == conn, do: fallback_url
   end
 
   defp schedule_ensure_connections(state) do
