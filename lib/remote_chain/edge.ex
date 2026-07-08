@@ -422,21 +422,46 @@ defmodule RemoteChain.Edge do
       end
 
     %{
-      "block_hash" => Base16.decode(hash),
-      "miner" => Base16.decode(miner),
+      "block_hash" => decode_header_field!(chain, index, "hash", hash),
+      "miner" => decode_header_field!(chain, index, "miner", miner),
       "miner_signature" => miner_signature,
-      "nonce" => Base16.decode_int(nonce),
-      "number" => Base16.decode_int(number),
-      "state_hash" => Base16.decode(state_hash),
-      "timestamp" => Base16.decode_int(timestamp),
-      "transaction_hash" => Base16.decode(transaction_hash)
+      "nonce" => decode_header_int!(chain, index, "nonce", nonce),
+      "number" => decode_header_int!(chain, index, "number", number),
+      "state_hash" => decode_header_field!(chain, index, "stateRoot", state_hash),
+      "timestamp" => decode_header_int!(chain, index, "timestamp", timestamp),
+      "transaction_hash" =>
+        decode_header_field!(chain, index, "transactionsRoot", transaction_hash)
     }
     |> then(fn block ->
       if previous_block == "0Z0Z0Z0Z0Z0Z0Z0Z0Z0Z0Z0Z0Z0Z0Z0Z" do
         Map.put(block, "previous_block", "0x0")
       else
-        Map.put(block, "previous_block", Base16.decode(previous_block))
+        Map.put(
+          block,
+          "previous_block",
+          decode_header_field!(chain, index, "parentHash", previous_block)
+        )
       end
     end)
+  end
+
+  @doc false
+  def decode_header_field!(_chain, _block_number, _field, value) when is_binary(value) do
+    Base16.decode(value)
+  end
+
+  @doc false
+  def decode_header_field!(chain, block_number, field, nil) do
+    raise "block header field #{field} is nil for chain #{chain.chain_prefix()} block #{block_number}"
+  end
+
+  @doc false
+  def decode_header_int!(_chain, _block_number, _field, value) when not is_nil(value) do
+    Base16.decode_int(value)
+  end
+
+  @doc false
+  def decode_header_int!(chain, block_number, field, nil) do
+    raise "block header field #{field} is nil for chain #{chain.chain_prefix()} block #{block_number}"
   end
 end
