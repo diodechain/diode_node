@@ -108,12 +108,16 @@ defmodule RemoteChain.ChainList do
   end
 
   def all() do
-    Globals.cache({__MODULE__, :all}, fn ->
-      File.read!(file_path())
-      |> Jason.decode!()
-      |> Enum.map(fn %{"chainId" => id} = chain -> {id, chain} end)
-      |> Map.new()
-    end)
+    Globals.cache(
+      {__MODULE__, :all},
+      fn ->
+        File.read!(file_path())
+        |> Jason.decode!()
+        |> Enum.map(fn %{"chainId" => id} = chain -> {id, chain} end)
+        |> Map.new()
+      end,
+      :infinity
+    )
   end
 
   def update() do
@@ -135,7 +139,7 @@ defmodule RemoteChain.ChainList do
 
     {:ok, _valid} = Jason.decode(json)
     File.write!(Diode.data_dir("chains.json"), json)
-    Globals.put({__MODULE__, :all}, nil)
+    Globals.pop({__MODULE__, :all})
     :updated
   end
 
