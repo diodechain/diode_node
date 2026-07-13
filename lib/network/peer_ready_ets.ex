@@ -14,18 +14,38 @@ defmodule Network.PeerReadyEts do
     :ets.new(@table, [:named_table, :set, :public, read_concurrency: true])
   end
 
+  def ensure do
+    case :ets.info(@table) do
+      :undefined ->
+        :ets.new(@table, [:named_table, :set, :public, read_concurrency: true])
+
+      _ ->
+        :ok
+    end
+  end
+
   def insert(address, pid) when is_binary(address) and is_pid(pid) do
+    ensure()
     :ets.insert(@table, {address, pid})
   end
 
   def delete(address) when is_binary(address) do
-    :ets.delete(@table, address)
+    case :ets.info(@table) do
+      :undefined -> :ok
+      _ -> :ets.delete(@table, address)
+    end
   end
 
   def read do
-    @table
-    |> :ets.tab2list()
-    |> Enum.filter(fn {_address, pid} -> Process.alive?(pid) end)
-    |> Map.new()
+    case :ets.info(@table) do
+      :undefined ->
+        %{}
+
+      _ ->
+        @table
+        |> :ets.tab2list()
+        |> Enum.filter(fn {_address, pid} -> Process.alive?(pid) end)
+        |> Map.new()
+    end
   end
 end

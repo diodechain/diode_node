@@ -84,7 +84,7 @@ defmodule ChainAgent do
       System.put_env("WALLETS", wallets)
 
       # Need to mine one block to ensure the chain is ready (NodeProxy checks block == 0)
-      RemoteChain.RPC.rpc!(Chains.Anvil, "anvil_mine", [1])
+      :ok = mine_anvil_block(log)
       IO.puts(log, "Anvil started")
       state
     else
@@ -114,6 +114,24 @@ defmodule ChainAgent do
   defp restart_service(what) do
     Supervisor.terminate_child(Diode.Supervisor, what)
     Supervisor.restart_child(Diode.Supervisor, what)
+  end
+
+  defp mine_anvil_block(log, retries \\ 10) do
+    url = "http://localhost:#{Chains.Anvil.port()}"
+
+    case RemoteChain.HTTP.rpc(url, "anvil_mine", [1]) do
+      {:ok, _} ->
+        GenServer.cast(RemoteChain.NodeProxy.name(Chains.Anvil), :ensure_connections)
+        :ok
+
+      {:error, _} when retries > 0 ->
+        IO.puts(log, "Anvil mine waiting for HTTP RPC (#{retries} retries left)")
+        Process.sleep(200)
+        mine_anvil_block(log, retries - 1)
+
+      {:error, error} ->
+        raise "anvil_mine failed: #{inspect(error)}"
+    end
   end
 
   def handle_info({port0, {:exit_status, status}}, state = %{log: log, port: port}) do
@@ -158,9 +176,17 @@ defmodule TestHelper do
 
   def reset() do
     kill_clones()
+    Network.PeerReadyEts.ensure()
+    clear_device_usage_tracker()
     TicketStore.clear()
     KademliaLight.reset()
     restart_chain()
+  end
+
+  defp clear_device_usage_tracker() do
+    if :ets.info(:device_usage_tracker) != :undefined do
+      :ets.delete_all_objects(:device_usage_tracker)
+    end
   end
 
   def set_wallets(wallets) do
@@ -187,7 +213,7 @@ defmodule TestHelper do
       Process.whereis(RemoteChain.Anvil) ||
         elem(GenServer.start(ChainAgent, [], name: RemoteChain.Anvil), 1)
 
-    GenServerDbg.call(chaintask, :restart, 15_000)
+    GenServerDbg.call(chaintask, :restart, 30_000)
   end
 
   def wait(n) do

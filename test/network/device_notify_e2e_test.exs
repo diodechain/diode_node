@@ -18,10 +18,8 @@ defmodule Network.DeviceNotifyE2eTest do
     pid = RpcClient.connect()
     assert :ok = RpcClient.authenticate(pid, 1)
 
-    [ws_pid] = PubSub.subscribers({:edge, @device})
-
-    send(
-      ws_pid,
+    PubSub.publish(
+      {:edge, @device},
       {:device_notify, "warning", "fleet_not_found", "Fleet is not registered on this chain"}
     )
 

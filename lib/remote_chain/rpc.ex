@@ -57,9 +57,23 @@ defmodule RemoteChain.RPC do
   end
 
   def rpc(chain, method, params) do
+    rpc_with_retry(chain, method, params, 2)
+  end
+
+  defp rpc_with_retry(chain, method, params, retries_left) do
     case RemoteChain.NodeProxy.rpc(chain, method, params) do
-      %{"result" => result} -> {:ok, result}
-      %{"error" => error} -> {:error, error}
+      %{"result" => result} ->
+        {:ok, result}
+
+      %{"error" => error} ->
+        {:error, error}
+
+      {:error, :disconnect} when retries_left > 0 ->
+        Process.sleep(200)
+        rpc_with_retry(chain, method, params, retries_left - 1)
+
+      {:error, :disconnect} ->
+        {:error, :disconnect}
     end
   end
 

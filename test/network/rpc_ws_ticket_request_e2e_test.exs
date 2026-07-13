@@ -32,8 +32,7 @@ defmodule Network.RpcWsTicketRequestE2eTest do
     TicketStore.increase_device_usage(@device, 1500)
 
     # Usage publish is debounced in TicketStore; deliver directly to the websocket like PubSub.
-    [ws_pid] = PubSub.subscribers({:edge, @device})
-    send(ws_pid, {:device_usage, @device})
+    PubSub.publish({:edge, @device}, {:device_usage, @device})
 
     assert_receive {:notification, %{"method" => "dio_ticket_request", "params" => params}}, 5000
     assert is_integer(params["usage"])
