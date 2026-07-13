@@ -1,6 +1,6 @@
 # Testing
 
-This project uses [ExUnit](https://hexdocs.pm/ex_unit/ExUnit.html). **Regression tests are mandatory** for bug fixes and new behavior — see [AGENTS.md](../AGENTS.md#regression-tests-required).
+This project uses [ExUnit](https://hexdocs.pm/ex_unit/ExUnit.html). **Tests are mandatory for every code change** — see [AGENTS.md](../AGENTS.md#regression-tests-required). Add or update tests in the same PR as any `lib/` change; do not rely on manual verification alone.
 
 ## Quick commands
 
@@ -22,6 +22,12 @@ mix test
 ```
 
 CI currently runs `mix lint`. Tests are still required in every PR so regressions are caught locally and can be enabled in CI later.
+
+## PR checklist
+
+1. Every changed module under `lib/` has matching coverage under `test/` (new file or updated assertions).
+2. Run `mix lint` and the narrowest `mix test path/to/your_test.exs` that covers your change.
+3. For bug fixes, confirm the new test fails on the base branch before your fix.
 
 ## Layout
 
@@ -64,6 +70,16 @@ Full example: `test/network/rpc_http_test.exs` (covers server notification docs 
 2. Add a test that asserts the broken symptom.
 3. Confirm the test fails before your fix and passes after.
 4. Keep the test focused — one scenario per test when possible.
+
+### Globals / cache modules
+
+When changing `Globals.cache/3`, refresh, or per-key storage:
+
+- Assert cache key shape (e.g. `{Module, chain_id}` not a single `:all` key).
+- Cover first-access initialization and that a second read hits the cache.
+- Cover refresh/invalidation: updated values for cached keys, uncached keys unchanged.
+
+Example: `test/remote_chain/chain_list_test.exs`.
 
 ### Optional keys and rendering
 

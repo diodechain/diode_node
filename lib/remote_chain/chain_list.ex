@@ -21,7 +21,7 @@ defmodule RemoteChain.ChainList do
 
   def endpoints(chain, additional_endpoints \\ []) do
     chain_id = RemoteChain.chainimpl(chain).chain_id()
-    rpc = all()[chain_id]["rpc"] || []
+    rpc = get(chain_id)["rpc"] || []
 
     Enum.map(rpc, fn rpc -> rpc["url"] end)
     |> Enum.concat(additional_endpoints)
@@ -107,17 +107,40 @@ defmodule RemoteChain.ChainList do
     end
   end
 
-  def all() do
-    Globals.cache(
-      {__MODULE__, :all},
-      fn ->
-        File.read!(file_path())
-        |> Jason.decode!()
-        |> Enum.map(fn %{"chainId" => id} = chain -> {id, chain} end)
-        |> Map.new()
-      end,
-      :infinity
-    )
+  @loaded_key {__MODULE__, :loaded}
+
+  def get(chain_id) do
+    key = cache_key(chain_id)
+
+    case Globals.get(key) do
+      nil ->
+        Globals.locked({__MODULE__, :load_chains}, fn ->
+          ensure_loaded()
+          Globals.get(key)
+        end)
+
+      chain ->
+        chain
+    end
+  end
+
+  defp cache_key(chain_id), do: {__MODULE__, chain_id}
+
+  defp ensure_loaded() do
+    if Globals.get(@loaded_key) != true do
+      refresh_chains()
+      Globals.put(@loaded_key, true)
+    end
+  end
+
+  defp refresh_chains() do
+    file_path()
+    |> File.read!()
+    |> Jason.decode!()
+    |> Map.new(fn %{"chainId" => id} = chain -> {id, chain} end)
+    |> Enum.each(fn {id, chain} ->
+      Globals.put(cache_key(id), chain)
+    end)
   end
 
   def update() do
@@ -137,9 +160,10 @@ defmodule RemoteChain.ChainList do
       HTTPoison.get!("https://chainlist.org/rpcs.json")
       |> Map.get(:body)
 
-    {:ok, _valid} = Jason.decode(json)
+    # Just ensure it's valid JSON
+    {:ok, _chains} = Jason.decode(json)
     File.write!(Diode.data_dir("chains.json"), json)
-    Globals.pop({__MODULE__, :all})
+    refresh_chains()
     :updated
   end
 

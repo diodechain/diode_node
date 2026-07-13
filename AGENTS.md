@@ -4,18 +4,20 @@ Instructions for humans and coding agents working in this repository.
 
 ## Regression tests (required)
 
-Every change that fixes a bug or adds behavior **must** include regression tests in the same PR.
+Every **code change** (bug fix, new feature, refactor, or behavior tweak) **must** include tests in the same PR. Do not merge production code without corresponding test coverage unless an exception is documented below.
 
 ### When tests are required
 
 | Change | Requirement |
 | --- | --- |
+| Any change under `lib/` | Add or update tests under `test/` mirroring the module path |
 | Bug fix | At least one test that fails on the base branch and passes with the fix |
 | New RPC method, HTTP route, or WebSocket behavior | Tests for success and relevant error paths |
 | Template / docs rendering (e.g. `GET /api`) | Test that rendering completes and asserts key output |
 | Refactor with behavior change | Update or add tests covering the changed behavior |
+| Caching, globals, or background refresh logic | Tests for first access, cache key shape, and refresh/invalidation |
 
-If a test truly cannot be added (e.g. needs hardware only available in production), say why in the PR description and document the manual verification steps.
+If a test truly cannot be added (e.g. needs hardware only available in production), say why in the PR description and document the manual verification steps. This should be rare.
 
 ### How to write regression tests
 
