@@ -167,7 +167,7 @@ defmodule RemoteChain.ChainList do
     Enum.each(chains_by_id, fn {id, chain} ->
       key = cache_key(id)
 
-      if not only_cached? or Globals.get(key) != nil do
+      if not only_cached? or not is_nil(Globals.get(key)) do
         Globals.put(key, chain)
       end
     end)

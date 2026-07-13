@@ -72,8 +72,8 @@ defmodule RemoteChain.RPC do
         Process.sleep(200)
         rpc_with_retry(chain, method, params, retries_left - 1)
 
-      {:error, :disconnect} ->
-        {:error, :disconnect}
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 

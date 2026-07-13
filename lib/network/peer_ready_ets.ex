@@ -17,7 +17,12 @@ defmodule Network.PeerReadyEts do
   def ensure do
     case :ets.info(@table) do
       :undefined ->
-        :ets.new(@table, [:named_table, :set, :public, read_concurrency: true])
+        try do
+          :ets.new(@table, [:named_table, :set, :public, read_concurrency: true])
+          :ok
+        rescue
+          ArgumentError -> :ok
+        end
 
       _ ->
         :ok
