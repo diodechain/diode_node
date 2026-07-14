@@ -136,10 +136,40 @@ defmodule RemoteChain.ChainList do
   defp refresh_chains() do
     file_path()
     |> File.read!()
+    |> load_chains_from_json!()
+    |> put_chains()
+  end
+
+  @doc false
+  def refresh_chains(chains) when is_list(chains), do: put_chains(chains, only_cached: true)
+
+  defp load_chains_from_json!(json) when is_binary(json) do
+    json
     |> Jason.decode!()
-    |> Map.new(fn %{"chainId" => id} = chain -> {id, chain} end)
-    |> Enum.each(fn {id, chain} ->
-      Globals.put(cache_key(id), chain)
+    |> chains_to_map()
+  end
+
+  defp chains_to_map(chains) do
+    Map.new(chains, fn %{"chainId" => id} = chain -> {id, chain} end)
+  end
+
+  defp put_chains(chains, opts \\ [])
+
+  defp put_chains(chains, opts) when is_list(chains) do
+    chains
+    |> chains_to_map()
+    |> put_chains(opts)
+  end
+
+  defp put_chains(chains_by_id, opts) when is_map(chains_by_id) do
+    only_cached? = Keyword.get(opts, :only_cached, false)
+
+    Enum.each(chains_by_id, fn {id, chain} ->
+      key = cache_key(id)
+
+      if not only_cached? or not is_nil(Globals.get(key)) do
+        Globals.put(key, chain)
+      end
     end)
   end
 
@@ -163,6 +193,7 @@ defmodule RemoteChain.ChainList do
     # Just ensure it's valid JSON
     {:ok, _chains} = Jason.decode(json)
     File.write!(Diode.data_dir("chains.json"), json)
+    Globals.pop(@loaded_key)
     refresh_chains()
     :updated
   end

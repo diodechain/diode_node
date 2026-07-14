@@ -68,4 +68,12 @@ defmodule Network.CommonTest do
     refute Map.has_key?(updated.clients, handler)
     refute Map.has_key?(updated.clients, key)
   end
+
+  test "PeerReadyEts.read returns empty map when table is missing" do
+    Network.PeerReadyEts.reset()
+    :ets.delete(:peer_ready_connections)
+    assert Network.PeerReadyEts.read() == %{}
+    Network.PeerReadyEts.ensure()
+    assert :ets.info(:peer_ready_connections) != :undefined
+  end
 end

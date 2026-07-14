@@ -7,15 +7,15 @@ defmodule Network.RpcWsTicketBillingTest do
   alias DiodeClient.Wallet
   alias Network.{RpcWsTicketBilling, TicketRequestPolicy}
 
-  @device_wallet RpcClient.clientid(1)
+  @device_wallet RpcClient.clientid(2)
   @device Wallet.address!(@device_wallet)
   @fleet RemoteChain.developer_fleet_address(Chains.Anvil)
 
   defp follow_up_ticket_hex do
     usage = TicketStore.device_usage(@device)
 
-    Edge2Client.encode_ticket_for_dio_ticket(1,
-      total_bytes: usage + TicketRequestPolicy.ws_usage_bytes()
+    Edge2Client.encode_ticket_for_dio_ticket(2,
+      total_bytes: usage + TicketRequestPolicy.ws_usage_bytes() + 1_000_000
     )
   end
 

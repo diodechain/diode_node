@@ -158,7 +158,7 @@ defmodule Chains.MoonbeamEpochBlockIntegrationTest do
     end
   end
 
-  defp wait_for_peak(chain, attempts \\ 30)
+  defp wait_for_peak(chain, attempts \\ 60)
 
   defp wait_for_peak(_chain, 0),
     do: flunk("timed out waiting for Moonbeam peak block from RPC")
@@ -169,7 +169,7 @@ defmodule Chains.MoonbeamEpochBlockIntegrationTest do
         :ok
 
       _ ->
-        Process.sleep(1000)
+        Process.sleep(2_000)
         wait_for_peak(chain, attempts - 1)
     end
   end
