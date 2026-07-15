@@ -168,6 +168,28 @@ defmodule Chains.Moonbeam do
   end
 end
 
+defmodule Chains.Moonriver do
+  alias DiodeClient.{Base16, Hash}
+
+  def chain_id(), do: 1285
+  def expected_block_intervall(), do: 6
+  def epoch(n), do: Chains.epoch(__MODULE__, n)
+  def epoch_progress(n), do: Chains.epoch_progress(__MODULE__, n)
+  def epoch_block(epoch), do: Chains.epoch_block(__MODULE__, epoch)
+  def epoch_duration(), do: 2_592_000
+  def chain_prefix(), do: "movr"
+
+  def additional_endpoints(),
+    do:
+      ~w(https://moonriver-rpc.dwellir.com https://moonriver.api.onfinality.io/public https://moonriver.unitedbloc.com https://moonriver.public.curie.radiumblock.co/http https://moonriver.rpc.grove.city/v1/01fdb492)
+
+  def rpc_endpoints(), do: RemoteChain.ChainList.rpc_endpoints(__MODULE__, additional_endpoints())
+  def ws_endpoints(), do: RemoteChain.ChainList.ws_endpoints(__MODULE__, additional_endpoints())
+  def registry_address(), do: Base16.decode("0xEb0aDCd736Ae9341DFb635759C5D7D6c2D51B673")
+  def developer_fleet_address(), do: Base16.decode("0x6000000000000000000000000000000000000000")
+  def transaction_hash(), do: &Hash.keccak_256/1
+end
+
 defmodule Chains.OasisSapphire do
   alias DiodeClient.{Base16, Hash}
 
@@ -189,7 +211,7 @@ defmodule Chains.Base do
   alias DiodeClient.{Base16, Hash, Shell.Base}
 
   def chain_id(), do: Base.chain_id()
-  def expected_block_intervall(), do: Base.block_time()
+  def expected_block_intervall(), do: 2
   def epoch(n), do: Chains.epoch(__MODULE__, n)
   def epoch_progress(n), do: Chains.epoch_progress(__MODULE__, n)
   def epoch_block(epoch), do: Chains.epoch_block(__MODULE__, epoch)

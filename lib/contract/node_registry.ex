@@ -9,13 +9,10 @@ defmodule Contract.NodeRegistry do
   alias DiodeClient.{ABI, Base16}
   @address "0xc4b466f63c0A31302Bc8A688A7c90e1199Bb6f84" |> Base16.decode()
   @token "0x434116a99619f2B465A137199C38c1Aab0353913" |> Base16.decode()
-  @chain_id DiodeClient.Shell.Moonbeam.chain_id()
+  @chain_id Chains.Moonbeam.chain_id()
   @max_uint256 115_792_089_237_316_195_423_570_985_008_687_907_853_269_984_665_640_564_039_457_584_007_913_129_639_935
 
-  # Do post-freeze block
-  # @address "0xBC7a66a80E760dD0D84f6e39Df6cfD937C6c94F6" |> Base16.decode()
-  # @token "0x2bDC3e3441Dd5540eA50920C158405Ccd5727De2" |> Base16.decode()
-  # @chain_id Shell.Base.chain_id()
+  # Post-freeze: point @address, @token, and @chain_id at the Base NodeRegistry deployment.
 
   def address(), do: @address
   def token(), do: @token
