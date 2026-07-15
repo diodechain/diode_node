@@ -175,7 +175,7 @@ defmodule Chains.Moonriver do
   def expected_block_intervall(), do: 6
   def epoch(n), do: Chains.epoch(__MODULE__, n)
   def epoch_progress(n), do: Chains.epoch_progress(__MODULE__, n)
-  def epoch_block(block), do: Chains.epoch_block(__MODULE__, block)
+  def epoch_block(epoch), do: Chains.epoch_block(__MODULE__, epoch)
   def epoch_duration(), do: 2_592_000
   def chain_prefix(), do: "movr"
 
@@ -204,5 +204,22 @@ defmodule Chains.OasisSapphire do
   def ws_endpoints(), do: RemoteChain.ChainList.ws_endpoints(__MODULE__)
   def registry_address(), do: raise("not implemented")
   def developer_fleet_address(), do: raise("not implemented")
+  def transaction_hash(), do: &Hash.keccak_256/1
+end
+
+defmodule Chains.Base do
+  alias DiodeClient.{Base16, Hash, Shell.Base}
+
+  def chain_id(), do: Base.chain_id()
+  def expected_block_intervall(), do: 2
+  def epoch(n), do: Chains.epoch(__MODULE__, n)
+  def epoch_progress(n), do: Chains.epoch_progress(__MODULE__, n)
+  def epoch_block(epoch), do: Chains.epoch_block(__MODULE__, epoch)
+  def epoch_duration(), do: 2_592_000
+  def chain_prefix(), do: "base"
+  def rpc_endpoints(), do: RemoteChain.ChainList.rpc_endpoints(__MODULE__)
+  def ws_endpoints(), do: RemoteChain.ChainList.ws_endpoints(__MODULE__)
+  def registry_address(), do: Base16.decode("0xfbfAF5BfF947869490C05d949c1BA5e260D6bd6E")
+  def developer_fleet_address(), do: Base16.decode("0x5c6ED819886b77017baAf81ef0E7abEAcb17bD1D")
   def transaction_hash(), do: &Hash.keccak_256/1
 end

@@ -3,7 +3,7 @@ defmodule CallPermitAdapter do
 
   def should_forward_metatransaction?(chain) do
     chain not in [Chains.Diode, Chains.DiodeStaging, Chains.DiodeDev] and
-      Shell.get_balance(chain, Diode.address()) / Shell.ether(1) < 1
+      Shell.get_balance(chain, Diode.address()) / Shell.ether(1) < 0.000001
   end
 
   # RLP encoded MetaTransaction
