@@ -28,4 +28,19 @@ defmodule RemoteChain.EdgeTest do
                    end
     end
   end
+
+  describe "wallet_factory_address/1" do
+    test "returns the Oasis factory for OasisSapphire" do
+      assert Edge.wallet_factory_address(Chains.OasisSapphire) ==
+               DiodeClient.Contracts.Factory.address(DiodeClient.Shell.OasisSapphire)
+    end
+
+    test "returns the Base factory for Base" do
+      assert Edge.wallet_factory_address(Chains.Base) ==
+               DiodeClient.Contracts.Factory.address(DiodeClient.Shell.Base)
+
+      assert Edge.wallet_factory_address(Chains.Base) !=
+               Edge.wallet_factory_address(Chains.OasisSapphire)
+    end
+  end
 end

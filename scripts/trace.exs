@@ -61,6 +61,17 @@ defmodule Anvil do
 end
 
 defmodule Trace do
+  defp wallet_factory_address do
+    chain =
+      case System.get_env("CHAIN") do
+        "moonbeam" -> Chains.Moonbeam
+        "base" -> Chains.Base
+        _ -> Chains.OasisSapphire
+      end
+
+    RemoteChain.Edge.wallet_factory_address(chain)
+  end
+
   def trace_block(block_number) do
     IO.puts("Block Number: #{block_number}")
 
@@ -69,7 +80,7 @@ defmodule Trace do
         Enum.each(transactions, fn tx ->
           if tx["to"] in [
                Base16.encode(CallPermit.address()),
-               Base16.encode(RemoteChain.Edge.wallet_factory_address())
+               Base16.encode(wallet_factory_address())
              ] do
             trace_tx(tx["hash"])
           end
@@ -131,7 +142,7 @@ defmodule Trace do
         data: input,
         from: owner,
         deadline: nil,
-        to: RemoteChain.Edge.wallet_factory_address()
+        to: wallet_factory_address()
       }
     end
   end
@@ -156,7 +167,7 @@ defmodule Trace do
 
     if tx["to"] not in [
          Base16.encode(CallPermit.address()),
-         Base16.encode(RemoteChain.Edge.wallet_factory_address())
+         Base16.encode(wallet_factory_address())
        ] do
       IO.inspect(tx, label: "tx")
       raise "Not a CallPermit"
@@ -331,8 +342,12 @@ case List.first(System.argv()) do
       "https://moonbeam.api.onfinality.io/rpc?apikey=49e8baf7-14c3-4d0f-916a-94abf1c4c14a"
     )
 
+  "base" ->
+    System.put_env("CHAIN", "base")
+    System.put_env("RPC_URL", "https://mainnet.base.org")
+
   _ ->
-    raise "Usage: trace (oasis|moonbeam) <tx_hash>"
+    raise "Usage: trace (oasis|moonbeam|base) <tx_hash>"
 end
 
 # {:ok, _anvil} = Anvil.start_link(System.get_env("RPC_URL"))
@@ -341,7 +356,7 @@ end
 case tl(System.argv()) do
   ["0x" <> _ = tx_hash] -> Trace.trace_tx(tx_hash)
   [block_number] -> Trace.trace_block(String.to_integer(block_number))
-  _ -> raise "Usage: trace (oasis|moonbeam) <tx_hash>"
+  _ -> raise "Usage: trace (oasis|moonbeam|base) <tx_hash>"
 end
 
 # Anvil.stop(anvil)
