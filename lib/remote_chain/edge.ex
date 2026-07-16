@@ -6,7 +6,9 @@ defmodule RemoteChain.Edge do
   import Network.EdgeV2, only: [response: 1, response: 2, error: 1]
   require Logger
 
-  def wallet_factory_address(), do: Base16.decode("0x1E568739AF8FD8FE0748DEFB74A917EA9D38FE29")
+  def wallet_factory_address(chain) do
+    DiodeClient.Contracts.Factory.address(DiodeClient.shell_for_chain_id(chain.chain_id()))
+  end
 
   def handle_async_msg(chain, msg, state) do
     case msg do
@@ -134,7 +136,7 @@ defmodule RemoteChain.Edge do
         if CallPermitAdapter.should_forward_metatransaction?(chain) do
           CallPermitAdapter.forward_metatransaction(chain, tx)
         else
-          {to, call, sender, min_gas_limit} = prepare_metatransaction(Rlp.decode!(tx))
+          {to, call, sender, min_gas_limit} = prepare_metatransaction(chain, Rlp.decode!(tx))
           send_metatransaction(chain, to, call, sender, min_gas_limit)
         end
 
@@ -247,7 +249,7 @@ defmodule RemoteChain.Edge do
   end
 
   @default_gas_limit 1_000_000
-  defp prepare_metatransaction(["dm0", owner, salt, impl]) do
+  defp prepare_metatransaction(chain, ["dm0", owner, salt, impl]) do
     target = impl
 
     call =
@@ -257,10 +259,10 @@ defmodule RemoteChain.Edge do
         [owner, salt, target]
       )
 
-    {wallet_factory_address(), call, owner, @default_gas_limit}
+    {wallet_factory_address(chain), call, owner, @default_gas_limit}
   end
 
-  defp prepare_metatransaction(["dm1", sender, id, nonce, deadline, dst, data, v, r, s]) do
+  defp prepare_metatransaction(_chain, ["dm1", sender, id, nonce, deadline, dst, data, v, r, s]) do
     nonce = Rlpx.bin2uint(nonce)
     deadline = Rlpx.bin2uint(deadline)
     v = Rlpx.bin2uint(v)
@@ -277,7 +279,7 @@ defmodule RemoteChain.Edge do
     {id, call, sender, @default_gas_limit}
   end
 
-  defp prepare_metatransaction([from, to, value, call, gaslimit, deadline, v, r, s]) do
+  defp prepare_metatransaction(_chain, [from, to, value, call, gaslimit, deadline, v, r, s]) do
     # These are CallPermit metatransactions
     # Testing transaction
     value = Rlpx.bin2uint(value)

@@ -61,6 +61,17 @@ defmodule Anvil do
 end
 
 defmodule Trace do
+  defp wallet_factory_address do
+    chain =
+      case System.get_env("CHAIN") do
+        "moonbeam" -> Chains.Moonbeam
+        "base" -> Chains.Base
+        _ -> Chains.OasisSapphire
+      end
+
+    RemoteChain.Edge.wallet_factory_address(chain)
+  end
+
   def trace_block(block_number) do
     IO.puts("Block Number: #{block_number}")
 
@@ -69,7 +80,7 @@ defmodule Trace do
         Enum.each(transactions, fn tx ->
           if tx["to"] in [
                Base16.encode(CallPermit.address()),
-               Base16.encode(RemoteChain.Edge.wallet_factory_address())
+               Base16.encode(wallet_factory_address())
              ] do
             trace_tx(tx["hash"])
           end
@@ -131,7 +142,7 @@ defmodule Trace do
         data: input,
         from: owner,
         deadline: nil,
-        to: RemoteChain.Edge.wallet_factory_address()
+        to: wallet_factory_address()
       }
     end
   end
@@ -156,7 +167,7 @@ defmodule Trace do
 
     if tx["to"] not in [
          Base16.encode(CallPermit.address()),
-         Base16.encode(RemoteChain.Edge.wallet_factory_address())
+         Base16.encode(wallet_factory_address())
        ] do
       IO.inspect(tx, label: "tx")
       raise "Not a CallPermit"
