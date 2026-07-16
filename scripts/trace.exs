@@ -342,8 +342,12 @@ case List.first(System.argv()) do
       "https://moonbeam.api.onfinality.io/rpc?apikey=49e8baf7-14c3-4d0f-916a-94abf1c4c14a"
     )
 
+  "base" ->
+    System.put_env("CHAIN", "base")
+    System.put_env("RPC_URL", "https://mainnet.base.org")
+
   _ ->
-    raise "Usage: trace (oasis|moonbeam) <tx_hash>"
+    raise "Usage: trace (oasis|moonbeam|base) <tx_hash>"
 end
 
 # {:ok, _anvil} = Anvil.start_link(System.get_env("RPC_URL"))
@@ -352,7 +356,7 @@ end
 case tl(System.argv()) do
   ["0x" <> _ = tx_hash] -> Trace.trace_tx(tx_hash)
   [block_number] -> Trace.trace_block(String.to_integer(block_number))
-  _ -> raise "Usage: trace (oasis|moonbeam) <tx_hash>"
+  _ -> raise "Usage: trace (oasis|moonbeam|base) <tx_hash>"
 end
 
 # Anvil.stop(anvil)
