@@ -10,6 +10,7 @@
 /scripts/logs
 /scripts/moon_cache
 /scripts/oasis_cache
+/scripts/base_cache
 /scripts/bns.log
 /scripts/names.txt
 /scripts/diode_client_interface
