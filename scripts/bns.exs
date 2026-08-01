@@ -250,10 +250,10 @@ defmodule Helper do
   end
 end
 
-# curl -k -H "Content-Type: application/json" -X POST --data '{"jsonrpc":"2.0","method":"eth_getStorage","params":["0xaf60faa5cd840b724742f1af116168276112d6a6", "latest"],"id":73}' https://prenet.diode.io:8443 > bns_2026_03_13.json
+# curl -k -H "Content-Type: application/json" -X POST --data '{"jsonrpc":"2.0","method":"eth_getStorage","params":["0xaf60faa5cd840b724742f1af116168276112d6a6", "latest"],"id":73}' https://prenet.diode.io:8443 > bns_2026_08_01.json
 
 storage =
-  File.read!("bns_2026_03_13.json")
+  File.read!("bns_2026_08_01.json")
   |> Poison.decode!()
   |> Map.get("result")
   |> Enum.map(fn
