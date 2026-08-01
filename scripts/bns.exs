@@ -212,9 +212,7 @@ for chunk <- missing do
     )
     |> Base16.decode_int()
 
-  IO.puts(
-    "Wallet: #{Base16.encode(Wallet.address!(wallet))} Nonce: #{nonce} Balance: #{balance}"
-  )
+  IO.puts("Wallet: #{Base16.encode(Wallet.address!(wallet))} Nonce: #{nonce} Balance: #{balance}")
 
   {txs, _next_nonce} =
     Enum.reduce(chunk, {[], nonce}, fn {name, owner, _identity, _deployed?, slot}, {acc, n} ->

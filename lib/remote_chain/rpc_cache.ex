@@ -103,7 +103,8 @@ defmodule RemoteChain.RPCCache do
     cache_results =
       Enum.map(slots, fn slot ->
         # batch_call skips rpc/3, so normalize here (QUANTITY must have no leading zeros)
-        {:rpc, "eth_getStorageAt", normalize_args(chain, "eth_getStorageAt", [address, slot, block])}
+        {:rpc, "eth_getStorageAt",
+         normalize_args(chain, "eth_getStorageAt", [address, slot, block])}
       end)
       |> Enum.map(fn rpc = {:rpc, method, params} ->
         with %{"result" => result} <- Cache.get(cache, {chain, method, params}) do
