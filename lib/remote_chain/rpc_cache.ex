@@ -88,7 +88,7 @@ defmodule RemoteChain.RPCCache do
     # for storage requests we use the last change block as the base
     # any contract not using change tracking will suffer 240 blocks (one hour) of caching
     block = get_last_change(chain, address, block)
-    rpc!(chain, "eth_getStorageAt", [address, slot, Base16.encode(block, false)])
+    rpc!(chain, "eth_getStorageAt", [address, slot, block])
   end
 
   def get_storage_many(chain, address, slots, block \\ "latest") do
@@ -102,7 +102,8 @@ defmodule RemoteChain.RPCCache do
 
     cache_results =
       Enum.map(slots, fn slot ->
-        {:rpc, "eth_getStorageAt", [address, slot, Base16.encode(block, false)]}
+        # batch_call skips rpc/3, so normalize here (QUANTITY must have no leading zeros)
+        {:rpc, "eth_getStorageAt", normalize_args(chain, "eth_getStorageAt", [address, slot, block])}
       end)
       |> Enum.map(fn rpc = {:rpc, method, params} ->
         with %{"result" => result} <- Cache.get(cache, {chain, method, params}) do
@@ -176,34 +177,37 @@ defmodule RemoteChain.RPCCache do
   def get_balance(chain, address, block \\ "latest"),
     do: rpc!(chain, "eth_getBalance", [address, block])
 
-  defp normalize_args(chain, "eth_getBalance", [address, block]) do
+  # Also used by get_storage_many before batch_call (which skips rpc/3).
+  @doc false
+  def normalize_args(chain, "eth_getBalance", [address, block]) do
     [address, normalize_block(chain, block)]
   end
 
-  defp normalize_args(chain, "eth_getTransactionCount", [address, block]) do
+  def normalize_args(chain, "eth_getTransactionCount", [address, block]) do
     [address, normalize_block(chain, block)]
   end
 
-  defp normalize_args(chain, "eth_getBlockByNumber", [block, with_transactions]) do
+  def normalize_args(chain, "eth_getBlockByNumber", [block, with_transactions]) do
     [normalize_block(chain, block), with_transactions]
   end
 
-  defp normalize_args(chain, "eth_call", [opts, block]) do
+  def normalize_args(chain, "eth_call", [opts, block]) do
     [opts, normalize_block(chain, block)]
   end
 
-  defp normalize_args(chain, "eth_getCode", [address, block]) do
+  def normalize_args(chain, "eth_getCode", [address, block]) do
     [address, normalize_block(chain, block)]
   end
 
-  defp normalize_args(chain, "eth_getStorageAt", [address, slot, block]) do
+  def normalize_args(chain, "eth_getStorageAt", [address, slot, block]) do
     [address, slot, normalize_block(chain, block)]
   end
 
-  defp normalize_args(_chain, _method, args) do
+  def normalize_args(_chain, _method, args) do
     args
   end
 
+  # JSON-RPC QUANTITY: no leading zeros. Padded "0x02f1cf00" is rejected as -32602 on Base.
   defp normalize_block(chain, block) do
     Base16.encode(resolve_block(chain, block), short: true)
   end
@@ -253,7 +257,7 @@ defmodule RemoteChain.RPCCache do
     rpc!(chain, "eth_getStorageAt", [
       address,
       "0x1e4717b2dc5dfd7f487f2043bfe9999372d693bf4d9c51b5b84f1377939cd487",
-      Base16.encode(block, false)
+      block
     ])
     |> Base16.decode_int()
     |> case do
