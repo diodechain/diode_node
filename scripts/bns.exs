@@ -18,11 +18,16 @@ Logger.configure(level: :warning)
 defmodule Helper do
   require Logger
   alias DiodeClient.{ABI, Base16, Hash, Wallet}
+  alias Script.BnsMigrate
 
   # Base Collab contracts (DiodeClient.Contracts.Factory.contracts(Shell.Base))
   @factory Base16.decode("0x1A36092D88FB73692EE7C502978D634C4AFCC486")
   @bns Base16.decode("0x87C1D1304944A9EA16AF18CB777E3CEE0D3DACEA")
   @drive_member Base16.decode("0x3D565EC28595C1A0710ABCBD8C0F979D31E38704")
+  @sim_attempts 5
+  @sim_retry_ms 2_000
+  @owner_await_timeout_ms 30_000
+  @owner_await_sleep_ms 2_000
 
   def factory, do: @factory
   def bns, do: @bns
@@ -68,12 +73,28 @@ defmodule Helper do
     tx_hash = DiodeClient.Transaction.hash(tx) |> Base16.encode()
 
     # Simulate first — avoid paying gas for calls that will revert.
-    case Shell.call_tx(tx, "latest") do
+    # Retry briefly: eth_call "latest" can lag behind a just-mined prior TX.
+    case simulate_until_ok(tx, @sim_attempts) do
       {:error, error} ->
         {:error, {:would_revert, error}}
 
       {:ok, _} ->
         do_submit_and_await(wallet, build_fn, nonce, retries, gas_bump, tx, tx_hash)
+    end
+  end
+
+  defp simulate_until_ok(tx, attempts_left) when attempts_left <= 1 do
+    Shell.call_tx(tx, "latest")
+  end
+
+  defp simulate_until_ok(tx, attempts_left) do
+    case Shell.call_tx(tx, "latest") do
+      {:ok, _} = ok ->
+        ok
+
+      {:error, _error} ->
+        Process.sleep(@sim_retry_ms)
+        simulate_until_ok(tx, attempts_left - 1)
     end
   end
 
@@ -138,25 +159,39 @@ defmodule Helper do
     end
   end
 
-  def zero_address, do: Hash.to_address(0)
+  def await_resolve_owner!(name, expected_owner, timeout_ms \\ @owner_await_timeout_ms) do
+    deadline = System.monotonic_time(:millisecond) + timeout_ms
+    do_await_resolve_owner!(name, expected_owner, deadline)
+  end
+
+  defp do_await_resolve_owner!(name, expected_owner, deadline) do
+    case resolve_owner(name) do
+      {:ok, ^expected_owner} ->
+        :ok
+
+      {:ok, other} ->
+        if System.monotonic_time(:millisecond) >= deadline do
+          {:error,
+           {:owner_await_timeout, name, Base16.encode(expected_owner), Base16.encode(other)}}
+        else
+          Process.sleep(@owner_await_sleep_ms)
+          do_await_resolve_owner!(name, expected_owner, deadline)
+        end
+
+      {:error, error} ->
+        if System.monotonic_time(:millisecond) >= deadline do
+          {:error, {:owner_await_timeout, name, error}}
+        else
+          Process.sleep(@owner_await_sleep_ms)
+          do_await_resolve_owner!(name, expected_owner, deadline)
+        end
+    end
+  end
+
+  def zero_address, do: BnsMigrate.zero_address()
 
   def classify_name(deployer, owner, identity, base_owner, base_dest) do
-    cond do
-      base_owner == owner and base_dest == identity ->
-        :done
-
-      base_owner == owner and base_dest != identity ->
-        # L1 owner already controls the name; deployer cannot update destination.
-        :owner_controlled
-
-      base_owner != zero_address() and base_owner != deployer ->
-        # Registered by someone else on Base.
-        :foreign_owner
-
-      true ->
-        # Unregistered or still owned by deployer — safe to migrate.
-        :migratable
-    end
+    BnsMigrate.classify_name(deployer, owner, identity, base_owner, base_dest)
   end
 
   def ensure_gas!(wallet) do
@@ -310,14 +345,64 @@ missing =
         owner = Hash.to_address(owner_raw)
 
         case DetsPlus.lookup(:base_cache, owner_slot) do
-          [{^owner_slot, status}]
-          when status in [:invalid, :foreign_owner, :owner_controlled, :done] ->
+          [{^owner_slot, :invalid}] ->
+            # Recover poisoned :invalid entries by re-resolving on-chain.
+            {identity, deployed?} = Helper.identity_deployed?(owner)
+
+            with {:ok, base_owner} <- Helper.resolve_owner(name),
+                 {:ok, base_dest} <- Helper.resolve_destination(name) do
+              classified =
+                Script.BnsMigrate.classify_name(
+                  deployer,
+                  owner,
+                  identity,
+                  base_owner,
+                  base_dest
+                )
+
+              if Script.BnsMigrate.should_retry_invalid?(classified) do
+                cached = {identity, deployed?, base_owner, base_dest}
+                DetsPlus.insert(:base_cache, [{owner_slot, cached}])
+
+                if Script.BnsMigrate.needs_migration_work?(
+                     owner,
+                     identity,
+                     deployed?,
+                     base_owner,
+                     base_dest
+                   ) do
+                  IO.puts(
+                    "Retrying previously-invalid #{name}: base_owner=#{Base16.encode(base_owner)} dest=#{Base16.encode(base_dest)}"
+                  )
+
+                  {name, owner, identity, deployed?, owner_slot}
+                end
+              else
+                DetsPlus.insert(:base_cache, [{owner_slot, classified}])
+                nil
+              end
+            else
+              {:error, error} ->
+                IO.puts(
+                  "Keeping invalid #{inspect(name)}: Base BNS resolve reverted (#{inspect(error)})"
+                )
+
+                nil
+            end
+
+          [{^owner_slot, status}] when status in [:foreign_owner, :owner_controlled, :done] ->
             nil
 
           [{^owner_slot, {identity, deployed?, base_owner, base_dest}}] ->
             case Helper.classify_name(deployer, owner, identity, base_owner, base_dest) do
               :migratable ->
-                if not deployed? or base_owner != owner or base_dest != identity do
+                if Script.BnsMigrate.needs_migration_work?(
+                     owner,
+                     identity,
+                     deployed?,
+                     base_owner,
+                     base_dest
+                   ) do
                   {name, owner, identity, deployed?, owner_slot}
                 end
 
@@ -337,7 +422,13 @@ missing =
                   cached = {identity, deployed?, base_owner, base_dest}
                   DetsPlus.insert(:base_cache, [{owner_slot, cached}])
 
-                  if not deployed? or base_owner != owner or base_dest != identity do
+                  if Script.BnsMigrate.needs_migration_work?(
+                       owner,
+                       identity,
+                       deployed?,
+                       base_owner,
+                       base_dest
+                     ) do
                     {name, owner, identity, deployed?, owner_slot}
                   end
 
@@ -442,45 +533,58 @@ Enum.reduce(missing, nonce, fn {name, owner, _identity, _deployed?, slot}, nonce
                   else
                     IO.puts("TX: Register #{name} -> #{Base16.encode(identity)} ...")
 
-                    Helper.submit_and_await(
-                      wallet,
-                      fn n, gas_price ->
-                        Shell.transaction(
-                          wallet,
-                          Helper.bns(),
-                          "Register",
-                          ["string", "address"],
-                          [name, identity],
-                          nonce: n,
-                          gasPrice: gas_price,
-                          chainId: Chains.Base.chain_id()
-                        )
-                      end,
-                      nonce
-                    )
+                    case Helper.submit_and_await(
+                           wallet,
+                           fn n, gas_price ->
+                             Shell.transaction(
+                               wallet,
+                               Helper.bns(),
+                               "Register",
+                               ["string", "address"],
+                               [name, identity],
+                               nonce: n,
+                               gasPrice: gas_price,
+                               chainId: Chains.Base.chain_id()
+                             )
+                           end,
+                           nonce
+                         ) do
+                      {:ok, nonce} ->
+                        case Helper.await_resolve_owner!(name, deployer) do
+                          :ok -> {:ok, nonce}
+                          {:error, reason} -> {:error, reason}
+                        end
+
+                      other ->
+                        other
+                    end
                   end),
                {:ok, nonce} <-
                  (if owner == deployer do
                     {:ok, nonce}
                   else
-                    IO.puts("TX: TransferOwner #{name} -> #{Base16.encode(owner)} ...")
+                    # Wait until deployer ownership is visible before TransferOwner
+                    # preflight (covers just-mined Register and prior partial migrations).
+                    with :ok <- Helper.await_resolve_owner!(name, deployer) do
+                      IO.puts("TX: TransferOwner #{name} -> #{Base16.encode(owner)} ...")
 
-                    Helper.submit_and_await(
-                      wallet,
-                      fn n, gas_price ->
-                        Shell.transaction(
-                          wallet,
-                          Helper.bns(),
-                          "TransferOwner",
-                          ["string", "address"],
-                          [name, owner],
-                          nonce: n,
-                          gasPrice: gas_price,
-                          chainId: Chains.Base.chain_id()
-                        )
-                      end,
-                      nonce
-                    )
+                      Helper.submit_and_await(
+                        wallet,
+                        fn n, gas_price ->
+                          Shell.transaction(
+                            wallet,
+                            Helper.bns(),
+                            "TransferOwner",
+                            ["string", "address"],
+                            [name, owner],
+                            nonce: n,
+                            gasPrice: gas_price,
+                            chainId: Chains.Base.chain_id()
+                          )
+                        end,
+                        nonce
+                      )
+                    end
                   end) do
             DetsPlus.insert(:base_cache, [{slot, :done}])
             DetsPlus.sync(:base_cache)
@@ -493,9 +597,31 @@ Enum.reduce(missing, nonce, fn {name, owner, _identity, _deployed?, slot}, nonce
 
           {:error, reason} ->
             IO.puts("Skipping #{name} after TX failure: #{inspect(reason)}")
-            DetsPlus.insert(:base_cache, [{slot, :invalid}])
+
+            {^identity, deployed_now?} = Helper.identity_deployed?(owner)
+
+            cache_value =
+              with {:ok, bo} <- Helper.resolve_owner(name),
+                   {:ok, bd} <- Helper.resolve_destination(name) do
+                case Script.BnsMigrate.cache_after_failure(
+                       deployer,
+                       owner,
+                       identity,
+                       deployed_now?,
+                       bo,
+                       bd
+                     ) do
+                  {:partial, tuple} -> tuple
+                  other -> other
+                end
+              else
+                {:error, _} -> :invalid
+              end
+
+            DetsPlus.insert(:base_cache, [{slot, cache_value}])
             DetsPlus.sync(:base_cache)
-            max(nonce, Helper.fetch_nonce(wallet))
+            Process.sleep(2_000)
+            Helper.fetch_nonce(wallet)
         end
     end
   else
