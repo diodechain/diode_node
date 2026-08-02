@@ -74,7 +74,7 @@ defmodule Helper do
     pending
     |> Enum.reverse()
     |> Enum.with_index(1)
-    |> Enum.each(fn {{tx_id, tx} = ref, idx} ->
+    |> Enum.each(fn {{tx_id, _tx} = ref, idx} ->
       IO.puts("Awaiting TX-#{idx} #{tx_id} ...")
       Shell.await_tx_id(ref)
     end)
@@ -635,15 +635,17 @@ work =
       repair_salt = Helper.repair_salt(owner)
 
       {v1_identity, v1_deployed?} =
-        case DetsPlus.lookup(:base_cache, owner_slot) do
-          [{^owner_slot, {identity, deployed?, _base_owner, _base_dest}}] ->
+        case BnsMigrate.parse_identity_cache(DetsPlus.lookup(:base_cache, owner_slot)) do
+          {:ok, identity, deployed?} ->
             {identity, deployed?}
 
-          [{^owner_slot, cached}] when is_tuple(cached) and tuple_size(cached) >= 2 ->
-            {elem(cached, 0), elem(cached, 1)}
+          status when status in [:stale, :miss] ->
+            if status == :stale do
+              IO.puts("Cache status for #{name} is stale atom; re-resolving identity on-chain")
+            else
+              IO.inspect({name, Base16.encode(owner)})
+            end
 
-          [] ->
-            IO.inspect({name, Base16.encode(owner)})
             {identity, deployed?} = Helper.identity_deployed?(v1_salt)
             base_owner = Helper.resolve_owner(name)
             base_dest = Helper.resolve_destination(name)
@@ -653,6 +655,9 @@ work =
             ])
 
             {identity, deployed?}
+
+          {:error, other} ->
+            raise "Unexpected base_cache entry for #{name}: #{inspect(other)}"
         end
 
       {repair_identity, repair_deployed?} = Helper.identity_deployed?(repair_salt)

@@ -103,6 +103,44 @@ defmodule Script.BnsMigrateTest do
     end
   end
 
+  describe "parse_identity_cache/1" do
+    test "reads full and truncated identity tuples", ctx do
+      slot = <<1, 2, 3>>
+      identity = ctx.identity
+
+      assert {:ok, ^identity, true} =
+               BnsMigrate.parse_identity_cache([
+                 {slot, {identity, true, ctx.owner, identity}}
+               ])
+
+      assert {:ok, ^identity, false} =
+               BnsMigrate.parse_identity_cache([{slot, {identity, false}}])
+    end
+
+    test "treats migrator atom statuses as stale (production regression)" do
+      slot = Hash.keccak_256("owner-slot")
+
+      for status <- [:done, :foreign_owner, :owner_controlled, :invalid] do
+        assert :stale = BnsMigrate.parse_identity_cache([{slot, status}])
+      end
+
+      # Exact shape that crashed repair when knusperhaus was cached as :done
+      assert :stale =
+               BnsMigrate.parse_identity_cache([
+                 {<<96, 160, 174, 160, 225, 3, 23, 75, 99, 47, 206, 92, 2, 249, 65, 190, 70, 84,
+                    68, 197, 135, 145, 174, 13, 49, 229, 135, 219, 142, 129, 186, 225>>, :done}
+               ])
+    end
+
+    test "empty lookup is a miss" do
+      assert :miss = BnsMigrate.parse_identity_cache([])
+    end
+
+    test "unexpected shapes are errors" do
+      assert {:error, [{"x", "bad"}]} = BnsMigrate.parse_identity_cache([{"x", "bad"}])
+    end
+  end
+
   describe "identity and repair salts" do
     test "are deterministic and distinct", ctx do
       v1 = BnsMigrate.identity_salt(ctx.owner)

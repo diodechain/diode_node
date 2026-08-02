@@ -35,6 +35,27 @@ defmodule Script.BnsMigrate do
   def await_tx_ref(tx_id, tx) when is_binary(tx_id), do: {tx_id, tx}
 
   @doc """
+  Parse a `:base_cache` DetsPlus.lookup/2 result for the v1 identity tuple.
+
+  Atom statuses (`:done`, `:foreign_owner`, …) come from the older Create/Register
+  migrator and are treated as stale for repair — callers must re-resolve on-chain.
+  """
+  def parse_identity_cache([{_slot, {identity, deployed?, _base_owner, _base_dest}}])
+      when is_binary(identity) and is_boolean(deployed?) do
+    {:ok, identity, deployed?}
+  end
+
+  def parse_identity_cache([{_slot, cached}])
+      when is_tuple(cached) and tuple_size(cached) >= 2 and is_binary(elem(cached, 0)) and
+             is_boolean(elem(cached, 1)) do
+    {:ok, elem(cached, 0), elem(cached, 1)}
+  end
+
+  def parse_identity_cache([{_slot, status}]) when is_atom(status), do: :stale
+  def parse_identity_cache([]), do: :miss
+  def parse_identity_cache(other), do: {:error, other}
+
+  @doc """
   Parse CLI argv. Recognizes `--dry-run`. Any other flag starting with `-` is an error.
   Remaining args are raw name filters (normalize with `normalize_name/1`).
   """
