@@ -211,25 +211,28 @@ defmodule Helper do
   @doc """
   Fleet devices to seed onto the Base identity, taken from the Diode L1 origin
   identity (owner + Members). Falls back to the BNS name owner when the Diode
-  identity is missing.
+  identity is missing or when L1 `owner()` / `Members()` eth_call reverts.
   """
   def origin_fleet(name, bns_owner) do
     dest = diode_resolve_destination(name)
 
     cond do
       null?(dest) or not has_code?(Chains.Diode, dest) ->
-        {[bns_owner], nil}
+        BnsMigrate.build_origin_fleet(bns_owner, nil, [], dest)
 
       true ->
-        id_owner = owner_of(Chains.Diode, dest)
-        members = members_of(Chains.Diode, dest)
+        case call_address_soft(Chains.Diode, dest, "owner", [], []) do
+          {:ok, id_owner} ->
+            members = members_of_soft(Chains.Diode, dest)
+            BnsMigrate.build_origin_fleet(bns_owner, id_owner, members, dest)
 
-        fleet =
-          [id_owner, bns_owner | members]
-          |> Enum.reject(&null?/1)
-          |> Enum.uniq()
+          {:error, error} ->
+            IO.puts(
+              "L1 owner(#{Base16.encode(dest)}) for #{inspect(name)} reverted: #{inspect(error)}; using BNS owner only"
+            )
 
-        {fleet, dest}
+            BnsMigrate.build_origin_fleet(bns_owner, nil, [], dest)
+        end
     end
   end
 
@@ -254,15 +257,40 @@ defmodule Helper do
   end
 
   def call_address_array(chain, to, method) do
+    case call_address_array_soft(chain, to, method) do
+      {:ok, list} -> list
+      {:error, error} -> raise "RPC error: #{inspect(error)} calling #{method}"
+    end
+  end
+
+  def call_address_array_soft(chain, to, method) do
     data = ABI.encode_call(method, [], []) |> Base16.encode()
 
-    result =
-      RemoteChain.RPC.call!(chain, to: Base16.encode(to), data: data)
-      |> Base16.decode()
+    case RemoteChain.RPC.call(chain, to: Base16.encode(to), data: data) do
+      {:ok, ret} ->
+        result = Base16.decode(ret)
 
-    case ABI.decode_args(["address[]"], result) do
-      [list] when is_list(list) -> Enum.reject(list, &null?/1)
-      _ -> []
+        list =
+          case ABI.decode_args(["address[]"], result) do
+            [addrs] when is_list(addrs) -> Enum.reject(addrs, &null?/1)
+            _ -> []
+          end
+
+        {:ok, list}
+
+      {:error, error} ->
+        {:error, error}
+    end
+  end
+
+  defp members_of_soft(chain, identity) do
+    case call_address_array_soft(chain, identity, "Members") do
+      {:ok, list} ->
+        list
+
+      {:error, error} ->
+        IO.puts("Members(#{Base16.encode(identity)}) reverted: #{inspect(error)}")
+        []
     end
   end
 

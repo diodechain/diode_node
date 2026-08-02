@@ -60,13 +60,24 @@ defmodule RemoteChain.RPC do
     rpc_with_retry(chain, method, params, 2)
   end
 
-  defp rpc_with_retry(chain, method, params, retries_left) do
-    case RemoteChain.NodeProxy.rpc(chain, method, params) do
-      %{"result" => result} ->
-        {:ok, result}
+  @doc false
+  # Some providers (Hardhat/Ganache-style, and occasional public RPC quirks)
+  # flatten error fields onto the JSON-RPC envelope instead of nesting under
+  # `"error"`. Treat those as errors so callers get `{:error, _}` instead of a
+  # CaseClauseError.
+  def decode_rpc_response(%{"result" => result}), do: {:ok, result}
+  def decode_rpc_response(%{"error" => error}), do: {:error, error}
 
-      %{"error" => error} ->
-        {:error, error}
+  def decode_rpc_response(%{"code" => _code, "message" => _message} = error),
+    do: {:error, error}
+
+  def decode_rpc_response({:error, _} = err), do: err
+  def decode_rpc_response(other), do: {:error, other}
+
+  defp rpc_with_retry(chain, method, params, retries_left) do
+    case decode_rpc_response(RemoteChain.NodeProxy.rpc(chain, method, params)) do
+      {:ok, result} ->
+        {:ok, result}
 
       {:error, :disconnect} when retries_left > 0 ->
         Process.sleep(200)

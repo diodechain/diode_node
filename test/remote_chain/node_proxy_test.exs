@@ -70,6 +70,15 @@ defmodule RemoteChain.NodeProxyTest do
              }) ==
                ":error"
     end
+
+    test "returns :error for flat error envelopes without nested error key" do
+      assert NodeProxy.rpc_log_status(%{
+               "id" => 8095,
+               "jsonrpc" => "2.0",
+               "code" => -32000,
+               "message" => "VM Exception while processing transaction: revert "
+             }) == ":error"
+    end
   end
 
   describe "handle_failed_send/2" do

@@ -119,6 +119,13 @@ defmodule RemoteChain.WSConn do
       %{"id" => _} = other ->
         send(state.owner, {:response, ws_url, other})
         {:ok, state}
+
+      # Providers sometimes send bare error objects without `"id"` (e.g.
+      # `%{"code" => -32603, "message" => "Internal server error"}`). Do not
+      # crash the WSConn — that tears down the whole provider connection.
+      other when is_map(other) ->
+        Logger.warning("WSConn received unexpected JSON frame: #{inspect(other)}")
+        {:ok, state}
     end
   end
 

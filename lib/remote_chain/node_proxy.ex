@@ -290,7 +290,17 @@ defmodule RemoteChain.NodeProxy do
 
   @doc false
   def rpc_log_status(response) do
-    if Map.has_key?(response, "error"), do: ":error", else: ":ok"
+    cond do
+      Map.has_key?(response, "error") ->
+        ":error"
+
+      # Flat error envelope (no nested `"error"` key)
+      Map.has_key?(response, "code") and Map.has_key?(response, "message") ->
+        ":error"
+
+      true ->
+        ":ok"
+    end
   end
 
   defp log_rpc_call(log, request, response) do

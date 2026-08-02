@@ -197,6 +197,28 @@ defmodule Script.BnsMigrateTest do
     end
   end
 
+  describe "build_origin_fleet/4" do
+    test "falls back to BNS owner when L1 owner unavailable", ctx do
+      assert {fleet, nil} =
+               BnsMigrate.build_origin_fleet(ctx.owner, nil, [ctx.member], ctx.identity)
+
+      assert fleet == [ctx.owner]
+    end
+
+    test "uniques owner, bns owner, and members; drops zero", ctx do
+      {fleet, dest} =
+        BnsMigrate.build_origin_fleet(
+          ctx.owner,
+          ctx.foreign,
+          [ctx.member, ctx.zero, ctx.owner],
+          ctx.identity
+        )
+
+      assert dest == ctx.identity
+      assert fleet == [ctx.foreign, ctx.owner, ctx.member]
+    end
+  end
+
   describe "broken_identity?/4" do
     test "true when Base has no fleet but L1 does" do
       assert BnsMigrate.broken_identity?(true, true, [], [addr(9)])

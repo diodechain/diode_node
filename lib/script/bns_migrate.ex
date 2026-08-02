@@ -135,6 +135,26 @@ defmodule Script.BnsMigrate do
   end
 
   @doc """
+  Compose the fleet to seed onto Base from the Diode L1 identity owner/members.
+
+  When `id_owner` is nil (no L1 code, or `owner()` eth_call reverted), fall back
+  to the BNS name owner only and treat L1 identity as unavailable.
+  """
+  def build_origin_fleet(bns_owner, nil, _members, _dest) when is_binary(bns_owner) do
+    {[bns_owner], nil}
+  end
+
+  def build_origin_fleet(bns_owner, id_owner, members, dest)
+      when is_binary(bns_owner) and is_binary(id_owner) and is_list(members) and is_binary(dest) do
+    fleet =
+      [id_owner, bns_owner | members]
+      |> Enum.reject(&null_address?/1)
+      |> Enum.uniq()
+
+    {fleet, dest}
+  end
+
+  @doc """
   Broken = Base identity has code but no non-owner members, while the L1 counterpart
   has at least one non-owner member (fleet was never copied).
   """
