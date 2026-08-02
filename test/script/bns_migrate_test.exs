@@ -141,6 +141,31 @@ defmodule Script.BnsMigrateTest do
     end
   end
 
+  describe "valid_bns_name?/1" do
+    test "accepts lowercase names matching Base BNS validate()" do
+      assert BnsMigrate.valid_bns_name?("knusperhaus")
+      assert BnsMigrate.valid_bns_name?("private-ten")
+      assert BnsMigrate.valid_bns_name?("abcdefgh")
+    end
+
+    test "rejects uppercase that reverts ResolveOwner (production regression)" do
+      refute BnsMigrate.valid_bns_name?("Private-Ten")
+    end
+
+    test "rejects length and charset violations" do
+      refute BnsMigrate.valid_bns_name?("short")
+      refute BnsMigrate.valid_bns_name?("under_score_name")
+      refute BnsMigrate.valid_bns_name?("-leadingok")
+      refute BnsMigrate.valid_bns_name?("trailing-")
+      refute BnsMigrate.valid_bns_name?(String.duplicate("a", 33))
+    end
+
+    test "partition_valid_names/1 separates invalid dump names" do
+      assert {["knusperhaus"], ["Private-Ten"]} =
+               BnsMigrate.partition_valid_names(["Private-Ten", "knusperhaus"])
+    end
+  end
+
   describe "identity and repair salts" do
     test "are deterministic and distinct", ctx do
       v1 = BnsMigrate.identity_salt(ctx.owner)

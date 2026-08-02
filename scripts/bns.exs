@@ -130,11 +130,25 @@ defmodule Helper do
   def null?(address), do: BnsMigrate.null_address?(address, @null)
 
   def resolve_owner(name) do
-    call_address(Chains.Base, @bns, "ResolveOwner", ["string"], [name])
+    case call_address_soft(Chains.Base, @bns, "ResolveOwner", ["string"], [name]) do
+      {:ok, addr} ->
+        addr
+
+      {:error, error} ->
+        IO.puts("ResolveOwner(#{inspect(name)}) reverted: #{inspect(error)}")
+        @null
+    end
   end
 
   def resolve_destination(name) do
-    call_address(Chains.Base, @bns, "Resolve", ["string"], [name])
+    case call_address_soft(Chains.Base, @bns, "Resolve", ["string"], [name]) do
+      {:ok, addr} ->
+        addr
+
+      {:error, error} ->
+        IO.puts("Resolve(#{inspect(name)}) reverted: #{inspect(error)}")
+        @null
+    end
   end
 
   def diode_resolve_destination(name) do
@@ -224,11 +238,19 @@ defmodule Helper do
   end
 
   def call_address(chain, to, method, types, args) do
+    case call_address_soft(chain, to, method, types, args) do
+      {:ok, addr} -> addr
+      {:error, error} -> raise "RPC error: #{inspect(error)} calling #{method}"
+    end
+  end
+
+  def call_address_soft(chain, to, method, types, args) do
     data = ABI.encode_call(method, types, args) |> Base16.encode()
 
-    RemoteChain.RPC.call!(chain, to: Base16.encode(to), data: data)
-    |> Base16.decode()
-    |> Hash.to_address()
+    case RemoteChain.RPC.call(chain, to: Base16.encode(to), data: data) do
+      {:ok, ret} -> {:ok, ret |> Base16.decode() |> Hash.to_address()}
+      {:error, error} -> {:error, error}
+    end
   end
 
   def call_address_array(chain, to, method) do
@@ -592,6 +614,14 @@ if missing != [] do
   IO.puts("Names not in dump (owner will be resolved on-chain): #{Enum.join(missing, ", ")}")
 end
 
+{names, invalid_names} = BnsMigrate.partition_valid_names(names)
+
+Enum.each(invalid_names, fn name ->
+  IO.puts(
+    "SKIP #{name}: invalid Base BNS name (need 8-32 chars of [0-9a-z-], no leading/trailing '-')"
+  )
+end)
+
 if only_names != [] do
   IO.puts("Filter: #{Enum.join(only_names, ", ")}")
 end
@@ -600,7 +630,7 @@ if dry_run do
   IO.puts("Mode: dry-run (no transactions)")
 end
 
-IO.puts("Names: #{length(names)}")
+IO.puts("Names: #{length(names)} (skipped invalid: #{length(invalid_names)})")
 {:ok, _dets} = DetsPlus.open_file(:base_cache)
 
 wallet = Wallet.from_privkey(Base16.decode(String.trim(File.read!("diode_glmr.key"))))

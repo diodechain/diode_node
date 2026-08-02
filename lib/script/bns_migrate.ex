@@ -56,6 +56,28 @@ defmodule Script.BnsMigrate do
   def parse_identity_cache(other), do: {:error, other}
 
   @doc """
+  Mirror Base BNS `validate()` — names that fail this revert on Resolve/Register.
+  Length 8..32, charset `[0-9a-z-]`, no leading/trailing `-`.
+  """
+  def valid_bns_name?(name) when is_binary(name) do
+    len = byte_size(name)
+
+    len > 7 and len <= 32 and
+      not String.starts_with?(name, "-") and
+      not String.ends_with?(name, "-") and
+      Regex.match?(~r/^[0-9a-z-]+$/, name)
+  end
+
+  def valid_bns_name?(_), do: false
+
+  @doc """
+  Partition names into `{valid, invalid}` using `valid_bns_name?/1`.
+  """
+  def partition_valid_names(names) when is_list(names) do
+    Enum.split_with(names, &valid_bns_name?/1)
+  end
+
+  @doc """
   Parse CLI argv. Recognizes `--dry-run`. Any other flag starting with `-` is an error.
   Remaining args are raw name filters (normalize with `normalize_name/1`).
   """
