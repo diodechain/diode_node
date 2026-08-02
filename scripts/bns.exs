@@ -1,3 +1,8 @@
+# Usage:
+#   elixir bns.exs                  # process all names from bns_2026_03_13.json
+#   elixir bns.exs knusperhaus      # only the given name(s)
+#   elixir bns.exs knusperhaus.diode foo.base
+#
 Mix.install(
   [
     {:diode, path: __DIR__ <> "/../"},
@@ -365,9 +370,37 @@ defmodule Helper do
     await_txs([id_own, id_reg])
     n2
   end
+
+  def normalize_name(name) do
+    name
+    |> String.trim()
+    |> String.downcase()
+    |> String.replace_suffix(".diode", "")
+    |> String.replace_suffix(".base", "")
+    |> String.replace_suffix(".glmr", "")
+    |> String.replace_suffix(".sapphire", "")
+  end
+
+  def resolve_name_owner(name) do
+    owner = diode_resolve_owner(name)
+
+    cond do
+      not null?(owner) ->
+        owner
+
+      true ->
+        base_owner = resolve_owner(name)
+        if null?(base_owner), do: nil, else: base_owner
+    end
+  end
 end
 
 # curl -k -H "Content-Type: application/json" -X POST --data '{"jsonrpc":"2.0","method":"eth_getStorage","params":["0xaf60faa5cd840b724742f1af116168276112d6a6", "latest"],"id":73}' https://prenet.diode.io:8443 > bns_2026_03_13.json
+
+only_names =
+  System.argv()
+  |> Enum.map(&Helper.normalize_name/1)
+  |> Enum.reject(&(&1 == ""))
 
 storage =
   File.read!("bns_2026_03_13.json")
@@ -402,6 +435,28 @@ names =
   |> Enum.sort()
   |> Enum.uniq()
 
+names =
+  case only_names do
+    [] ->
+      names
+
+    only ->
+      filtered = Enum.filter(names, &(&1 in only))
+      missing = only -- filtered
+
+      if missing != [] do
+        IO.puts(
+          "Names not in dump (owner will be resolved on-chain): #{Enum.join(missing, ", ")}"
+        )
+      end
+
+      filtered ++ missing
+  end
+
+if only_names != [] do
+  IO.puts("Filter: #{Enum.join(only_names, ", ")}")
+end
+
 IO.puts("Names: #{length(names)}")
 {:ok, _dets} = DetsPlus.open_file(:base_cache)
 
@@ -423,93 +478,102 @@ work =
       |> Kernel.+(1)
       |> :binary.encode_unsigned()
 
-    case Map.get(storage, owner_slot) do
-      nil ->
-        nil
+    owner =
+      case Map.get(storage, owner_slot) do
+        nil -> Helper.resolve_name_owner(name)
+        owner_raw -> Hash.to_address(owner_raw)
+      end
 
-      owner_raw ->
-        owner = Hash.to_address(owner_raw)
-        v1_salt = Helper.identity_salt(owner)
-        repair_salt = Helper.repair_salt(owner)
+    if owner == nil or Helper.null?(owner) do
+      IO.puts("SKIP #{name}: could not resolve name owner")
+      nil
+    else
+      v1_salt = Helper.identity_salt(owner)
+      repair_salt = Helper.repair_salt(owner)
 
-        {v1_identity, v1_deployed?} =
-          case DetsPlus.lookup(:base_cache, owner_slot) do
-            [{^owner_slot, {identity, deployed?, _base_owner, _base_dest}}] ->
-              {identity, deployed?}
+      {v1_identity, v1_deployed?} =
+        case DetsPlus.lookup(:base_cache, owner_slot) do
+          [{^owner_slot, {identity, deployed?, _base_owner, _base_dest}}] ->
+            {identity, deployed?}
 
-            [{^owner_slot, cached}] when is_tuple(cached) and tuple_size(cached) >= 2 ->
-              {elem(cached, 0), elem(cached, 1)}
+          [{^owner_slot, cached}] when is_tuple(cached) and tuple_size(cached) >= 2 ->
+            {elem(cached, 0), elem(cached, 1)}
 
-            [] ->
-              IO.inspect({name, Base16.encode(owner)})
-              {identity, deployed?} = Helper.identity_deployed?(v1_salt)
-              base_owner = Helper.resolve_owner(name)
-              base_dest = Helper.resolve_destination(name)
-              DetsPlus.insert(:base_cache, [{owner_slot, {identity, deployed?, base_owner, base_dest}}])
-              {identity, deployed?}
-          end
+          [] ->
+            IO.inspect({name, Base16.encode(owner)})
+            {identity, deployed?} = Helper.identity_deployed?(v1_salt)
+            base_owner = Helper.resolve_owner(name)
+            base_dest = Helper.resolve_destination(name)
 
-        base_dest = Helper.resolve_destination(name)
-        base_owner = Helper.resolve_owner(name)
-        {fleet, l1_identity} = Helper.origin_fleet(name, owner)
-        {repair_identity, repair_deployed?} = Helper.identity_deployed?(repair_salt)
+            DetsPlus.insert(:base_cache, [
+              {owner_slot, {identity, deployed?, base_owner, base_dest}}
+            ])
 
-        # Prefer the live BNS destination when present; else the v1 CREATE2 address.
-        current_identity =
-          cond do
-            not Helper.null?(base_dest) and Helper.has_code?(Chains.Base, base_dest) ->
-              base_dest
-
-            v1_deployed? ->
-              v1_identity
-
-            true ->
-              nil
-          end
-
-        broken? =
-          is_binary(current_identity) and is_binary(l1_identity) and
-            Helper.broken_identity?(current_identity, l1_identity)
-
-        # Already repaired: BNS points at repair identity with complete membership.
-        repaired? =
-          repair_deployed? and base_dest == repair_identity and
-            Helper.members_complete?(repair_identity, fleet, deployer)
-
-        bns_needs_v1? =
-          not broken? and not repaired? and
-            (Helper.null?(base_owner) or base_owner != owner or base_dest != v1_identity)
-
-        action =
-          cond do
-            repaired? ->
-              nil
-
-            broken? ->
-              :repair
-
-            not v1_deployed? ->
-              :create
-
-            v1_deployed? and Helper.owner_of(Chains.Base, v1_identity) == deployer ->
-              :resume_v1
-
-            bns_needs_v1? ->
-              :bns_v1
-
-            true ->
-              nil
-          end
-
-        if action do
-          if action == :repair do
-            IO.puts(
-              "REPAIR #{name}: broken #{Base16.encode(current_identity)} (owner-only on Base, fleet on L1) -> #{Base16.encode(repair_identity)}"
-            )
-          end
-
-          {action, name, owner, owner_slot, fleet, v1_salt, v1_identity, repair_salt, repair_identity}
+            {identity, deployed?}
         end
+
+      base_dest = Helper.resolve_destination(name)
+      base_owner = Helper.resolve_owner(name)
+      {fleet, l1_identity} = Helper.origin_fleet(name, owner)
+      {repair_identity, repair_deployed?} = Helper.identity_deployed?(repair_salt)
+
+      # Prefer the live BNS destination when present; else the v1 CREATE2 address.
+      current_identity =
+        cond do
+          not Helper.null?(base_dest) and Helper.has_code?(Chains.Base, base_dest) ->
+            base_dest
+
+          v1_deployed? ->
+            v1_identity
+
+          true ->
+            nil
+        end
+
+      broken? =
+        is_binary(current_identity) and is_binary(l1_identity) and
+          Helper.broken_identity?(current_identity, l1_identity)
+
+      # Already repaired: BNS points at repair identity with complete membership.
+      repaired? =
+        repair_deployed? and base_dest == repair_identity and
+          Helper.members_complete?(repair_identity, fleet, deployer)
+
+      bns_needs_v1? =
+        not broken? and not repaired? and
+          (Helper.null?(base_owner) or base_owner != owner or base_dest != v1_identity)
+
+      action =
+        cond do
+          repaired? ->
+            nil
+
+          broken? ->
+            :repair
+
+          not v1_deployed? ->
+            :create
+
+          v1_deployed? and Helper.owner_of(Chains.Base, v1_identity) == deployer ->
+            :resume_v1
+
+          bns_needs_v1? ->
+            :bns_v1
+
+          true ->
+            nil
+        end
+
+      if action do
+        if action == :repair do
+          IO.puts(
+            "REPAIR #{name}: broken #{Base16.encode(current_identity)} (owner-only on Base, fleet on L1) -> #{Base16.encode(repair_identity)}"
+          )
+        end
+
+        {action, name, owner, owner_slot, fleet, v1_salt, v1_identity, repair_salt,
+         repair_identity}
+      end
     end
   end
   |> Enum.reject(&is_nil/1)
