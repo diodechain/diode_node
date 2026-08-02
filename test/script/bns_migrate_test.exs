@@ -15,9 +15,322 @@ defmodule Script.BnsMigrateTest do
     owner = addr(2)
     identity = addr(3)
     foreign = addr(4)
+    member = addr(5)
     zero = BnsMigrate.zero_address()
 
-    {:ok, deployer: deployer, owner: owner, identity: identity, foreign: foreign, zero: zero}
+    {:ok,
+     deployer: deployer,
+     owner: owner,
+     identity: identity,
+     foreign: foreign,
+     member: member,
+     zero: zero}
+  end
+
+  describe "parse_argv/1" do
+    test "empty argv is live run with no name filter" do
+      assert {:ok, %{dry_run: false, names: []}} = BnsMigrate.parse_argv([])
+    end
+
+    test "accepts --dry-run and name filters" do
+      assert {:ok, %{dry_run: true, names: ["knusperhaus", "foo.base"]}} =
+               BnsMigrate.parse_argv(["--dry-run", "knusperhaus", "foo.base"])
+    end
+
+    test "accepts names before --dry-run" do
+      assert {:ok, %{dry_run: true, names: ["a"]}} = BnsMigrate.parse_argv(["a", "--dry-run"])
+    end
+
+    test "rejects unknown flags" do
+      assert {:error, {:unknown_args, ["--force", "-x"]}} =
+               BnsMigrate.parse_argv(["--force", "name", "-x", "--dry-run"])
+    end
+
+    test "rejects single-dash unknowns" do
+      assert {:error, {:unknown_args, ["-h"]}} = BnsMigrate.parse_argv(["-h"])
+    end
+  end
+
+  describe "normalize_name/1" do
+    test "trims, lowercases, and strips known suffixes" do
+      assert BnsMigrate.normalize_name("  KnusperHaus.diode ") == "knusperhaus"
+      assert BnsMigrate.normalize_name("Foo.BASE") == "foo"
+      assert BnsMigrate.normalize_name("bar.glmr") == "bar"
+      assert BnsMigrate.normalize_name("baz.sapphire") == "baz"
+    end
+  end
+
+  describe "apply_name_filter/2" do
+    test "no filter returns all names" do
+      assert {["a", "b"], []} = BnsMigrate.apply_name_filter(["a", "b"], [])
+    end
+
+    test "keeps dump names and appends missing for on-chain resolve" do
+      assert {["a", "missing"], ["missing"]} =
+               BnsMigrate.apply_name_filter(["a", "b"], ["a", "missing"])
+    end
+  end
+
+  describe "sufficient_gas?/1" do
+    test "rejects balances below one finney" do
+      refute BnsMigrate.sufficient_gas?(BnsMigrate.min_gas_wei() - 1)
+      assert BnsMigrate.sufficient_gas?(BnsMigrate.min_gas_wei())
+      assert BnsMigrate.sufficient_gas?(BnsMigrate.min_gas_wei() + 1)
+    end
+
+    test "min_gas_wei matches Shell.finney(1)" do
+      assert BnsMigrate.min_gas_wei() == Shell.finney(1)
+    end
+  end
+
+  describe "await_tx_ref/2" do
+    test "builds the {tx_id, tx} tuple Shell.await_tx_id/1 requires" do
+      tx_id = "0xbde62b36a0b92c3e826ddc83fc1a84acdb660d4ca45c1eb8354cd5014b17aa61"
+      tx = :fake_tx_for_shape_check
+
+      assert {^tx_id, ^tx} = BnsMigrate.await_tx_ref(tx_id, tx)
+    end
+
+    test "bare tx_id string does not match Shell.await_tx_id/1 (production regression)" do
+      # Bug: scripts/bns.exs called Shell.await_tx_id(tx_id) after submit returned
+      # only the hash. Default n=0 makes this await_tx_id(binary, 0), which misses
+      # the only clause: await_tx_id({tx_id, tx}, n).
+      tx_id = "0xbde62b36a0b92c3e826ddc83fc1a84acdb660d4ca45c1eb8354cd5014b17aa61"
+
+      assert_raise FunctionClauseError, fn ->
+        apply(Shell, :await_tx_id, [tx_id])
+      end
+    end
+  end
+
+  describe "identity and repair salts" do
+    test "are deterministic and distinct", ctx do
+      v1 = BnsMigrate.identity_salt(ctx.owner)
+      repair = BnsMigrate.repair_salt(ctx.owner)
+
+      assert byte_size(v1) == 32
+      assert byte_size(repair) == 32
+      assert v1 != repair
+      assert v1 == BnsMigrate.identity_salt(ctx.owner)
+    end
+  end
+
+  describe "select_current_identity/4" do
+    test "prefers live BNS destination with code", ctx do
+      assert BnsMigrate.select_current_identity(ctx.foreign, true, ctx.identity, true) ==
+               ctx.foreign
+    end
+
+    test "falls back to v1 when dest missing or no code", ctx do
+      assert BnsMigrate.select_current_identity(ctx.zero, false, ctx.identity, true) ==
+               ctx.identity
+
+      assert BnsMigrate.select_current_identity(ctx.foreign, false, ctx.identity, true) ==
+               ctx.identity
+    end
+
+    test "nil when nothing usable", ctx do
+      assert BnsMigrate.select_current_identity(ctx.zero, false, ctx.identity, false) == nil
+    end
+  end
+
+  describe "broken_identity?/4" do
+    test "true when Base has no fleet but L1 does" do
+      assert BnsMigrate.broken_identity?(true, true, [], [addr(9)])
+    end
+
+    test "false when Base already has non-owner members" do
+      refute BnsMigrate.broken_identity?(true, true, [addr(9)], [addr(9)])
+    end
+
+    test "false when L1 has no fleet either" do
+      refute BnsMigrate.broken_identity?(true, true, [], [])
+    end
+
+    test "false without code on either side" do
+      refute BnsMigrate.broken_identity?(false, true, [], [addr(9)])
+      refute BnsMigrate.broken_identity?(true, false, [], [addr(9)])
+    end
+  end
+
+  describe "members_complete?/3" do
+    test "complete when fleet subset and deployer not leftover", ctx do
+      assert BnsMigrate.members_complete?(
+               [ctx.owner, ctx.member],
+               [ctx.owner, ctx.member],
+               ctx.deployer
+             )
+    end
+
+    test "incomplete when fleet member missing", ctx do
+      refute BnsMigrate.members_complete?([ctx.owner], [ctx.owner, ctx.member], ctx.deployer)
+    end
+
+    test "incomplete when deployer still a member but not in fleet", ctx do
+      refute BnsMigrate.members_complete?(
+               [ctx.owner, ctx.deployer],
+               [ctx.owner],
+               ctx.deployer
+             )
+    end
+
+    test "allows deployer member when deployer is in fleet", ctx do
+      assert BnsMigrate.members_complete?(
+               [ctx.owner, ctx.deployer],
+               [ctx.owner, ctx.deployer],
+               ctx.deployer
+             )
+    end
+  end
+
+  describe "classify_repair_action/1" do
+    test "nil when already repaired" do
+      assert BnsMigrate.classify_repair_action(%{
+               repaired?: true,
+               broken?: true,
+               v1_deployed?: false,
+               v1_owned_by_deployer?: false,
+               bns_needs_v1?: true
+             }) == nil
+    end
+
+    test "repair wins over create when broken" do
+      assert BnsMigrate.classify_repair_action(%{
+               repaired?: false,
+               broken?: true,
+               v1_deployed?: false,
+               v1_owned_by_deployer?: false,
+               bns_needs_v1?: false
+             }) == :repair
+    end
+
+    test "create when not deployed" do
+      assert BnsMigrate.classify_repair_action(%{
+               repaired?: false,
+               broken?: false,
+               v1_deployed?: false,
+               v1_owned_by_deployer?: false,
+               bns_needs_v1?: true
+             }) == :create
+    end
+
+    test "resume_v1 when deployer still owns v1" do
+      assert BnsMigrate.classify_repair_action(%{
+               repaired?: false,
+               broken?: false,
+               v1_deployed?: true,
+               v1_owned_by_deployer?: true,
+               bns_needs_v1?: true
+             }) == :resume_v1
+    end
+
+    test "bns_v1 when only BNS update needed" do
+      assert BnsMigrate.classify_repair_action(%{
+               repaired?: false,
+               broken?: false,
+               v1_deployed?: true,
+               v1_owned_by_deployer?: false,
+               bns_needs_v1?: true
+             }) == :bns_v1
+    end
+
+    test "nil when nothing to do" do
+      assert BnsMigrate.classify_repair_action(%{
+               repaired?: false,
+               broken?: false,
+               v1_deployed?: true,
+               v1_owned_by_deployer?: false,
+               bns_needs_v1?: false
+             }) == nil
+    end
+  end
+
+  describe "repaired?/4 and bns_needs_v1?/6" do
+    test "repaired when dest points at complete repair identity", ctx do
+      assert BnsMigrate.repaired?(true, ctx.identity, ctx.identity, true)
+      refute BnsMigrate.repaired?(true, ctx.foreign, ctx.identity, true)
+      refute BnsMigrate.repaired?(false, ctx.identity, ctx.identity, true)
+    end
+
+    test "bns_needs_v1 when owner or dest mismatch", ctx do
+      assert BnsMigrate.bns_needs_v1?(false, false, ctx.zero, ctx.owner, ctx.zero, ctx.identity)
+
+      assert BnsMigrate.bns_needs_v1?(
+               false,
+               false,
+               ctx.owner,
+               ctx.owner,
+               ctx.foreign,
+               ctx.identity
+             )
+
+      refute BnsMigrate.bns_needs_v1?(true, false, ctx.zero, ctx.owner, ctx.zero, ctx.identity)
+      refute BnsMigrate.bns_needs_v1?(false, true, ctx.zero, ctx.owner, ctx.zero, ctx.identity)
+
+      refute BnsMigrate.bns_needs_v1?(
+               false,
+               false,
+               ctx.owner,
+               ctx.owner,
+               ctx.identity,
+               ctx.identity
+             )
+    end
+  end
+
+  describe "needs_bns_register?/4" do
+    test "true until owner and dest match identity", ctx do
+      assert BnsMigrate.needs_bns_register?(ctx.zero, ctx.owner, ctx.zero, ctx.identity)
+      assert BnsMigrate.needs_bns_register?(ctx.deployer, ctx.owner, ctx.identity, ctx.identity)
+      refute BnsMigrate.needs_bns_register?(ctx.owner, ctx.owner, ctx.identity, ctx.identity)
+    end
+  end
+
+  describe "sync_member_plan/5" do
+    test "plans adds, deployer removal, and ownership transfer", ctx do
+      plan =
+        BnsMigrate.sync_member_plan(
+          [ctx.deployer],
+          [ctx.owner, ctx.member],
+          ctx.deployer,
+          ctx.owner,
+          ctx.deployer
+        )
+
+      assert Enum.sort(plan.add) == Enum.sort([ctx.owner, ctx.member])
+      assert plan.remove_deployer?
+      assert plan.transfer?
+    end
+
+    test "skips members already present and keeps deployer when in fleet", ctx do
+      plan =
+        BnsMigrate.sync_member_plan(
+          [ctx.deployer, ctx.owner],
+          [ctx.deployer, ctx.owner, ctx.member],
+          ctx.deployer,
+          ctx.owner,
+          ctx.deployer
+        )
+
+      assert plan.add == [ctx.member]
+      refute plan.remove_deployer?
+      assert plan.transfer?
+    end
+
+    test "no transfer when already owned by final owner", ctx do
+      plan =
+        BnsMigrate.sync_member_plan(
+          [ctx.owner, ctx.member],
+          [ctx.owner, ctx.member],
+          ctx.deployer,
+          ctx.owner,
+          ctx.owner
+        )
+
+      assert plan.add == []
+      refute plan.remove_deployer?
+      refute plan.transfer?
+    end
   end
 
   describe "classify_name/5" do

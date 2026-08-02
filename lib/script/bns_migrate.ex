@@ -4,7 +4,7 @@
 
 defmodule Script.BnsMigrate do
   @moduledoc """
-  Pure helpers for Base BNS name migration (see `scripts/bns.exs`).
+  Pure helpers for Base BNS name migration / repair (see `scripts/bns.exs`).
   """
 
   alias DiodeClient.Hash
@@ -14,8 +14,153 @@ defmodule Script.BnsMigrate do
   @type classification :: :done | :owner_controlled | :foreign_owner | :migratable
   @type cache_status ::
           :invalid | :done | :foreign_owner | :owner_controlled | {:partial, cache_tuple()}
+  @type repair_action :: :repair | :create | :resume_v1 | :bns_v1
+
+  # 1 finney == 0.001 ether
+  @min_gas_wei 1_000_000_000_000_000
 
   def zero_address, do: Hash.to_address(0)
+
+  def min_gas_wei, do: @min_gas_wei
+
+  def sufficient_gas?(balance) when is_integer(balance), do: balance >= @min_gas_wei
+
+  @doc """
+  Argument shape required by `Shell.await_tx_id/1`.
+
+  Passing a bare tx_id binary raises FunctionClauseError because the clause is
+  `await_tx_id({tx_id, tx}, n \\\\ 0)` — the transaction is needed for chain_id
+  and resubmit. See `scripts/bns.exs` submit/await path.
+  """
+  def await_tx_ref(tx_id, tx) when is_binary(tx_id), do: {tx_id, tx}
+
+  @doc """
+  Parse CLI argv. Recognizes `--dry-run`. Any other flag starting with `-` is an error.
+  Remaining args are raw name filters (normalize with `normalize_name/1`).
+  """
+  def parse_argv(argv) when is_list(argv) do
+    {flags, names} = Enum.split_with(argv, &String.starts_with?(&1, "-"))
+    unknown = flags -- ["--dry-run"]
+
+    if unknown != [] do
+      {:error, {:unknown_args, unknown}}
+    else
+      {:ok, %{dry_run: "--dry-run" in flags, names: names}}
+    end
+  end
+
+  def normalize_name(name) when is_binary(name) do
+    name
+    |> String.trim()
+    |> String.downcase()
+    |> String.replace_suffix(".diode", "")
+    |> String.replace_suffix(".base", "")
+    |> String.replace_suffix(".glmr", "")
+    |> String.replace_suffix(".sapphire", "")
+  end
+
+  @doc """
+  Apply optional name filter. Returns `{selected_names, missing_from_dump}`.
+  Names not in the dump are appended so callers can resolve owners on-chain.
+  """
+  def apply_name_filter(all_names, only_names) when is_list(all_names) and is_list(only_names) do
+    case only_names do
+      [] ->
+        {all_names, []}
+
+      only ->
+        filtered = Enum.filter(all_names, &(&1 in only))
+        missing = only -- filtered
+        {filtered ++ missing, missing}
+    end
+  end
+
+  def null_address?(address, null \\ zero_address()) do
+    address == nil or address == null
+  end
+
+  def identity_salt(owner) when is_binary(owner), do: Hash.keccak_256(owner)
+
+  def repair_salt(owner) when is_binary(owner), do: Hash.keccak_256("bns-repair-v1" <> owner)
+
+  def select_current_identity(base_dest, base_dest_has_code?, v1_identity, v1_deployed?) do
+    cond do
+      not null_address?(base_dest) and base_dest_has_code? -> base_dest
+      v1_deployed? -> v1_identity
+      true -> nil
+    end
+  end
+
+  @doc """
+  Broken = Base identity has code but no non-owner members, while the L1 counterpart
+  has at least one non-owner member (fleet was never copied).
+  """
+  def broken_identity?(base_has_code?, l1_has_code?, base_non_owners, l1_non_owners)
+      when is_list(base_non_owners) and is_list(l1_non_owners) do
+    base_has_code? and l1_has_code? and base_non_owners == [] and l1_non_owners != []
+  end
+
+  def members_complete?(actual_members, fleet, deployer)
+      when is_list(actual_members) and is_list(fleet) do
+    actual = MapSet.new(actual_members)
+    expected = MapSet.new(fleet)
+
+    MapSet.subset?(expected, actual) and
+      (deployer in fleet or not MapSet.member?(actual, deployer))
+  end
+
+  def repaired?(repair_deployed?, base_dest, repair_identity, members_complete?) do
+    repair_deployed? and base_dest == repair_identity and members_complete?
+  end
+
+  def bns_needs_v1?(broken?, repaired?, base_owner, owner, base_dest, v1_identity) do
+    not broken? and not repaired? and
+      (null_address?(base_owner) or base_owner != owner or base_dest != v1_identity)
+  end
+
+  @doc """
+  Decide the migration/repair action from precomputed boolean flags.
+  """
+  def classify_repair_action(%{
+        repaired?: repaired?,
+        broken?: broken?,
+        v1_deployed?: v1_deployed?,
+        v1_owned_by_deployer?: v1_owned_by_deployer?,
+        bns_needs_v1?: bns_needs_v1?
+      }) do
+    cond do
+      repaired? -> nil
+      broken? -> :repair
+      not v1_deployed? -> :create
+      v1_owned_by_deployer? -> :resume_v1
+      bns_needs_v1? -> :bns_v1
+      true -> nil
+    end
+  end
+
+  def needs_bns_register?(base_owner, owner, base_dest, identity) do
+    null_address?(base_owner) or base_owner != owner or base_dest != identity
+  end
+
+  @doc """
+  Plan member sync while deployer still owns the identity.
+  """
+  def sync_member_plan(current_members, fleet, deployer, final_owner, current_owner)
+      when is_list(current_members) and is_list(fleet) do
+    current = MapSet.new(current_members)
+
+    to_add =
+      fleet
+      |> Enum.reject(&(null_address?(&1) or &1 == deployer or MapSet.member?(current, &1)))
+      |> Enum.uniq()
+
+    remove_deployer? =
+      deployer != final_owner and MapSet.member?(current, deployer) and deployer not in fleet
+
+    transfer? = current_owner == deployer and deployer != final_owner
+
+    %{add: to_add, remove_deployer?: remove_deployer?, transfer?: transfer?}
+  end
 
   @doc """
   Classify a name's Base BNS state relative to the L1 owner and deployer wallet.

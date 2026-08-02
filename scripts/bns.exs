@@ -1,6 +1,7 @@
 # Usage:
-#   elixir bns.exs                  # process all names from bns_2026_03_13.json
-#   elixir bns.exs knusperhaus      # only the given name(s)
+#   elixir bns.exs                         # process all names from bns_2026_08_01.json
+#   elixir bns.exs knusperhaus             # only the given name(s)
+#   elixir bns.exs --dry-run knusperhaus   # classify + print plan, no transactions
 #   elixir bns.exs knusperhaus.diode foo.base
 #
 Mix.install(
@@ -12,6 +13,7 @@ Mix.install(
 )
 
 alias DiodeClient.{Secp256k1, Base16, Hash, Wallet}
+alias Script.BnsMigrate
 
 {:ok, _pid} =
   Supervisor.start_link([{RemoteChain.Sup, Chains.Base}], strategy: :rest_for_one)
@@ -23,6 +25,7 @@ Logger.configure(level: :warning)
 defmodule Helper do
   require Logger
   alias DiodeClient.{ABI, Base16, Hash, Wallet}
+  alias Script.BnsMigrate
 
   # Base Collab contracts (DiodeClient.Contracts.Factory.contracts(Shell.Base))
   @factory Base16.decode("0x1A36092D88FB73692EE7C502978D634C4AFCC486")
@@ -30,7 +33,7 @@ defmodule Helper do
   @bns Base16.decode("0x87C1D1304944A9EA16AF18CB777E3CEE0D3DACEA")
   @drive_member Base16.decode("0x3D565EC28595C1A0710ABCBD8C0F979D31E38704")
   @diode_bns Base16.decode("0xAF60FAA5CD840B724742F1AF116168276112D6A6")
-  @null <<0::160>>
+  @null BnsMigrate.zero_address()
   # BNSAdmin.isAdmin/1 — must match diode_glmr.key
   @bns_admin Base16.decode("0x7102533B13b950c964efd346Ee15041E3e55413f")
 
@@ -42,7 +45,7 @@ defmodule Helper do
 
   def submit_tx(tx, retries \\ 30) do
     if retries == 0 do
-      raise "Failed to submit transaction after #{retries} retries"
+      raise "Failed to submit transaction after retries exhausted"
     end
 
     Shell.submit_tx(tx)
@@ -50,10 +53,11 @@ defmodule Helper do
       tx_id when is_binary(tx_id) ->
         IO.inspect(DiodeClient.Transaction.hash(tx) |> Base16.encode())
         IO.inspect(tx_id)
-        tx_id
+        BnsMigrate.await_tx_ref(tx_id, tx)
 
       :already_known ->
-        DiodeClient.Transaction.hash(tx) |> Base16.encode()
+        tx_id = DiodeClient.Transaction.hash(tx) |> Base16.encode()
+        BnsMigrate.await_tx_ref(tx_id, tx)
 
       {:error, error} ->
         if out_of_gas_error?(error) do
@@ -66,20 +70,21 @@ defmodule Helper do
     end
   end
 
-  def await_txs(txs) do
-    txs
+  def await_txs(pending) do
+    pending
     |> Enum.reverse()
     |> Enum.with_index(1)
-    |> Enum.each(fn {tx_id, idx} ->
-      IO.puts("Awaiting TX-#{idx} ...")
-      Shell.await_tx_id(tx_id)
+    |> Enum.each(fn {{tx_id, tx} = ref, idx} ->
+      IO.puts("Awaiting TX-#{idx} #{tx_id} ...")
+      Shell.await_tx_id(ref)
     end)
   end
 
   def ensure_gas!(wallet) do
     balance = Shell.get_balance(Chains.Base, Wallet.address!(wallet))
 
-    if balance < Shell.ether(0.001) do
+    # Shell.ether/1 only accepts integers — use finney (0.001 ether).
+    if not BnsMigrate.sufficient_gas?(balance) do
       raise "Out of gas / insufficient funds, stopping: balance=#{balance} wei (#{Base16.encode(Wallet.address!(wallet))})"
     end
 
@@ -101,11 +106,8 @@ defmodule Helper do
       String.contains?(message, "max fee per gas less than block base fee")
   end
 
-  # Original CREATE2 salt (first seeding pass).
-  def identity_salt(owner), do: Hash.keccak_256(owner)
-
-  # Repair salt — new identity when the original was created without fleet members.
-  def repair_salt(owner), do: Hash.keccak_256("bns-repair-v1" <> owner)
+  def identity_salt(owner), do: BnsMigrate.identity_salt(owner)
+  def repair_salt(owner), do: BnsMigrate.repair_salt(owner)
 
   def identity_address(salt) when is_binary(salt) and byte_size(salt) == 32 do
     data = ABI.encode_call("Create2Address", ["bytes32"], [salt]) |> Base16.encode()
@@ -125,7 +127,7 @@ defmodule Helper do
     Base16.decode(code) != ""
   end
 
-  def null?(address), do: address == nil or address == @null
+  def null?(address), do: BnsMigrate.null_address?(address, @null)
 
   def resolve_owner(name) do
     call_address(Chains.Base, @bns, "ResolveOwner", ["string"], [name])
@@ -183,14 +185,13 @@ defmodule Helper do
     Enum.reject(members_of(chain, identity), &(&1 == owner))
   end
 
-  @doc """
-  Broken = Base identity has no non-owner members, but the Diode L1 counterpart
-  has at least one non-owner member (fleet was never copied).
-  """
   def broken_identity?(base_identity, l1_identity) do
-    has_code?(Chains.Base, base_identity) and has_code?(Chains.Diode, l1_identity) and
-      non_owner_members(Chains.Base, base_identity) == [] and
-      non_owner_members(Chains.Diode, l1_identity) != []
+    BnsMigrate.broken_identity?(
+      has_code?(Chains.Base, base_identity),
+      has_code?(Chains.Diode, l1_identity),
+      non_owner_members(Chains.Base, base_identity),
+      non_owner_members(Chains.Diode, l1_identity)
+    )
   end
 
   @doc """
@@ -219,11 +220,7 @@ defmodule Helper do
   end
 
   def members_complete?(identity, fleet, deployer) do
-    actual = MapSet.new(members_of(Chains.Base, identity))
-    expected = MapSet.new(fleet)
-
-    MapSet.subset?(expected, actual) and
-      (deployer in fleet or not MapSet.member?(actual, deployer))
+    BnsMigrate.members_complete?(members_of(Chains.Base, identity), fleet, deployer)
   end
 
   def call_address(chain, to, method, types, args) do
@@ -280,27 +277,21 @@ defmodule Helper do
   transferOwnership(final_owner). Returns {next_nonce, tx_ids}.
   """
   def sync_members(wallet, identity, final_owner, fleet, deployer, nonce) do
-    current = MapSet.new(members_of(Chains.Base, identity))
+    current_members = members_of(Chains.Base, identity)
+    current_owner = owner_of(Chains.Base, identity)
 
-    to_add =
-      fleet
-      |> Enum.reject(&null?/1)
-      |> Enum.reject(&(&1 == deployer))
-      |> Enum.reject(&MapSet.member?(current, &1))
-      |> Enum.uniq()
+    plan =
+      BnsMigrate.sync_member_plan(current_members, fleet, deployer, final_owner, current_owner)
 
     {nonce, txs} =
-      Enum.reduce(to_add, {nonce, []}, fn member, {n, acc} ->
+      Enum.reduce(plan.add, {nonce, []}, fn member, {n, acc} ->
         IO.puts("TX: AddMember #{Base16.encode(member)} ...")
         {id, n2} = submit(wallet, identity, "AddMember", ["address"], [member], n)
         {n2, [id | acc]}
       end)
 
-    # Base DriveMember init adds the create-owner to Members(); drop seeder before
-    # transfer unless the deployer is itself part of the origin fleet.
     {nonce, txs} =
-      if deployer != final_owner and MapSet.member?(current, deployer) and
-           deployer not in fleet do
+      if plan.remove_deployer? do
         IO.puts("TX: RemoveMember deployer #{Base16.encode(deployer)} ...")
         {id, n2} = submit(wallet, identity, "RemoveMember", ["address"], [deployer], nonce)
         {n2, [id | txs]}
@@ -309,7 +300,7 @@ defmodule Helper do
       end
 
     {nonce, txs} =
-      if owner_of(Chains.Base, identity) == deployer and deployer != final_owner do
+      if plan.transfer? do
         IO.puts("TX: transferOwnership -> #{Base16.encode(final_owner)} ...")
 
         {id, n2} =
@@ -371,16 +362,6 @@ defmodule Helper do
     n2
   end
 
-  def normalize_name(name) do
-    name
-    |> String.trim()
-    |> String.downcase()
-    |> String.replace_suffix(".diode", "")
-    |> String.replace_suffix(".base", "")
-    |> String.replace_suffix(".glmr", "")
-    |> String.replace_suffix(".sapphire", "")
-  end
-
   def resolve_name_owner(name) do
     owner = diode_resolve_owner(name)
 
@@ -393,17 +374,187 @@ defmodule Helper do
         if null?(base_owner), do: nil, else: base_owner
     end
   end
+
+  def classify_work_item(
+        name,
+        owner,
+        deployer,
+        v1_identity,
+        v1_deployed?,
+        repair_identity,
+        repair_deployed?
+      ) do
+    base_dest = resolve_destination(name)
+    base_owner = resolve_owner(name)
+    {fleet, l1_identity} = origin_fleet(name, owner)
+
+    current_identity =
+      BnsMigrate.select_current_identity(
+        base_dest,
+        not null?(base_dest) and has_code?(Chains.Base, base_dest),
+        v1_identity,
+        v1_deployed?
+      )
+
+    broken? =
+      is_binary(current_identity) and is_binary(l1_identity) and
+        broken_identity?(current_identity, l1_identity)
+
+    repair_complete? =
+      repair_deployed? and members_complete?(repair_identity, fleet, deployer)
+
+    repaired? =
+      BnsMigrate.repaired?(
+        repair_deployed?,
+        base_dest,
+        repair_identity,
+        repair_complete?
+      )
+
+    bns_needs_v1? =
+      BnsMigrate.bns_needs_v1?(broken?, repaired?, base_owner, owner, base_dest, v1_identity)
+
+    v1_owned_by_deployer? =
+      v1_deployed? and owner_of(Chains.Base, v1_identity) == deployer
+
+    action =
+      BnsMigrate.classify_repair_action(%{
+        repaired?: repaired?,
+        broken?: broken?,
+        v1_deployed?: v1_deployed?,
+        v1_owned_by_deployer?: v1_owned_by_deployer?,
+        bns_needs_v1?: bns_needs_v1?
+      })
+
+    %{
+      action: action,
+      name: name,
+      owner: owner,
+      fleet: fleet,
+      l1_identity: l1_identity,
+      current_identity: current_identity,
+      base_owner: base_owner,
+      base_dest: base_dest,
+      v1_identity: v1_identity,
+      v1_deployed?: v1_deployed?,
+      repair_identity: repair_identity,
+      repair_deployed?: repair_deployed?,
+      broken?: broken?,
+      repaired?: repaired?
+    }
+  end
+
+  def print_dry_run(item, deployer) do
+    %{
+      action: action,
+      name: name,
+      owner: owner,
+      fleet: fleet,
+      current_identity: current_identity,
+      base_owner: base_owner,
+      base_dest: base_dest,
+      v1_identity: v1_identity,
+      v1_deployed?: v1_deployed?,
+      repair_identity: repair_identity,
+      repair_deployed?: repair_deployed?,
+      broken?: broken?,
+      repaired?: repaired?,
+      l1_identity: l1_identity
+    } = item
+
+    IO.puts("\n=== DRY-RUN #{name} ===")
+    IO.puts("action: #{inspect(action)}")
+    IO.puts("owner: #{Base16.encode(owner)}")
+    IO.puts("base_owner: #{fmt_addr(base_owner)}")
+    IO.puts("base_dest: #{fmt_addr(base_dest)}")
+    IO.puts("current_identity: #{fmt_addr(current_identity)}")
+    IO.puts("l1_identity: #{fmt_addr(l1_identity)}")
+    IO.puts("broken?: #{broken?} repaired?: #{repaired?}")
+    IO.puts("v1: #{Base16.encode(v1_identity)} deployed?=#{v1_deployed?}")
+    IO.puts("repair: #{Base16.encode(repair_identity)} deployed?=#{repair_deployed?}")
+    IO.puts("fleet (#{length(fleet)}):")
+
+    Enum.each(fleet, fn addr ->
+      IO.puts("  #{Base16.encode(addr)}")
+    end)
+
+    case action do
+      :repair ->
+        print_identity_plan("repair", repair_identity, repair_deployed?, owner, fleet, deployer)
+        print_bns_plan(name, repair_identity, owner, base_owner, base_dest)
+
+      :create ->
+        print_identity_plan("v1", v1_identity, false, owner, fleet, deployer)
+        print_bns_plan(name, v1_identity, owner, base_owner, base_dest)
+
+      :resume_v1 ->
+        print_identity_plan("v1", v1_identity, true, owner, fleet, deployer)
+        print_bns_plan(name, v1_identity, owner, base_owner, base_dest)
+
+      :bns_v1 ->
+        print_bns_plan(name, v1_identity, owner, base_owner, base_dest)
+
+      nil ->
+        IO.puts("No work.")
+    end
+  end
+
+  defp print_identity_plan(label, identity, deployed?, owner, fleet, deployer) do
+    current_members = if deployed?, do: members_of(Chains.Base, identity), else: []
+    current_owner = if deployed?, do: owner_of(Chains.Base, identity), else: deployer
+    plan = BnsMigrate.sync_member_plan(current_members, fleet, deployer, owner, current_owner)
+
+    IO.puts("""
+    Would #{if deployed?, do: "sync", else: "create+sync"} #{label} identity #{Base16.encode(identity)}:
+      Create?=#{not deployed?}
+      AddMember x#{length(plan.add)}
+    #{Enum.map(plan.add, fn a -> "        - #{Base16.encode(a)}" end) |> Enum.join("\n")}
+      RemoveMember(deployer)?=#{plan.remove_deployer?}
+      transferOwnership(#{Base16.encode(owner)})?=#{plan.transfer?}
+    """)
+  end
+
+  defp print_bns_plan(name, identity, owner, base_owner, base_dest) do
+    if BnsMigrate.needs_bns_register?(base_owner, owner, base_dest, identity) do
+      IO.puts("""
+      Would update BNS:
+        Register("#{name}", #{Base16.encode(identity)})
+        TransferOwner("#{name}", #{Base16.encode(owner)})
+      """)
+    else
+      IO.puts("BNS already points at #{Base16.encode(identity)} owned by #{Base16.encode(owner)}")
+    end
+  end
+
+  defp fmt_addr(nil), do: "nil"
+  defp fmt_addr(addr), do: if(null?(addr), do: "nil", else: Base16.encode(addr))
 end
 
-# curl -k -H "Content-Type: application/json" -X POST --data '{"jsonrpc":"2.0","method":"eth_getStorage","params":["0xaf60faa5cd840b724742f1af116168276112d6a6", "latest"],"id":73}' https://prenet.diode.io:8443 > bns_2026_03_13.json
+# curl -k -H "Content-Type: application/json" -X POST --data '{"jsonrpc":"2.0","method":"eth_getStorage","params":["0xaf60faa5cd840b724742f1af116168276112d6a6", "latest"],"id":73}' https://prenet.diode.io:8443 > bns_2026_08_01.json
 
-only_names =
-  System.argv()
-  |> Enum.map(&Helper.normalize_name/1)
-  |> Enum.reject(&(&1 == ""))
+{dry_run, only_names} =
+  case BnsMigrate.parse_argv(System.argv()) do
+    {:ok, %{dry_run: dry_run, names: names}} ->
+      only =
+        names
+        |> Enum.map(&BnsMigrate.normalize_name/1)
+        |> Enum.reject(&(&1 == ""))
+
+      {dry_run, only}
+
+    {:error, {:unknown_args, unknown}} ->
+      IO.puts(:stderr, """
+      Unknown argument(s): #{Enum.join(unknown, ", ")}
+
+      Usage:
+        elixir bns.exs [--dry-run] [name ...]
+      """)
+
+      System.halt(1)
+  end
 
 storage =
-  File.read!("bns_2026_03_13.json")
+  File.read!("bns_2026_08_01.json")
   |> Poison.decode!()
   |> Map.get("result")
   |> Enum.map(fn
@@ -435,26 +586,18 @@ names =
   |> Enum.sort()
   |> Enum.uniq()
 
-names =
-  case only_names do
-    [] ->
-      names
+{names, missing} = BnsMigrate.apply_name_filter(names, only_names)
 
-    only ->
-      filtered = Enum.filter(names, &(&1 in only))
-      missing = only -- filtered
-
-      if missing != [] do
-        IO.puts(
-          "Names not in dump (owner will be resolved on-chain): #{Enum.join(missing, ", ")}"
-        )
-      end
-
-      filtered ++ missing
-  end
+if missing != [] do
+  IO.puts("Names not in dump (owner will be resolved on-chain): #{Enum.join(missing, ", ")}")
+end
 
 if only_names != [] do
   IO.puts("Filter: #{Enum.join(only_names, ", ")}")
+end
+
+if dry_run do
+  IO.puts("Mode: dry-run (no transactions)")
 end
 
 IO.puts("Names: #{length(names)}")
@@ -512,150 +655,121 @@ work =
             {identity, deployed?}
         end
 
-      base_dest = Helper.resolve_destination(name)
-      base_owner = Helper.resolve_owner(name)
-      {fleet, l1_identity} = Helper.origin_fleet(name, owner)
       {repair_identity, repair_deployed?} = Helper.identity_deployed?(repair_salt)
 
-      # Prefer the live BNS destination when present; else the v1 CREATE2 address.
-      current_identity =
-        cond do
-          not Helper.null?(base_dest) and Helper.has_code?(Chains.Base, base_dest) ->
-            base_dest
+      item =
+        Helper.classify_work_item(
+          name,
+          owner,
+          deployer,
+          v1_identity,
+          v1_deployed?,
+          repair_identity,
+          repair_deployed?
+        )
 
-          v1_deployed? ->
-            v1_identity
-
-          true ->
-            nil
-        end
-
-      broken? =
-        is_binary(current_identity) and is_binary(l1_identity) and
-          Helper.broken_identity?(current_identity, l1_identity)
-
-      # Already repaired: BNS points at repair identity with complete membership.
-      repaired? =
-        repair_deployed? and base_dest == repair_identity and
-          Helper.members_complete?(repair_identity, fleet, deployer)
-
-      bns_needs_v1? =
-        not broken? and not repaired? and
-          (Helper.null?(base_owner) or base_owner != owner or base_dest != v1_identity)
-
-      action =
-        cond do
-          repaired? ->
-            nil
-
-          broken? ->
-            :repair
-
-          not v1_deployed? ->
-            :create
-
-          v1_deployed? and Helper.owner_of(Chains.Base, v1_identity) == deployer ->
-            :resume_v1
-
-          bns_needs_v1? ->
-            :bns_v1
-
-          true ->
-            nil
-        end
-
-      if action do
-        if action == :repair do
+      if item.action do
+        if item.action == :repair do
           IO.puts(
-            "REPAIR #{name}: broken #{Base16.encode(current_identity)} (owner-only on Base, fleet on L1) -> #{Base16.encode(repair_identity)}"
+            "REPAIR #{name}: broken #{Base16.encode(item.current_identity)} (owner-only on Base, fleet on L1) -> #{Base16.encode(repair_identity)}"
           )
         end
 
-        {action, name, owner, owner_slot, fleet, v1_salt, v1_identity, repair_salt,
-         repair_identity}
+        {item.action, name, owner, owner_slot, item.fleet, v1_salt, v1_identity, repair_salt,
+         repair_identity, item}
       end
     end
   end
   |> Enum.reject(&is_nil/1)
 
 {repairs, _other} =
-  Enum.split_with(work, fn {action, _, _, _, _, _, _, _, _} -> action == :repair end)
+  Enum.split_with(work, fn {action, _, _, _, _, _, _, _, _, _} -> action == :repair end)
 
 IO.puts("Work: #{length(work)} (repairs=#{length(repairs)})")
 DetsPlus.sync(:base_cache)
 
-work =
-  Enum.shuffle(work)
-  |> Enum.chunk_every(1)
+if dry_run do
+  Enum.each(work, fn {_action, _name, _owner, _slot, _fleet, _v1_salt, _v1_id, _r_salt, _r_id,
+                      item} ->
+    Helper.print_dry_run(item, deployer)
+  end)
 
-for chunk <- work do
-  balance = Helper.ensure_gas!(wallet)
-  IO.puts("Wallet: #{Base16.encode(deployer)} Balance: #{balance}")
+  IO.puts("\nDone (dry-run). #{length(work)} item(s).")
+else
+  work =
+    Enum.shuffle(work)
+    |> Enum.chunk_every(1)
 
-  Enum.each(
-    chunk,
-    fn {action, name, owner, slot, fleet, v1_salt, v1_identity, repair_salt, _repair_identity} ->
-      Process.sleep(100)
-      DetsPlus.delete(:base_cache, slot)
-      DetsPlus.sync(:base_cache)
+  for chunk <- work do
+    balance = Helper.ensure_gas!(wallet)
+    IO.puts("Wallet: #{Base16.encode(deployer)} Balance: #{balance}")
 
-      nonce =
-        RemoteChain.RPC.get_transaction_count(Chains.Base, Base16.encode(deployer))
-        |> Base16.decode_int()
+    Enum.each(
+      chunk,
+      fn {action, name, owner, slot, fleet, v1_salt, v1_identity, repair_salt, _repair_identity,
+          _item} ->
+        Process.sleep(100)
+        DetsPlus.delete(:base_cache, slot)
+        DetsPlus.sync(:base_cache)
 
-      IO.puts(
-        "Prepare #{name} action=#{action} owner=#{Base16.encode(owner)} fleet=#{length(fleet)} ..."
-      )
+        nonce =
+          RemoteChain.RPC.get_transaction_count(Chains.Base, Base16.encode(deployer))
+          |> Base16.decode_int()
 
-      case action do
-        :repair ->
-          {identity, _n} =
-            Helper.ensure_identity(wallet, repair_salt, owner, fleet, deployer, nonce)
+        IO.puts(
+          "Prepare #{name} action=#{action} owner=#{Base16.encode(owner)} fleet=#{length(fleet)} ..."
+        )
 
-          base_dest = Helper.resolve_destination(name)
-          base_owner = Helper.resolve_owner(name)
+        case action do
+          :repair ->
+            {identity, _n} =
+              Helper.ensure_identity(wallet, repair_salt, owner, fleet, deployer, nonce)
 
-          if base_dest != identity or base_owner != owner do
-            nonce =
-              RemoteChain.RPC.get_transaction_count(Chains.Base, Base16.encode(deployer))
-              |> Base16.decode_int()
+            base_dest = Helper.resolve_destination(name)
+            base_owner = Helper.resolve_owner(name)
 
-            Helper.register_bns(wallet, name, identity, owner, nonce)
-          end
+            if BnsMigrate.needs_bns_register?(base_owner, owner, base_dest, identity) do
+              nonce =
+                RemoteChain.RPC.get_transaction_count(Chains.Base, Base16.encode(deployer))
+                |> Base16.decode_int()
 
-        :create ->
-          {identity, _n} =
-            Helper.ensure_identity(wallet, v1_salt, owner, fleet, deployer, nonce)
+              Helper.register_bns(wallet, name, identity, owner, nonce)
+            end
 
-          base_dest = Helper.resolve_destination(name)
-          base_owner = Helper.resolve_owner(name)
+          :create ->
+            {identity, _n} =
+              Helper.ensure_identity(wallet, v1_salt, owner, fleet, deployer, nonce)
 
-          if Helper.null?(base_owner) or base_owner != owner or base_dest != identity do
-            nonce =
-              RemoteChain.RPC.get_transaction_count(Chains.Base, Base16.encode(deployer))
-              |> Base16.decode_int()
+            base_dest = Helper.resolve_destination(name)
+            base_owner = Helper.resolve_owner(name)
 
-            Helper.register_bns(wallet, name, identity, owner, nonce)
-          end
+            if BnsMigrate.needs_bns_register?(base_owner, owner, base_dest, identity) do
+              nonce =
+                RemoteChain.RPC.get_transaction_count(Chains.Base, Base16.encode(deployer))
+                |> Base16.decode_int()
 
-        :resume_v1 ->
-          {_identity, _n} =
-            Helper.ensure_identity(wallet, v1_salt, owner, fleet, deployer, nonce)
+              Helper.register_bns(wallet, name, identity, owner, nonce)
+            end
 
-          base_dest = Helper.resolve_destination(name)
-          base_owner = Helper.resolve_owner(name)
+          :resume_v1 ->
+            {_identity, _n} =
+              Helper.ensure_identity(wallet, v1_salt, owner, fleet, deployer, nonce)
 
-          if Helper.null?(base_owner) or base_owner != owner or base_dest != v1_identity do
-            nonce =
-              RemoteChain.RPC.get_transaction_count(Chains.Base, Base16.encode(deployer))
-              |> Base16.decode_int()
+            base_dest = Helper.resolve_destination(name)
+            base_owner = Helper.resolve_owner(name)
 
+            if BnsMigrate.needs_bns_register?(base_owner, owner, base_dest, v1_identity) do
+              nonce =
+                RemoteChain.RPC.get_transaction_count(Chains.Base, Base16.encode(deployer))
+                |> Base16.decode_int()
+
+              Helper.register_bns(wallet, name, v1_identity, owner, nonce)
+            end
+
+          :bns_v1 ->
             Helper.register_bns(wallet, name, v1_identity, owner, nonce)
-          end
-
-        :bns_v1 ->
-          Helper.register_bns(wallet, name, v1_identity, owner, nonce)
+        end
       end
-    end
-  )
+    )
+  end
 end
