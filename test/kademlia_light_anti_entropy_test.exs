@@ -23,11 +23,23 @@ defmodule KademliaLightAntiEntropyTest do
     Model.KademliaSql.put_object(hkey, value)
   end
 
+  defp store_rpc(parent, tag) do
+    fn nodes, call ->
+      case call do
+        [:store, key, _value] ->
+          send(parent, {tag, key, Enum.map(nodes, & &1.address)})
+          Enum.map(nodes, fn _ -> ["ok"] end)
+
+        _ ->
+          Enum.map(nodes, fn _ -> [] end)
+      end
+    end
+  end
+
   test "anti-entropy repairs only keys where self is in nearest-N" do
     self = Diode.wallet()
     peers = for _ <- 1..8, do: Wallet.new()
-    addresses = Enum.map(peers, &Wallet.address!/1)
-    assert :ok = Model.KademliaSql.sync_registry_nodes(addresses)
+    assert :ok = Model.KademliaSql.sync_registry_nodes(Enum.map(peers, &Wallet.address!/1))
 
     ring = [Node.new(self) | Enum.map(peers, &Node.new/1)]
     :ets.insert(:kademlia_network, {:ring, ring})
@@ -35,16 +47,12 @@ defmodule KademliaLightAntiEntropyTest do
     candidates =
       for i <- 1..80 do
         hkey = KademliaLight.hash(<<i::256>>)
-        value = data_value(i)
-        put_local(hkey, value)
-        {hkey, value}
+        put_local(hkey, data_value(i))
+        hkey
       end
 
-    # Live GenServer may reload :ring after sync; pin again before classification/run.
-    :ets.insert(:kademlia_network, {:ring, ring})
-
     {owned, foreign} =
-      Enum.split_with(candidates, fn {hkey, _} ->
+      Enum.split_with(candidates, fn hkey ->
         nearest = KademliaRing.nearest_n(ring, hkey, 3)
         Enum.any?(nearest, &KademliaRing.is_self/1)
       end)
@@ -53,73 +61,36 @@ defmodule KademliaLightAntiEntropyTest do
     assert foreign != []
 
     parent = self()
-
-    rpc_fun = fn nodes, call ->
-      case call do
-        [:store, key, _value] ->
-          send(parent, {:store, key, Enum.map(nodes, & &1.address)})
-          Enum.map(nodes, fn _ -> ["ok"] end)
-
-        _ ->
-          Enum.map(nodes, fn _ -> [] end)
-      end
-    end
-
     online = Map.new(peers, fn w -> {Wallet.address!(w), self()} end)
 
-    {repaired, _cursor} =
-      KademliaLight.anti_entropy_with_rpc_test(rpc_fun, online, batch: 100, ring: ring)
+    {attempted, _cursor} =
+      KademliaLight.anti_entropy_with_rpc_test(store_rpc(parent, :store), online,
+        batch: 100,
+        ring: ring
+      )
 
-    repaired_set = MapSet.new(repaired)
-    owned_set = MapSet.new(Enum.map(owned, &elem(&1, 0)))
-    foreign_set = MapSet.new(Enum.map(foreign, &elem(&1, 0)))
-    candidate_set = MapSet.union(owned_set, foreign_set)
+    attempted_set =
+      MapSet.new(attempted)
+      |> MapSet.intersection(MapSet.new(candidates))
 
-    # Ignore any background objects outside this test's planted keys.
-    repaired_set = MapSet.intersection(repaired_set, candidate_set)
+    assert attempted_set == MapSet.new(owned)
 
-    assert MapSet.subset?(repaired_set, owned_set)
-    assert MapSet.disjoint?(repaired_set, foreign_set)
-    assert repaired_set == owned_set
-
-    for {hkey, _} <- foreign do
-      refute_received {:store, ^hkey, _}
-    end
-
-    for hkey <- repaired_set do
-      assert_received {:store, ^hkey, _}
-    end
+    for hkey <- foreign, do: refute_received({:store, ^hkey, _})
+    for hkey <- attempted_set, do: assert_received({:store, ^hkey, _})
   end
 
   test "anti-entropy is cursor-batched and advances without reshuffling" do
     self = Diode.wallet()
-    # Only two peers so self is always in nearest-3 for every key
     peers = for _ <- 1..2, do: Wallet.new()
-    addresses = Enum.map(peers, &Wallet.address!/1)
-    assert :ok = Model.KademliaSql.sync_registry_nodes(addresses)
+    assert :ok = Model.KademliaSql.sync_registry_nodes(Enum.map(peers, &Wallet.address!/1))
 
     ring = [Node.new(self) | Enum.map(peers, &Node.new/1)]
     :ets.insert(:kademlia_network, {:ring, ring})
 
-    for i <- 1..25 do
-      hkey = <<i::256>>
-      put_local(hkey, data_value(i))
-    end
-
-    parent = self()
-
-    rpc_fun = fn _nodes, call ->
-      case call do
-        [:store, key, _value] ->
-          send(parent, {:store, key})
-          [["ok"]]
-
-        _ ->
-          [[]]
-      end
-    end
+    for i <- 1..25, do: put_local(<<i::256>>, data_value(i))
 
     online = Map.new(peers, fn w -> {Wallet.address!(w), self()} end)
+    rpc_fun = store_rpc(self(), :store)
 
     {first, cursor1} =
       KademliaLight.anti_entropy_with_rpc_test(rpc_fun, online,
@@ -140,7 +111,7 @@ defmodule KademliaLightAntiEntropyTest do
 
     assert length(second) == 10
     assert cursor2 == <<20::256>>
-    refute Enum.any?(second, fn key -> key in first end)
+    refute Enum.any?(second, &(&1 in first))
 
     {third, cursor3} =
       KademliaLight.anti_entropy_with_rpc_test(rpc_fun, online,
@@ -165,18 +136,16 @@ defmodule KademliaLightAntiEntropyTest do
 
     ring = [Node.new(self), Node.new(joiner) | Enum.map(others, &Node.new/1)]
     :ets.insert(:kademlia_network, {:ring, ring})
-
     joiner_node = Node.new(joiner)
 
     {for_joiner, not_for_joiner} =
       Enum.split_with(
         for i <- 1..80 do
           hkey = KademliaLight.hash(<<i + 100::256>>)
-          value = data_value(i)
-          put_local(hkey, value)
-          {hkey, value}
+          put_local(hkey, data_value(i))
+          hkey
         end,
-        fn {hkey, _} ->
+        fn hkey ->
           nearest = KademliaRing.nearest_n(ring, hkey, 3)
           Enum.any?(nearest, fn %Node{address: addr} -> addr == joiner_node.address end)
         end
@@ -186,42 +155,26 @@ defmodule KademliaLightAntiEntropyTest do
     assert not_for_joiner != []
 
     parent = self()
-
-    rpc_fun = fn nodes, call ->
-      case call do
-        [:store, key, _value] ->
-          send(parent, {:join_store, key, Enum.map(nodes, & &1.address)})
-          Enum.map(nodes, fn _ -> ["ok"] end)
-
-        _ ->
-          Enum.map(nodes, fn _ -> [] end)
-      end
-    end
-
     online = %{joiner_node.address => self()}
 
     pushed =
-      KademliaLight.join_catchup_with_rpc_test(joiner_node, rpc_fun, online, ring: ring)
+      KademliaLight.join_catchup_with_rpc_test(
+        joiner_node,
+        store_rpc(parent, :join_store),
+        online,
+        ring: ring
+      )
 
-    page_keys =
-      Model.KademliaSql.objects_page(nil, 100)
-      |> Enum.map(&elem(&1, 0))
-      |> MapSet.new()
+    # Join catch-up only scans the first objects_page batch.
+    page_keys = MapSet.new(Enum.map(Model.KademliaSql.objects_page(nil, 100), &elem(&1, 0)))
+    expected = MapSet.intersection(MapSet.new(for_joiner), page_keys)
 
-    expected =
-      for_joiner
-      |> Enum.map(&elem(&1, 0))
-      |> MapSet.new()
-      |> MapSet.intersection(page_keys)
+    assert MapSet.intersection(MapSet.new(pushed), page_keys) == expected
 
-    assert MapSet.new(pushed) |> MapSet.intersection(page_keys) == expected
+    addr = joiner_node.address
+    for hkey <- expected, do: assert_received({:join_store, ^hkey, [^addr]})
 
-    for hkey <- expected do
-      addr = joiner_node.address
-      assert_received {:join_store, ^hkey, [^addr]}
-    end
-
-    for {hkey, _} <- not_for_joiner, MapSet.member?(page_keys, hkey) do
+    for hkey <- not_for_joiner, MapSet.member?(page_keys, hkey) do
       refute_received {:join_store, ^hkey, _}
     end
   end
@@ -233,16 +186,11 @@ defmodule KademliaLightAntiEntropyTest do
     assert :ok = Model.KademliaSql.sync_registry_nodes([Wallet.address!(joiner)])
     ring = [Node.new(self), Node.new(joiner)]
     :ets.insert(:kademlia_network, {:ring, ring})
+    put_local(KademliaLight.hash(<<200::256>>), data_value(1))
 
-    hkey = KademliaLight.hash(<<200::256>>)
-    put_local(hkey, data_value(1))
+    rpc_fun = fn _nodes, _call -> flunk("should not RPC to offline peer") end
 
-    rpc_fun = fn _nodes, _call ->
-      flunk("should not RPC to offline peer")
-    end
-
-    assert [] ==
-             KademliaLight.join_catchup_with_rpc_test(Node.new(joiner), rpc_fun, %{})
+    assert [] == KademliaLight.join_catchup_with_rpc_test(Node.new(joiner), rpc_fun, %{})
   end
 
   test "anti-entropy skips store RPC when no replica peers are online" do
@@ -253,16 +201,14 @@ defmodule KademliaLightAntiEntropyTest do
     ring = [Node.new(self), Node.new(peer)]
     :ets.insert(:kademlia_network, {:ring, ring})
 
-    # Find a key where self is a rightful replica
-    {hkey, _value} =
+    hkey =
       Enum.find_value(1..80, fn i ->
         hkey = KademliaLight.hash(<<i + 300::256>>)
         nearest = KademliaRing.nearest_n(ring, hkey, 3)
 
         if Enum.any?(nearest, &KademliaRing.is_self/1) do
-          value = data_value(i)
-          put_local(hkey, value)
-          {hkey, value}
+          put_local(hkey, data_value(i))
+          hkey
         end
       end)
 
@@ -272,10 +218,9 @@ defmodule KademliaLightAntiEntropyTest do
       flunk("should not RPC when replica targets are offline")
     end
 
-    {repaired, _} =
+    {attempted, _} =
       KademliaLight.anti_entropy_with_rpc_test(rpc_fun, %{}, batch: 100, ring: ring)
 
-    # Self is responsible so key is selected, but repair finds no online remotes
-    assert hkey in repaired
+    assert hkey in attempted
   end
 end

@@ -440,13 +440,11 @@ defmodule KademliaLight do
   defp queue_join_catchup(node) do
     Debouncer.apply(
       {:join_catchup, node.address},
-      fn -> join_catchup(node) end,
+      fn ->
+        join_catchup_with_rpc(node, &rpc/2, ready_connections(), ring_nodes())
+      end,
       @join_catchup_debounce
     )
-  end
-
-  defp join_catchup(%Node{} = node) do
-    join_catchup_with_rpc(node, &rpc/2, ready_connections(), ring_nodes())
   end
 
   defp join_catchup_with_rpc(%Node{} = node, rpc_fun, ready, ring)
@@ -454,76 +452,71 @@ defmodule KademliaLight do
     if not Map.has_key?(ready, node.address) do
       []
     else
-      KademliaSql.objects_page(nil, @anti_entropy_batch)
-      |> Enum.filter(fn {key, value} ->
-        nearest = KademliaRing.nearest_n(ring, key, @n)
-
-        if Enum.any?(nearest, fn %Node{address: addr} -> addr == node.address end) do
-          rpc_fun.([node], [PeerHandlerV2.store(), key, value])
-          true
-        else
-          false
-        end
-      end)
-      |> Enum.map(&elem(&1, 0))
+      for {key, value} <- KademliaSql.objects_page(nil, @anti_entropy_batch),
+          in_nearest_n?(ring, key, node.address) do
+        rpc_fun.([node], [PeerHandlerV2.store(), key, value])
+        key
+      end
     end
   end
 
   defp run_anti_entropy do
-    cursor = anti_entropy_cursor()
+    cursor =
+      case :ets.lookup(@ets_table, :anti_entropy_cursor) do
+        [{:anti_entropy_cursor, cursor}] -> cursor
+        _ -> nil
+      end
 
-    {repaired, next_cursor} =
-      do_anti_entropy(cursor, @anti_entropy_batch, &rpc/2, nil, ring_nodes())
+    ready = ready_connections()
 
-    put_anti_entropy_cursor(next_cursor)
+    {attempted, next_cursor} =
+      do_anti_entropy(cursor, @anti_entropy_batch, &rpc/2, ready, ring_nodes())
 
-    if repaired != [] do
+    :ets.insert(@ets_table, {:anti_entropy_cursor, next_cursor})
+
+    if attempted != [] do
       Logger.info(
-        "Anti-entropy: repaired #{length(repaired)} object(s) (batch=#{@anti_entropy_batch})"
+        "Anti-entropy: attempted #{length(attempted)} object(s) (batch=#{@anti_entropy_batch})"
       )
     end
 
-    {repaired, next_cursor}
+    :ok
   end
 
   defp do_anti_entropy(cursor, batch, rpc_fun, ready, ring)
        when is_integer(batch) and is_function(rpc_fun, 2) and is_list(ring) do
     page = KademliaSql.objects_page(cursor, batch)
 
-    repaired =
-      Enum.filter(page, fn {key, value} ->
-        nearest = KademliaRing.nearest_n(ring, key, @n)
-
-        if Enum.any?(nearest, &KademliaRing.is_self/1) do
-          repair_replicas_with_rpc(key, value, rpc_fun, ready)
-          true
-        else
-          false
-        end
-      end)
-      |> Enum.map(&elem(&1, 0))
-
-    next_cursor =
-      case List.last(page) do
-        nil ->
-          nil
-
-        {key, _} ->
-          if length(page) < batch, do: nil, else: key
+    attempted =
+      for {key, value} <- page, in_nearest_n?(ring, key, :self) do
+        repair_replicas_with_rpc(key, value, rpc_fun, ready)
+        key
       end
 
-    {repaired, next_cursor}
+    {attempted, next_page_cursor(page, batch)}
   end
 
-  defp anti_entropy_cursor do
-    case :ets.lookup(@ets_table, :anti_entropy_cursor) do
-      [{:anti_entropy_cursor, cursor}] -> cursor
-      _ -> nil
+  defp next_page_cursor([], _batch), do: nil
+
+  defp next_page_cursor(page, batch) do
+    if length(page) < batch do
+      nil
+    else
+      {key, _} = List.last(page)
+      key
     end
   end
 
-  defp put_anti_entropy_cursor(cursor) do
-    :ets.insert(@ets_table, {:anti_entropy_cursor, cursor})
+  defp in_nearest_n?(ring, key, :self) do
+    ring
+    |> KademliaRing.nearest_n(key, @n)
+    |> Enum.any?(&KademliaRing.is_self/1)
+  end
+
+  defp in_nearest_n?(ring, key, address) when is_binary(address) do
+    ring
+    |> KademliaRing.nearest_n(key, @n)
+    |> Enum.any?(fn %Node{address: addr} -> addr == address end)
   end
 
   defp load_ring() do

@@ -445,52 +445,37 @@ defmodule Model.KademliaSql do
     bstart = <<range_start::integer-size(256)>>
     bend = <<range_end::integer-size(256)>>
 
-    if range_start < range_end do
-      query!(
-        "SELECT key, object FROM p2p_objects WHERE (key >= ?1 AND key <= ?2) AND stored_at > ?3",
-        [bstart, bend, stale_silence_deadline()]
-      )
-    else
-      query!(
-        "SELECT key, object FROM p2p_objects WHERE (key >= ?1 OR key <= ?2) AND stored_at > ?3",
-        [bstart, bend, stale_silence_deadline()]
-      )
-    end
-    |> Enum.reduce([], fn [key, object_blob], acc ->
-      [{key, BertInt.decode!(object_blob)} | acc]
-    end)
-    |> Enum.reverse()
+    rows =
+      if range_start < range_end do
+        query!(
+          "SELECT key, object FROM p2p_objects WHERE (key >= ?1 AND key <= ?2) AND stored_at > ?3",
+          [bstart, bend, stale_silence_deadline()]
+        )
+      else
+        query!(
+          "SELECT key, object FROM p2p_objects WHERE (key >= ?1 OR key <= ?2) AND stored_at > ?3",
+          [bstart, bend, stale_silence_deadline()]
+        )
+      end
+
+    decode_object_rows(rows)
   end
 
   def objects_page(after_key \\ nil, limit \\ 100)
       when is_integer(limit) and limit > 0 do
-    deadline = stale_silence_deadline()
+    query!(
+      """
+      SELECT key, object FROM p2p_objects
+      WHERE stored_at > ?1 AND (?2 IS NULL OR key > ?2)
+      ORDER BY key ASC
+      LIMIT ?3
+      """,
+      [stale_silence_deadline(), after_key, limit]
+    )
+    |> decode_object_rows()
+  end
 
-    rows =
-      case after_key do
-        nil ->
-          query!(
-            """
-            SELECT key, object FROM p2p_objects
-            WHERE stored_at > ?1
-            ORDER BY key ASC
-            LIMIT ?2
-            """,
-            [deadline, limit]
-          )
-
-        key when is_binary(key) ->
-          query!(
-            """
-            SELECT key, object FROM p2p_objects
-            WHERE stored_at > ?1 AND key > ?2
-            ORDER BY key ASC
-            LIMIT ?3
-            """,
-            [deadline, key, limit]
-          )
-      end
-
+  defp decode_object_rows(rows) do
     Enum.map(rows, fn [key, object_blob] ->
       {key, BertInt.decode!(object_blob)}
     end)

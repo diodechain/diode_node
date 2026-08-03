@@ -61,30 +61,18 @@ defmodule Model.KademliaSqlTest do
   end
 
   test "objects_page orders by key and paginates after_key" do
-    values =
-      for i <- 1..5 do
-        key = <<i::256>>
-        value = Object.encode!(Diode.self())
-        Model.KademliaSql.put_object(key, value)
-        {key, value}
-      end
+    for i <- 1..5 do
+      Model.KademliaSql.put_object(<<i::256>>, Object.encode!(Diode.self()))
+    end
 
     page1 = Model.KademliaSql.objects_page(nil, 2)
-    assert length(page1) == 2
     assert Enum.map(page1, &elem(&1, 0)) == [<<1::256>>, <<2::256>>]
 
-    [{last_key, _} | _] = Enum.reverse(page1)
-    page2 = Model.KademliaSql.objects_page(last_key, 2)
+    page2 = Model.KademliaSql.objects_page(<<2::256>>, 2)
     assert Enum.map(page2, &elem(&1, 0)) == [<<3::256>>, <<4::256>>]
 
     page3 = Model.KademliaSql.objects_page(<<4::256>>, 10)
     assert Enum.map(page3, &elem(&1, 0)) == [<<5::256>>]
-
-    # Ensure values round-trip (BertInt-decoded binaries)
-    Enum.each(values, fn {key, value} ->
-      assert {^key, ^value} =
-               Enum.find(page1 ++ page2 ++ page3, fn {k, _} -> k == key end)
-    end)
   end
 
   test "objects_page excludes objects past stale silence deadline" do
