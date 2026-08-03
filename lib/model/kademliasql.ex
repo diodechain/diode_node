@@ -10,8 +10,6 @@ defmodule Model.KademliaSql do
   import Wallet
   require Logger
 
-  @redistribute_after_seconds 20 * 60
-
   @day_seconds 86_400
   # Don't report after two days
   @stale_silence_seconds @day_seconds * 2
@@ -103,10 +101,6 @@ defmodule Model.KademliaSql do
         |> Enum.map(&hd/1)
         |> Enum.filter(fn addr -> not MapSet.member?(registry_set, addr) end)
 
-      for addr <- removed do
-        KademliaLight.redistribute_removed_node(addr)
-      end
-
       query!("BEGIN IMMEDIATE")
 
       try do
@@ -140,6 +134,11 @@ defmodule Model.KademliaSql do
       end
 
       GenServer.cast(KademliaLight, :reload_ring)
+
+      if removed != [] do
+        KademliaLight.kick_anti_entropy()
+      end
+
       :ok
     end
   end
@@ -310,21 +309,6 @@ defmodule Model.KademliaSql do
     )
   end
 
-  def nodes_needing_redistribution(now \\ now_seconds()) do
-    cutoff = now - @redistribute_after_seconds
-
-    query!(
-      """
-      SELECT address, ring_key FROM p2p_nodes
-      WHERE known_good = 1
-        AND first_failure IS NOT NULL
-        AND first_failure <= ?1
-      """,
-      [cutoff]
-    )
-    |> Enum.map(fn [address, ring_key] -> {address, ring_key} end)
-  end
-
   def delete_nodes_by_ring_keys(keys) when is_list(keys) do
     for key <- keys do
       query!("DELETE FROM p2p_nodes WHERE ring_key = ?1 AND address != ?2", [
@@ -461,21 +445,40 @@ defmodule Model.KademliaSql do
     bstart = <<range_start::integer-size(256)>>
     bend = <<range_end::integer-size(256)>>
 
-    if range_start < range_end do
-      query!(
-        "SELECT key, object FROM p2p_objects WHERE (key >= ?1 AND key <= ?2) AND stored_at > ?3",
-        [bstart, bend, stale_silence_deadline()]
-      )
-    else
-      query!(
-        "SELECT key, object FROM p2p_objects WHERE (key >= ?1 OR key <= ?2) AND stored_at > ?3",
-        [bstart, bend, stale_silence_deadline()]
-      )
-    end
-    |> Enum.reduce([], fn [key, object_blob], acc ->
-      [{key, BertInt.decode!(object_blob)} | acc]
+    rows =
+      if range_start < range_end do
+        query!(
+          "SELECT key, object FROM p2p_objects WHERE (key >= ?1 AND key <= ?2) AND stored_at > ?3",
+          [bstart, bend, stale_silence_deadline()]
+        )
+      else
+        query!(
+          "SELECT key, object FROM p2p_objects WHERE (key >= ?1 OR key <= ?2) AND stored_at > ?3",
+          [bstart, bend, stale_silence_deadline()]
+        )
+      end
+
+    decode_object_rows(rows)
+  end
+
+  def objects_page(after_key \\ nil, limit \\ 100)
+      when is_integer(limit) and limit > 0 do
+    query!(
+      """
+      SELECT key, object FROM p2p_objects
+      WHERE stored_at > ?1 AND (?2 IS NULL OR key > ?2)
+      ORDER BY key ASC
+      LIMIT ?3
+      """,
+      [stale_silence_deadline(), after_key, limit]
+    )
+    |> decode_object_rows()
+  end
+
+  defp decode_object_rows(rows) do
+    Enum.map(rows, fn [key, object_blob] ->
+      {key, BertInt.decode!(object_blob)}
     end)
-    |> Enum.reverse()
   end
 
   defp await(chain) do

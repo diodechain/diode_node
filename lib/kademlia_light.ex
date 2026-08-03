@@ -21,7 +21,9 @@ defmodule KademliaLight do
   @w 2
   @r 1
   @ets_table :kademlia_network
-  @redistribute_interval :timer.minutes(2)
+  @anti_entropy_interval :timer.minutes(5)
+  @anti_entropy_batch 100
+  @join_catchup_debounce :timer.minutes(2)
   @contact_interval :timer.minutes(1)
   @discover_batch 40
   @discover_throttle_seconds 3600
@@ -146,18 +148,11 @@ defmodule KademliaLight do
     GenServer.call(__MODULE__, {:drop_nodes, keys}, 60_000)
   end
 
-  def redistribute_removed_node(address) do
-    Debouncer.apply(
-      {:redistribute_removed, address},
-      fn ->
-        node = Node.new(Wallet.from_address(address))
-
-        spawn(__MODULE__, :redistribute_stale, [
-          ring_nodes(),
-          node
-        ])
-      end,
-      :timer.minutes(2)
+  def kick_anti_entropy do
+    Debouncer.immediate2(
+      :anti_entropy,
+      fn -> run_anti_entropy() end,
+      @anti_entropy_interval
     )
   end
 
@@ -213,7 +208,7 @@ defmodule KademliaLight do
     state = %{state | ring: ring}
 
     :timer.send_interval(@contact_interval, :contact_nodes)
-    :timer.send_interval(@redistribute_interval, :scan_redistribution)
+    :timer.send_interval(@anti_entropy_interval, :anti_entropy)
 
     {:noreply, _} = handle_info(:contact_nodes, state)
     {:noreply, state}
@@ -263,8 +258,7 @@ defmodule KademliaLight do
   def handle_cast({:stable_node, node_id}, state) do
     KademliaSql.mark_stable(node_id)
     update_ets_meta(node_id)
-    node = Node.new(node_id)
-    queue_redistribute(node)
+    queue_join_catchup(Node.new(node_id))
     {:noreply, state}
   end
 
@@ -296,31 +290,9 @@ defmodule KademliaLight do
     {:noreply, state}
   end
 
-  def handle_info(:scan_redistribution, state) do
-    ready = Network.PeerServer.get_ready_connections()
-
-    for {address, _ring_key} <- KademliaSql.nodes_needing_redistribution() do
-      if not Map.has_key?(ready, address) do
-        node = Node.new(Wallet.from_address(address))
-
-        Debouncer.apply(
-          {:redistribute_stale, address},
-          fn -> redistribute_stale(ring_nodes(), node) end,
-          :timer.minutes(2)
-        )
-      end
-    end
-
+  def handle_info(:anti_entropy, state) do
+    kick_anti_entropy()
     {:noreply, state}
-  end
-
-  def update_stale_nodes(stale, network) do
-    Process.register(self(), :stale_nodes_updater)
-    Logger.info("Redistributing #{length(stale)} stale nodes")
-
-    for stale_node <- stale do
-      redistribute_stale(network, stale_node)
-    end
   end
 
   def rpc(nodes, call) when is_list(nodes) do
@@ -465,83 +437,86 @@ defmodule KademliaLight do
     GenServer.cast(ensure_node_connection(node), {:rpc, call})
   end
 
-  defp queue_redistribute(node) do
+  defp queue_join_catchup(node) do
     Debouncer.apply(
-      {:redistribute, node.node_id},
-      fn -> redistribute(node) end,
-      :timer.minutes(2)
+      {:join_catchup, node.address},
+      fn ->
+        join_catchup_with_rpc(node, &rpc/2, ready_connections(), ring_nodes())
+      end,
+      @join_catchup_debounce
     )
   end
 
-  @max_key 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF
-
-  def node_range(node, network \\ ring_nodes()) do
-    online = ready_connections()
-
-    node =
-      case node do
-        %Node{} -> node
-        key -> Enum.find(network, fn n -> KademliaRing.key(n) == KademliaRing.key(key) end)
+  defp join_catchup_with_rpc(%Node{} = node, rpc_fun, ready, ring)
+       when is_function(rpc_fun, 2) and is_map(ready) and is_list(ring) do
+    if not Map.has_key?(ready, node.address) do
+      []
+    else
+      for {key, value} <- KademliaSql.objects_page(nil, @anti_entropy_batch),
+          in_nearest_n?(ring, key, node.address) do
+        rpc_fun.([node], [PeerHandlerV2.store(), key, value])
+        key
       end
-
-    previ =
-      case filter_online(KademliaRing.prev(network, node), online) do
-        [prev | _] -> KademliaRing.integer(prev)
-        [] -> KademliaRing.integer(node)
-      end
-
-    nodei = KademliaRing.integer(node)
-
-    nexti =
-      case filter_online(KademliaRing.next(network, node), online) do
-        [next | _] -> KademliaRing.integer(next)
-        [] -> KademliaRing.integer(node)
-      end
-
-    range_start = rem(div(previ + nodei, 2), @max_key)
-    range_end = rem(div(nexti + nodei, 2), @max_key)
-    {range_start, range_end}
+    end
   end
 
-  defp redistribute(node) do
-    network = ring_nodes()
+  defp run_anti_entropy do
+    cursor =
+      case :ets.lookup(@ets_table, :anti_entropy_cursor) do
+        [{:anti_entropy_cursor, cursor}] -> cursor
+        _ -> nil
+      end
 
-    if KademliaRing.member?(network, node.node_id) do
-      {range_start, range_end} = node_range(node, network)
-      objs = KademliaSql.objects(range_start, range_end)
-      redist = Enum.shuffle(objs) |> Enum.take(100)
+    ready = ready_connections()
 
+    {attempted, next_cursor} =
+      do_anti_entropy(cursor, @anti_entropy_batch, &rpc/2, ready, ring_nodes())
+
+    :ets.insert(@ets_table, {:anti_entropy_cursor, next_cursor})
+
+    if attempted != [] do
       Logger.info(
-        "Redistributing #{length(redist)} of #{length(objs)} objects to #{inspect(Wallet.printable(node.node_id))}"
+        "Anti-entropy: attempted #{length(attempted)} object(s) (batch=#{@anti_entropy_batch})"
       )
+    end
 
-      ready = ready_connections()
+    :ok
+  end
 
-      if Map.has_key?(ready, node.address) do
-        Enum.each(redist, fn {key, value} ->
-          rpc(node, [PeerHandlerV2.store(), key, value])
-        end)
+  defp do_anti_entropy(cursor, batch, rpc_fun, ready, ring)
+       when is_integer(batch) and is_function(rpc_fun, 2) and is_list(ring) do
+    page = KademliaSql.objects_page(cursor, batch)
+
+    attempted =
+      for {key, value} <- page, in_nearest_n?(ring, key, :self) do
+        repair_replicas_with_rpc(key, value, rpc_fun, ready)
+        key
       end
+
+    {attempted, next_page_cursor(page, batch)}
+  end
+
+  defp next_page_cursor([], _batch), do: nil
+
+  defp next_page_cursor(page, batch) do
+    if length(page) < batch do
+      nil
+    else
+      {key, _} = List.last(page)
+      key
     end
   end
 
-  def redistribute_stale(network, %Node{} = node) do
-    {range_start, range_end} = node_range(node, network)
+  defp in_nearest_n?(ring, key, :self) do
+    ring
+    |> KademliaRing.nearest_n(key, @n)
+    |> Enum.any?(&KademliaRing.is_self/1)
+  end
 
-    objs = KademliaSql.objects(range_start, range_end)
-
-    redist =
-      objs
-      |> Enum.shuffle()
-      |> Enum.take(100)
-
-    Logger.info(
-      "Redistributing #{length(redist)} of #{length(objs)} stale objects from #{inspect(Wallet.printable(node.node_id))}"
-    )
-
-    for {key, value} <- redist do
-      repair_replicas(key, value)
-    end
+  defp in_nearest_n?(ring, key, address) when is_binary(address) do
+    ring
+    |> KademliaRing.nearest_n(key, @n)
+    |> Enum.any?(fn %Node{address: addr} -> addr == address end)
   end
 
   defp load_ring() do
@@ -1024,10 +999,15 @@ defmodule KademliaLight do
   end
 
   defp repair_replicas(key, value) when is_binary(value) do
-    {remote, _} = replica_targets(key)
+    repair_replicas_with_rpc(key, value, &rpc/2, nil)
+  end
+
+  defp repair_replicas_with_rpc(key, value, rpc_fun, online)
+       when is_binary(value) and is_function(rpc_fun, 2) do
+    {remote, _} = replica_targets(key, online)
 
     if remote != [] do
-      results = rpc(remote, [PeerHandlerV2.store(), key, value])
+      results = rpc_fun.(remote, [PeerHandlerV2.store(), key, value])
       repaired = classify_store_results(remote, results).acked
 
       if repaired != [] do
@@ -1067,19 +1047,23 @@ defmodule KademliaLight do
   @doc false
   def repair_replicas_with_rpc_test(key, value, rpc_fun, ready)
       when is_function(rpc_fun, 2) and is_map(ready) do
-    hkey = hash(key)
+    repair_replicas_with_rpc(hash(key), value, rpc_fun, ready)
+  end
 
-    connected =
-      ring_nodes()
-      |> KademliaRing.nearest_n(hkey, @n)
-      |> Enum.reject(&KademliaRing.is_self/1)
-      |> filter_online(ready)
+  @doc false
+  def anti_entropy_with_rpc_test(rpc_fun, ready, opts \\ [])
+      when is_function(rpc_fun, 2) and is_map(ready) do
+    cursor = Keyword.get(opts, :cursor)
+    batch = Keyword.get(opts, :batch, @anti_entropy_batch)
+    ring = Keyword.get(opts, :ring) || ring_nodes()
+    do_anti_entropy(cursor, batch, rpc_fun, ready, ring)
+  end
 
-    if connected != [] do
-      rpc_fun.(connected, [PeerHandlerV2.store(), hkey, value])
-    end
-
-    :ok
+  @doc false
+  def join_catchup_with_rpc_test(node, rpc_fun, ready, opts \\ [])
+      when is_function(rpc_fun, 2) and is_map(ready) do
+    ring = Keyword.get(opts, :ring) || ring_nodes()
+    join_catchup_with_rpc(node, rpc_fun, ready, ring)
   end
 
   @doc false
