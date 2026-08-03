@@ -375,7 +375,10 @@ defmodule RemoteChain.RPCCache do
         rpc_direct(cache, chain, method, params)
 
       result ->
-        schedule_refresh(chain, method, params)
+        if :rand.uniform() < 0.1 do
+          schedule_refresh(chain, method, params)
+        end
+
         result
     end
     |> maybe_validate_parent_block_cache(method, chain)
