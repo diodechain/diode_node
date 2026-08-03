@@ -60,6 +60,51 @@ defmodule Model.KademliaSqlTest do
     assert meta.next_retry != nil
   end
 
+  test "objects_page orders by key and paginates after_key" do
+    values =
+      for i <- 1..5 do
+        key = <<i::256>>
+        value = Object.encode!(Diode.self())
+        Model.KademliaSql.put_object(key, value)
+        {key, value}
+      end
+
+    page1 = Model.KademliaSql.objects_page(nil, 2)
+    assert length(page1) == 2
+    assert Enum.map(page1, &elem(&1, 0)) == [<<1::256>>, <<2::256>>]
+
+    [{last_key, _} | _] = Enum.reverse(page1)
+    page2 = Model.KademliaSql.objects_page(last_key, 2)
+    assert Enum.map(page2, &elem(&1, 0)) == [<<3::256>>, <<4::256>>]
+
+    page3 = Model.KademliaSql.objects_page(<<4::256>>, 10)
+    assert Enum.map(page3, &elem(&1, 0)) == [<<5::256>>]
+
+    # Ensure values round-trip (BertInt-decoded binaries)
+    Enum.each(values, fn {key, value} ->
+      assert {^key, ^value} =
+               Enum.find(page1 ++ page2 ++ page3, fn {k, _} -> k == key end)
+    end)
+  end
+
+  test "objects_page excludes objects past stale silence deadline" do
+    fresh = <<10::256>>
+    stale = <<11::256>>
+    value = Object.encode!(Diode.self())
+
+    Model.KademliaSql.put_object(fresh, value)
+    Model.KademliaSql.put_object(stale, value)
+
+    Model.KademliaSql.query!(
+      "UPDATE p2p_objects SET stored_at = ?1 WHERE key = ?2",
+      [Model.KademliaSql.stale_silence_deadline() - 1, stale]
+    )
+
+    keys = Model.KademliaSql.objects_page(nil, 100) |> Enum.map(&elem(&1, 0))
+    assert fresh in keys
+    refute stale in keys
+  end
+
   defp registry_addresses() do
     Model.KademliaSql.query!("SELECT address FROM p2p_nodes WHERE on_chain = 1")
     |> Enum.map(&hd/1)
