@@ -18,7 +18,10 @@ defmodule RemoteChain.RPCCache do
     :block_number_requests
   ]
 
+  @refresh_debounce_ms :timer.seconds(10)
+
   def start_link([chain, cache]) do
+    chain = normalize_chain(chain)
     GenServer.start_link(__MODULE__, {chain, cache}, name: name(chain), hibernate_after: 5_000)
   end
 
@@ -43,6 +46,38 @@ defmodule RemoteChain.RPCCache do
   def set_optimistic_caching(bool) do
     :persistent_term.put({__MODULE__, :optimistic_caching}, bool)
   end
+
+  def refresh_debounce_ms do
+    :persistent_term.get({__MODULE__, :refresh_debounce_ms}, @refresh_debounce_ms)
+  end
+
+  def set_refresh_debounce_ms(ms) when is_integer(ms) and ms > 0 do
+    :persistent_term.put({__MODULE__, :refresh_debounce_ms}, ms)
+  end
+
+  @doc false
+  def cache_key(chain, method, params) do
+    {normalize_chain(chain), method, params}
+  end
+
+  @doc false
+  def schedule_refresh(chain, method, params, fun \\ nil) do
+    chain = normalize_chain(chain)
+
+    fun =
+      fun ||
+        fn ->
+          GenServer.cast(name(chain), {:refresh, method, params})
+        end
+
+    Debouncer.immediate2(
+      {__MODULE__, :refresh, chain, method, params},
+      fun,
+      refresh_debounce_ms()
+    )
+  end
+
+  defp normalize_chain(chain), do: RemoteChain.chainimpl(chain)
 
   def whereis(chain) do
     case :global.whereis_name({__MODULE__, RemoteChain.chainimpl(chain)}) do
@@ -92,6 +127,7 @@ defmodule RemoteChain.RPCCache do
   end
 
   def get_storage_many(chain, address, slots, block \\ "latest") do
+    chain = normalize_chain(chain)
     block = resolve_block(chain, block)
 
     # for storage requests we use the last change block as the base
@@ -107,7 +143,7 @@ defmodule RemoteChain.RPCCache do
          normalize_args(chain, "eth_getStorageAt", [address, slot, block])}
       end)
       |> Enum.map(fn rpc = {:rpc, method, params} ->
-        with %{"result" => result} <- Cache.get(cache, {chain, method, params}) do
+        with %{"result" => result} <- Cache.get(cache, cache_key(chain, method, params)) do
           {rpc, result}
         else
           _ -> {rpc, nil}
@@ -154,6 +190,7 @@ defmodule RemoteChain.RPCCache do
   end
 
   def get_code(chain, address, block \\ "latest") do
+    chain = normalize_chain(chain)
     cache = GenServerDbg.call(name(chain), :cache, @default_timeout)
 
     # Optimization since code once set can never change
@@ -215,6 +252,7 @@ defmodule RemoteChain.RPCCache do
 
   @call_permit_address "0x000000000000000000000000000000000000080a"
   def get_last_change(chain, address, block \\ "latest") do
+    chain = normalize_chain(chain)
     block = resolve_block(chain, block)
 
     cond do
@@ -318,9 +356,10 @@ defmodule RemoteChain.RPCCache do
   end
 
   def rpc(chain, method, params) do
+    chain = normalize_chain(chain)
     params = normalize_args(chain, method, params)
     cache = GenServerDbg.call(name(chain), :cache, @default_timeout)
-    result = Cache.get(cache, {chain, method, params})
+    result = Cache.get(cache, cache_key(chain, method, params))
 
     result =
       if diode?(chain) and method == "eth_getBlockByNumber" and
@@ -337,7 +376,7 @@ defmodule RemoteChain.RPCCache do
 
       result ->
         if :rand.uniform() < 0.1 do
-          GenServer.cast(name(chain), {:refresh, method, params})
+          schedule_refresh(chain, method, params)
         end
 
         result
@@ -346,9 +385,10 @@ defmodule RemoteChain.RPCCache do
   end
 
   defp rpc_direct(cache, chain, method, params) do
-    Cache.get(cache, {chain, method, params}) ||
+    Cache.get(cache, cache_key(chain, method, params)) ||
       Globals.locked({:rpc_direct, chain, method, params}, fn ->
-        Cache.get(cache, {chain, method, params}) || node_proxy_rpc(cache, chain, method, params)
+        Cache.get(cache, cache_key(chain, method, params)) ||
+          node_proxy_rpc(cache, chain, method, params)
       end)
   end
 
@@ -368,7 +408,7 @@ defmodule RemoteChain.RPCCache do
       end
 
     if should_cache_method(method, params) and should_cache_result(ret) do
-      Cache.put(cache, {chain, method, params}, ret)
+      Cache.put(cache, cache_key(chain, method, params), ret)
     end
 
     ret
@@ -399,17 +439,19 @@ defmodule RemoteChain.RPCCache do
       do: :ok
 
   def validate_parent_block_cache(parent_block_number, parent_hash, chain) do
+    chain = normalize_chain(chain)
     cache = GenServerDbg.call(name(chain), :cache, @default_timeout)
     method = "eth_getBlockByNumber"
     params = normalize_args(chain, method, [parent_block_number, false])
 
-    with %{"result" => %{"hash" => block_hash}} <- Cache.get(cache, {chain, method, params}) do
+    with %{"result" => %{"hash" => block_hash}} <-
+           Cache.get(cache, cache_key(chain, method, params)) do
       if block_hash != parent_hash do
         Logger.warning(
           "Parent block cache mismatch for block #{parent_block_number}: #{parent_hash} != #{block_hash}"
         )
 
-        Cache.delete(cache, {chain, method, params})
+        Cache.delete(cache, cache_key(chain, method, params))
       end
     end
   end
@@ -446,7 +488,7 @@ defmodule RemoteChain.RPCCache do
   end
 
   def handle_cast({:set_cache, key, value}, state = %RPCCache{chain: chain, cache: cache}) do
-    cache = Cache.put(cache, {chain, key}, value)
+    cache = Cache.put(cache, {normalize_chain(chain), key}, value)
     {:noreply, %RPCCache{state | cache: cache}}
   end
 
@@ -528,7 +570,10 @@ defmodule RemoteChain.RPCCache do
             {:reply, ret} ->
               state =
                 if should_cache_method(method, params) and should_cache_result(ret) do
-                  %RPCCache{state | cache: Cache.put(cache, {chain, method, params}, ret)}
+                  %RPCCache{
+                    state
+                    | cache: Cache.put(cache, cache_key(chain, method, params), ret)
+                  }
                 else
                   Logger.info(
                     "Not caching rpc request result #{inspect(ret)} from: #{inspect({method, params})}"
