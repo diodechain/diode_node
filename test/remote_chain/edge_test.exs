@@ -63,9 +63,8 @@ defmodule RemoteChain.EdgeTest do
                  %{}
                )
 
-      assert %{
-               "error" => %{"code" => -32000, "message" => "execution reverted"}
-             } = Jason.decode!(body)
+      assert %{"error" => error} = Jason.decode!(body)
+      assert error == RemoteChain.execution_reverted_rpc_error()
     end
   end
 end

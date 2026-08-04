@@ -116,15 +116,11 @@ defmodule RemoteChain.Edge do
         |> response()
 
       ["sendtransaction", payload] ->
-        if RemoteChain.accepts_transactions?(chain) do
-          case RemoteChain.RPC.send_raw_transaction(chain, Base16.encode(payload)) do
-            :already_known -> response("ok")
-            tx_hash when is_binary(tx_hash) -> response("ok")
-            {:error, error} -> error(error)
-          end
-        else
-          # Same client-visible outcome as a simulated metatx revert.
-          error("transaction_rejected")
+        case RemoteChain.RPC.send_raw_transaction(chain, Base16.encode(payload)) do
+          :already_known -> response("ok")
+          tx_hash when is_binary(tx_hash) -> response("ok")
+          {:error, :transaction_rejected} -> error("transaction_rejected")
+          {:error, error} -> error(error)
         end
 
       ["getmetanonce", block, address] ->
@@ -138,15 +134,16 @@ defmodule RemoteChain.Edge do
         |> response()
 
       ["sendmetatransaction", tx] ->
-        if not RemoteChain.accepts_transactions?(chain) do
-          error("transaction_rejected")
-        else
-          if CallPermitAdapter.should_forward_metatransaction?(chain) do
+        cond do
+          not RemoteChain.accepts_transactions?(chain) ->
+            error("transaction_rejected")
+
+          CallPermitAdapter.should_forward_metatransaction?(chain) ->
             CallPermitAdapter.forward_metatransaction(chain, tx)
-          else
+
+          true ->
             {to, call, sender, min_gas_limit} = prepare_metatransaction(chain, Rlp.decode!(tx))
             send_metatransaction(chain, to, call, sender, min_gas_limit)
-          end
         end
 
       ["rpc", "eth_call", params] when chain != Chains.OasisSapphire ->
@@ -197,7 +194,7 @@ defmodule RemoteChain.Edge do
   defp do_rpc(chain, method, params) do
     cond do
       method == "eth_sendRawTransaction" and not RemoteChain.accepts_transactions?(chain) ->
-        %{"error" => %{"code" => -32000, "message" => "execution reverted"}}
+        %{"error" => RemoteChain.execution_reverted_rpc_error()}
 
       Network.Rpc.local_dio_method?(method) ->
         try do

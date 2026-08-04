@@ -79,9 +79,7 @@ defmodule RemoteChain.RPC do
         {:error, error} -> {:error, error}
       end
     else
-      # Moonbeam (and any future non-accepting chain): reject like an EVM revert
-      # so callers treat the submit as failed without hitting the network.
-      {:error, %{"code" => -32000, "message" => "execution reverted"}}
+      {:error, :transaction_rejected}
     end
   end
 

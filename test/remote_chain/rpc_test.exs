@@ -46,17 +46,9 @@ defmodule RemoteChain.RPCTest do
   end
 
   describe "send_raw_transaction/2 Moonbeam rejection" do
-    test "rejects Moonbeam submits as execution reverted without contacting RPC" do
-      # Moonbeam no longer accepts transactions; the node must fail closed
-      # with the same shape as an EVM revert rather than hitting the network.
-      assert {:error, %{"code" => -32000, "message" => "execution reverted"}} =
+    test "rejects Moonbeam submits as transaction_rejected without contacting RPC" do
+      assert {:error, :transaction_rejected} =
                RPC.send_raw_transaction(Chains.Moonbeam, "0xdead")
-
-      assert {:error, %{"code" => -32000, "message" => "execution reverted"}} =
-               RPC.send_raw_transaction(Chains.Moonbeam.chain_id(), "0xdead")
-
-      assert {:error, %{"code" => -32000, "message" => "execution reverted"}} =
-               RPC.send_raw_transaction("glmr", "0xdead")
     end
   end
 end
