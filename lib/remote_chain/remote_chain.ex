@@ -86,6 +86,16 @@ defmodule RemoteChain do
 
   def chains(), do: @chains
 
+  @doc """
+  Whether the node should attempt to submit transactions to this chain.
+
+  Moonbeam no longer accepts new transactions; treat submits as immediate
+  reverts instead of forwarding them to the network.
+  """
+  def accepts_transactions?(chain) do
+    chainimpl(chain) != Chains.Moonbeam
+  end
+
   for chain <- @all_chains do
     def chainimpl(unquote(chain.chain_id())), do: unquote(chain)
     def chainimpl(unquote(chain.chain_prefix())), do: unquote(chain)

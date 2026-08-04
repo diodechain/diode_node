@@ -43,4 +43,29 @@ defmodule RemoteChain.EdgeTest do
                Edge.wallet_factory_address(Chains.OasisSapphire)
     end
   end
+
+  describe "Moonbeam transaction rejection" do
+    test "sendtransaction is rejected as if it reverted" do
+      assert ["error", "transaction_rejected"] =
+               Edge.handle_async_msg(Chains.Moonbeam, ["sendtransaction", <<1, 2, 3>>], %{})
+    end
+
+    test "sendmetatransaction is rejected as if it reverted" do
+      assert ["error", "transaction_rejected"] =
+               Edge.handle_async_msg(Chains.Moonbeam, ["sendmetatransaction", <<1, 2, 3>>], %{})
+    end
+
+    test "rpc eth_sendRawTransaction is rejected as execution reverted" do
+      assert ["response", body] =
+               Edge.handle_async_msg(
+                 Chains.Moonbeam,
+                 ["rpc", "eth_sendRawTransaction", ~s(["0xdead"])],
+                 %{}
+               )
+
+      assert %{
+               "error" => %{"code" => -32000, "message" => "execution reverted"}
+             } = Jason.decode!(body)
+    end
+  end
 end

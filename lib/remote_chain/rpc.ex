@@ -72,10 +72,16 @@ defmodule RemoteChain.RPC do
   end
 
   def send_raw_transaction(chain, tx) do
-    case rpc(chain, "eth_sendRawTransaction", [tx]) do
-      {:ok, tx_hash} -> tx_hash
-      {:error, %{"code" => -32603, "message" => "already known"}} -> :already_known
-      {:error, error} -> {:error, error}
+    if RemoteChain.accepts_transactions?(chain) do
+      case rpc(chain, "eth_sendRawTransaction", [tx]) do
+        {:ok, tx_hash} -> tx_hash
+        {:error, %{"code" => -32603, "message" => "already known"}} -> :already_known
+        {:error, error} -> {:error, error}
+      end
+    else
+      # Moonbeam (and any future non-accepting chain): reject like an EVM revert
+      # so callers treat the submit as failed without hitting the network.
+      {:error, %{"code" => -32000, "message" => "execution reverted"}}
     end
   end
 
