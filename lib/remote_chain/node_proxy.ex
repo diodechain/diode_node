@@ -11,6 +11,8 @@ defmodule RemoteChain.NodeProxy do
   alias RemoteChain.NodeProxy
   require Logger
   @default_timeout 25_000
+  @rate_limit_reconnect_ms 15_000
+  @security_level 1
 
   defstruct [
     :chain,
@@ -165,7 +167,6 @@ defmodule RemoteChain.NodeProxy do
     {:noreply, %{state | lastblock: 0, lastblocks: %{}}}
   end
 
-  @security_level 1
   @impl true
   def handle_info(
         {:new_block, ws_url, block_number},
@@ -216,7 +217,9 @@ defmodule RemoteChain.NodeProxy do
         )
       end
 
-      {:noreply, state |> remove_connection(down_pid) |> schedule_ensure_connections()}
+      delay_ms = if rate_limited_disconnect?(reason), do: @rate_limit_reconnect_ms, else: 0
+
+      {:noreply, state |> remove_connection(down_pid) |> schedule_ensure_connections(delay_ms)}
     end
   end
 
@@ -433,14 +436,58 @@ defmodule RemoteChain.NodeProxy do
       if fallback == conn, do: fallback_url
   end
 
-  defp schedule_ensure_connections(state) do
+  defp schedule_ensure_connections(state, delay_ms \\ 0) do
     pid = self()
+    key = {__MODULE__, pid, :ensure_connections}
 
-    Debouncer.immediate({__MODULE__, pid, :ensure_connections}, fn ->
+    fun = fn ->
       GenServer.cast(pid, :ensure_connections)
-    end)
+    end
+
+    if delay_ms > 0 do
+      # `apply` keeps the first scheduled fire time so repeated 429s don't reset
+      # the cooldown (unlike `delay`, which would keep pushing it out forever).
+      Debouncer.apply(key, fun, delay_ms)
+    else
+      Debouncer.immediate(key, fun)
+    end
 
     state
+  end
+
+  @doc false
+  def rate_limited_disconnect?(reason) do
+    message =
+      cond do
+        is_binary(reason) ->
+          reason
+
+        is_exception(reason) ->
+          Exception.message(reason)
+
+        match?({:error, %WebSockex.RequestError{}}, reason) ->
+          {:error, err} = reason
+          "#{err.code} #{err.message}"
+
+        match?(%WebSockex.RequestError{}, reason) ->
+          "#{reason.code} #{reason.message}"
+
+        true ->
+          inspect(reason)
+      end
+      |> String.downcase()
+
+    limited? =
+      String.contains?(message, "429") or String.contains?(message, "too many requests")
+
+    if limited? do
+      :persistent_term.put(
+        {__MODULE__, :rate_limited_until},
+        System.monotonic_time(:millisecond) + @rate_limit_reconnect_ms
+      )
+    end
+
+    limited?
   end
 
   defp ensure_connections(state = %NodeProxy{chain: chain}) do

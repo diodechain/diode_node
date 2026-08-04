@@ -25,6 +25,36 @@ defmodule RemoteChain.RPC do
     rpc!(chain, "eth_getCode", [address, block])
   end
 
+  @doc """
+  Pipeline multiple `eth_getCode` calls over the NodeProxy WS connection.
+  Returns codes in the same order as `addresses`.
+  """
+  def get_code_many(chain, addresses, block \\ "latest") when is_list(addresses) do
+    if addresses == [] do
+      []
+    else
+      calls = Enum.map(addresses, fn address -> {:rpc, "eth_getCode", [address, block]} end)
+
+      RemoteChain.Util.batch_call(RemoteChain.NodeProxy.name(chain), calls, 25_000)
+      |> Enum.map(fn
+        {:reply, %{"result" => result}} ->
+          result
+
+        {:reply, %{"error" => error}} ->
+          raise "RPC error in get_code_many: #{inspect(error)}"
+
+        {:reply, {:error, reason}} ->
+          raise "RPC error in get_code_many: #{inspect(reason)}"
+
+        {:error, reason} ->
+          raise "Batch error in get_code_many: #{inspect(reason)}"
+
+        :timeout ->
+          raise "Timeout error in get_code_many"
+      end)
+    end
+  end
+
   def get_transaction_count(chain, address, block \\ "latest") do
     rpc!(chain, "eth_getTransactionCount", [address, block])
   end
@@ -80,7 +110,8 @@ defmodule RemoteChain.RPC do
         {:ok, result}
 
       {:error, :disconnect} when retries_left > 0 ->
-        Process.sleep(200)
+        # Back off harder while WS pool is reconnecting (especially under 429).
+        Process.sleep(min(5_000, 200 * (3 - retries_left + 1)))
         rpc_with_retry(chain, method, params, retries_left - 1)
 
       {:error, reason} ->

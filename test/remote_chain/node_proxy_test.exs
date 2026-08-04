@@ -373,4 +373,20 @@ defmodule RemoteChain.NodeProxyTest do
       end
     end
   end
+
+  describe "rate_limited_disconnect?/1" do
+    test "detects WebSockex 429 request errors" do
+      assert NodeProxy.rate_limited_disconnect?(
+               {:error, %WebSockex.RequestError{code: 429, message: "Too Many Requests"}}
+             )
+
+      assert NodeProxy.rate_limited_disconnect?(%WebSockex.RequestError{
+               code: 429,
+               message: "Too Many Requests"
+             })
+
+      refute NodeProxy.rate_limited_disconnect?(:normal)
+      refute NodeProxy.rate_limited_disconnect?({:error, :closed})
+    end
+  end
 end

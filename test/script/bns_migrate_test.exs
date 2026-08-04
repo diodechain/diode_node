@@ -5,7 +5,7 @@
 defmodule Script.BnsMigrateTest do
   use ExUnit.Case, async: true
 
-  alias DiodeClient.Hash
+  alias DiodeClient.{Base16, Hash}
   alias Script.BnsMigrate
 
   defp addr(n), do: Hash.to_address(n)
@@ -103,6 +103,25 @@ defmodule Script.BnsMigrateTest do
     end
   end
 
+  describe "nonce_too_low_error?/1 and next_submit_nonce/2" do
+    test "detects nonce too low provider errors (production regression)" do
+      assert BnsMigrate.nonce_too_low_error?(%{
+               "code" => 3,
+               "message" => "nonce too low: next nonce 40093, tx nonce 40092"
+             })
+
+      assert BnsMigrate.nonce_too_low_error?("nonce too low")
+      refute BnsMigrate.nonce_too_low_error?(%{"message" => "insufficient funds"})
+    end
+
+    test "bumps past a lagging eth_getTransactionCount" do
+      # After sync txs used 40092, Register re-fetched 40092 from a lagging RPC.
+      assert BnsMigrate.next_submit_nonce(40_092, 40_092) == 40_093
+      assert BnsMigrate.next_submit_nonce(40_092, 40_093) == 40_093
+      assert BnsMigrate.next_submit_nonce(40_092, 40_095) == 40_095
+    end
+  end
+
   describe "parse_identity_cache/1" do
     test "reads full and truncated identity tuples", ctx do
       slot = <<1, 2, 3>>
@@ -141,6 +160,91 @@ defmodule Script.BnsMigrateTest do
     end
   end
 
+  describe "decode_eth_call_address/1" do
+    test "rejects empty eth_call results (production regression)" do
+      assert {:error, :empty_result} = BnsMigrate.decode_eth_call_address("0x")
+      assert {:error, :empty_result} = BnsMigrate.decode_eth_call_address("")
+      assert {:error, :empty_result} = BnsMigrate.decode_eth_call_address(<<1, 2, 3>>)
+    end
+
+    test "decodes padded address words", ctx do
+      word = <<0::unit(8)-size(12), ctx.owner::binary>>
+      assert {:ok, ctx.owner} == BnsMigrate.decode_eth_call_address(word)
+
+      hex = "0x" <> Base.encode16(word, case: :lower)
+      assert {:ok, ctx.owner} == BnsMigrate.decode_eth_call_address(hex)
+    end
+  end
+
+  describe "decode_eth_call_address_array/1" do
+    test "rejects empty eth_call results that crashed ABI decode (production regression)" do
+      # Soft helpers previously raised: Invalid value for type uint256: "0x"
+      assert {:error, :empty_result} = BnsMigrate.decode_eth_call_address_array("0x")
+      assert {:error, :empty_result} = BnsMigrate.decode_eth_call_address_array(<<>>)
+    end
+
+    test "decodes address[] payloads", ctx do
+      alias DiodeClient.ABI
+
+      data = ABI.encode_args(["address[]"], [[ctx.owner, ctx.member]])
+      assert {:ok, [ctx.owner, ctx.member]} == BnsMigrate.decode_eth_call_address_array(data)
+
+      hex = "0x" <> Base.encode16(data, case: :lower)
+      assert {:ok, [ctx.owner, ctx.member]} == BnsMigrate.decode_eth_call_address_array(hex)
+    end
+  end
+
+  describe "parse_classify_cache/1 and classify_cache_entry/1" do
+    test "round-trips actionable and done v2 entries", ctx do
+      slot = <<9, 9, 9>>
+
+      actionable =
+        BnsMigrate.classify_cache_entry(%{
+          v1_identity: ctx.identity,
+          v1_deployed?: true,
+          repair_identity: ctx.foreign,
+          repair_deployed?: false,
+          base_owner: ctx.owner,
+          base_dest: ctx.identity,
+          fleet: [ctx.owner, ctx.member],
+          action: :repair
+        })
+
+      assert {:ok, ^actionable} = BnsMigrate.parse_classify_cache([{slot, actionable}])
+      assert actionable.action == :repair
+      assert actionable.v == BnsMigrate.classify_cache_version()
+
+      done =
+        BnsMigrate.classify_cache_entry(%{
+          v1_identity: ctx.identity,
+          v1_deployed?: true,
+          repair_identity: ctx.foreign,
+          repair_deployed?: true,
+          base_owner: ctx.owner,
+          base_dest: ctx.foreign,
+          fleet: [ctx.owner],
+          action: nil
+        })
+
+      assert {:ok, %{action: nil} = parsed} = BnsMigrate.parse_classify_cache([{slot, done}])
+      assert parsed.repair_identity == ctx.foreign
+    end
+
+    test "treats legacy tuples and atoms as stale" do
+      slot = <<1>>
+      identity = addr(9)
+
+      assert :stale =
+               BnsMigrate.parse_classify_cache([
+                 {slot, {identity, true, addr(2), identity}}
+               ])
+
+      assert :stale = BnsMigrate.parse_classify_cache([{slot, :done}])
+      assert :miss = BnsMigrate.parse_classify_cache([])
+      assert {:error, [{"x", "bad"}]} = BnsMigrate.parse_classify_cache([{"x", "bad"}])
+    end
+  end
+
   describe "valid_bns_name?/1" do
     test "accepts lowercase names matching Base BNS validate()" do
       assert BnsMigrate.valid_bns_name?("knusperhaus")
@@ -163,6 +267,96 @@ defmodule Script.BnsMigrateTest do
     test "partition_valid_names/1 separates invalid dump names" do
       assert {["knusperhaus"], ["Private-Ten"]} =
                BnsMigrate.partition_valid_names(["Private-Ten", "knusperhaus"])
+    end
+  end
+
+  describe "classify_concurrency/1" do
+    test "defaults and clamps" do
+      assert BnsMigrate.classify_concurrency(nil) == BnsMigrate.default_classify_concurrency()
+      assert BnsMigrate.default_classify_concurrency() == 4
+      assert BnsMigrate.classify_concurrency("10") == 10
+      assert BnsMigrate.classify_concurrency(" 16 ") == 16
+      assert BnsMigrate.classify_concurrency(0) == 1
+      assert BnsMigrate.classify_concurrency(1000) == 64
+      assert BnsMigrate.classify_concurrency("nope") == BnsMigrate.default_classify_concurrency()
+    end
+  end
+
+  describe "base_create2_address/1" do
+    test "matches Factory CREATE2 for Base without RPC" do
+      owner = addr(0xABCDEF)
+      salt = BnsMigrate.identity_salt(owner)
+      c = DiodeClient.Contracts.Factory.contracts(DiodeClient.Shell.Base)
+
+      assert BnsMigrate.base_create2_address(salt) ==
+               Hash.create2(c.factory, c.proxy_code_hash, salt)
+
+      assert BnsMigrate.base_create2_address(salt) ==
+               BnsMigrate.base_create2_address(salt)
+
+      assert BnsMigrate.base_create2_address(salt) !=
+               BnsMigrate.base_create2_address(BnsMigrate.repair_salt(owner))
+    end
+  end
+
+  describe "rate_limit_error?/1 and rpc_backoff_ms/2" do
+    test "detects 429 shapes" do
+      assert BnsMigrate.rate_limit_error?("HTTP 429 Too Many Requests")
+      assert BnsMigrate.rate_limit_error?(%{message: "Too Many Requests", code: 429})
+
+      assert BnsMigrate.rate_limit_error?(%WebSockex.RequestError{
+               code: 429,
+               message: "Too Many Requests"
+             })
+
+      refute BnsMigrate.rate_limit_error?("disconnect")
+    end
+
+    test "uses longer backoff when rate-limited" do
+      assert BnsMigrate.rpc_backoff_ms(5, false) == 1_000
+      assert BnsMigrate.rpc_backoff_ms(5, true) == 5_000
+      assert BnsMigrate.rpc_backoff_ms(1, true) == 25_000
+      assert BnsMigrate.rpc_backoff_ms(0, true) == 30_000
+    end
+  end
+
+  describe "stale_classify_cache_value?/1 and collect_stale_cache_keys/1" do
+    test "flags legacy atoms and tuples, keeps valid v2", ctx do
+      v2 =
+        BnsMigrate.classify_cache_entry(%{
+          v1_identity: ctx.identity,
+          v1_deployed?: true,
+          repair_identity: ctx.foreign,
+          repair_deployed?: false,
+          base_owner: ctx.owner,
+          base_dest: ctx.identity,
+          fleet: [ctx.owner],
+          action: nil
+        })
+
+      refute BnsMigrate.stale_classify_cache_value?(v2)
+      assert BnsMigrate.stale_classify_cache_value?(:done)
+      assert BnsMigrate.stale_classify_cache_value?({ctx.identity, true, ctx.owner, ctx.identity})
+
+      keys =
+        BnsMigrate.collect_stale_cache_keys([
+          {<<1>>, :done},
+          {<<2>>, v2},
+          {<<3>>, {ctx.identity, false}}
+        ])
+
+      assert Enum.sort(keys) == Enum.sort([<<1>>, <<3>>])
+    end
+  end
+
+  describe "owner_slot/1" do
+    test "is deterministic and distinct per name" do
+      a = BnsMigrate.owner_slot("knusperhaus")
+      b = BnsMigrate.owner_slot("private-ten")
+
+      assert is_binary(a)
+      assert a == BnsMigrate.owner_slot("knusperhaus")
+      assert a != b
     end
   end
 
@@ -360,6 +554,124 @@ defmodule Script.BnsMigrateTest do
                ctx.identity,
                ctx.identity
              )
+    end
+  end
+
+  describe "format_dry_run/3" do
+    test "create action plans identity create+sync and BNS register", ctx do
+      zero = ctx.zero
+      owner = ctx.owner
+      deployer = ctx.deployer
+      v1 = ctx.identity
+      repair = ctx.foreign
+
+      item = %{
+        action: :create,
+        name: "knusperhaus",
+        owner: owner,
+        fleet: [owner, ctx.member],
+        current_identity: nil,
+        base_owner: zero,
+        base_dest: zero,
+        v1_identity: v1,
+        v1_deployed?: false,
+        repair_identity: repair,
+        repair_deployed?: false,
+        broken?: false,
+        repaired?: false,
+        l1_identity: nil
+      }
+
+      report = BnsMigrate.format_dry_run(item, deployer)
+
+      assert report =~ "=== DRY-RUN knusperhaus ==="
+      assert report =~ "action: :create"
+      assert report =~ "Would create+sync v1 identity #{Base16.encode(v1)}"
+      assert report =~ "Create?=true"
+      assert report =~ "AddMember x2"
+      assert report =~ "transferOwnership(#{Base16.encode(owner)})?=true"
+      assert report =~ "Register(\"knusperhaus\", #{Base16.encode(v1)})"
+      assert report =~ "TransferOwner(\"knusperhaus\", #{Base16.encode(owner)})"
+      refute report =~ "Would sync"
+    end
+
+    test "repair action uses chain_state for sync plan", ctx do
+      item = %{
+        action: :repair,
+        name: "private-ten",
+        owner: ctx.owner,
+        fleet: [ctx.owner, ctx.member],
+        current_identity: ctx.identity,
+        base_owner: ctx.owner,
+        base_dest: ctx.identity,
+        v1_identity: ctx.identity,
+        v1_deployed?: true,
+        repair_identity: ctx.foreign,
+        repair_deployed?: true,
+        broken?: true,
+        repaired?: false,
+        l1_identity: ctx.identity
+      }
+
+      report =
+        BnsMigrate.format_dry_run(item, ctx.deployer, %{
+          members: [ctx.deployer],
+          owner: ctx.deployer
+        })
+
+      assert report =~ "action: :repair"
+      assert report =~ "Would sync repair identity #{Base16.encode(ctx.foreign)}"
+      assert report =~ "Create?=false"
+      assert report =~ "RemoveMember(deployer)?=true"
+      assert report =~ "Register(\"private-ten\", #{Base16.encode(ctx.foreign)})"
+    end
+
+    test "nil action reports no work", ctx do
+      item = %{
+        action: nil,
+        name: "done-name1",
+        owner: ctx.owner,
+        fleet: [ctx.owner],
+        current_identity: ctx.identity,
+        base_owner: ctx.owner,
+        base_dest: ctx.identity,
+        v1_identity: ctx.identity,
+        v1_deployed?: true,
+        repair_identity: ctx.foreign,
+        repair_deployed?: false,
+        broken?: false,
+        repaired?: false,
+        l1_identity: nil
+      }
+
+      report = BnsMigrate.format_dry_run(item, ctx.deployer)
+      assert report =~ "=== DRY-RUN done-name1 ==="
+      assert report =~ "No work."
+    end
+
+    test "bns_v1 only plans BNS update when dest mismatches", ctx do
+      item = %{
+        action: :bns_v1,
+        name: "abcdefgh",
+        owner: ctx.owner,
+        fleet: [ctx.owner],
+        current_identity: ctx.identity,
+        base_owner: ctx.owner,
+        base_dest: ctx.zero,
+        v1_identity: ctx.identity,
+        v1_deployed?: true,
+        repair_identity: ctx.foreign,
+        repair_deployed?: false,
+        broken?: false,
+        repaired?: false,
+        l1_identity: nil
+      }
+
+      report = BnsMigrate.format_dry_run(item, ctx.deployer)
+      assert report =~ "action: :bns_v1"
+      assert report =~ "Register(\"abcdefgh\", #{Base16.encode(ctx.identity)})"
+      refute report =~ "Would create+sync"
+      refute report =~ "Would sync"
     end
   end
 
