@@ -458,22 +458,21 @@ defmodule RemoteChain.NodeProxy do
   @doc false
   def rate_limited_disconnect?(reason) do
     message =
-      cond do
-        is_binary(reason) ->
-          reason
+      case reason do
+        bin when is_binary(bin) ->
+          bin
 
-        is_exception(reason) ->
-          Exception.message(reason)
+        %WebSockex.RequestError{code: code, message: msg} ->
+          "#{code} #{msg}"
 
-        match?({:error, %WebSockex.RequestError{}}, reason) ->
-          {:error, err} = reason
-          "#{err.code} #{err.message}"
+        {:error, %WebSockex.RequestError{code: code, message: msg}} ->
+          "#{code} #{msg}"
 
-        match?(%WebSockex.RequestError{}, reason) ->
-          "#{reason.code} #{reason.message}"
+        exc when is_exception(exc) ->
+          Exception.message(exc)
 
-        true ->
-          inspect(reason)
+        other ->
+          inspect(other)
       end
       |> String.downcase()
 
