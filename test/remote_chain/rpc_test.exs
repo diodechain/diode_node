@@ -44,4 +44,11 @@ defmodule RemoteChain.RPCTest do
       assert {:error, "weird"} = RPC.decode_rpc_response("weird")
     end
   end
+
+  describe "send_raw_transaction/2 Moonbeam rejection" do
+    test "rejects Moonbeam submits as transaction_rejected without contacting RPC" do
+      assert {:error, :transaction_rejected} =
+               RPC.send_raw_transaction(Chains.Moonbeam, "0xdead")
+    end
+  end
 end

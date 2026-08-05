@@ -119,6 +119,7 @@ defmodule RemoteChain.Edge do
         case RemoteChain.RPC.send_raw_transaction(chain, Base16.encode(payload)) do
           :already_known -> response("ok")
           tx_hash when is_binary(tx_hash) -> response("ok")
+          {:error, :transaction_rejected} -> error("transaction_rejected")
           {:error, error} -> error(error)
         end
 
@@ -133,11 +134,16 @@ defmodule RemoteChain.Edge do
         |> response()
 
       ["sendmetatransaction", tx] ->
-        if CallPermitAdapter.should_forward_metatransaction?(chain) do
-          CallPermitAdapter.forward_metatransaction(chain, tx)
-        else
-          {to, call, sender, min_gas_limit} = prepare_metatransaction(chain, Rlp.decode!(tx))
-          send_metatransaction(chain, to, call, sender, min_gas_limit)
+        cond do
+          not RemoteChain.accepts_transactions?(chain) ->
+            error("transaction_rejected")
+
+          CallPermitAdapter.should_forward_metatransaction?(chain) ->
+            CallPermitAdapter.forward_metatransaction(chain, tx)
+
+          true ->
+            {to, call, sender, min_gas_limit} = prepare_metatransaction(chain, Rlp.decode!(tx))
+            send_metatransaction(chain, to, call, sender, min_gas_limit)
         end
 
       ["rpc", "eth_call", params] when chain != Chains.OasisSapphire ->
@@ -186,30 +192,35 @@ defmodule RemoteChain.Edge do
   defp decode_rpc_params(params) when is_binary(params), do: Jason.decode(params)
 
   defp do_rpc(chain, method, params) do
-    if Network.Rpc.local_dio_method?(method) do
-      try do
-        case Network.Rpc.execute_dio(method, params, %{}) do
-          {_result, _code, error} when error != nil ->
-            %{"error" => error}
+    cond do
+      method == "eth_sendRawTransaction" and not RemoteChain.accepts_transactions?(chain) ->
+        %{"error" => RemoteChain.execution_reverted_rpc_error()}
 
-          {_result, code, _error} when code != 200 ->
-            %{"error" => %{"code" => code, "message" => "Request failed"}}
+      Network.Rpc.local_dio_method?(method) ->
+        try do
+          case Network.Rpc.execute_dio(method, params, %{}) do
+            {_result, _code, error} when error != nil ->
+              %{"error" => error}
 
-          {result, _code, _error} ->
-            actual =
-              case result do
-                {:raw, value} -> value
-                other -> other
-              end
+            {_result, code, _error} when code != 200 ->
+              %{"error" => %{"code" => code, "message" => "Request failed"}}
 
-            %{"result" => actual}
+            {result, _code, _error} ->
+              actual =
+                case result do
+                  {:raw, value} -> value
+                  other -> other
+                end
+
+              %{"result" => actual}
+          end
+        catch
+          :bad_request -> %{"error" => %{"code" => -32600, "message" => "Bad request"}}
+          :not_found -> %{"error" => %{"code" => -32602, "message" => "Not found"}}
         end
-      catch
-        :bad_request -> %{"error" => %{"code" => -32600, "message" => "Bad request"}}
-        :not_found -> %{"error" => %{"code" => -32602, "message" => "Not found"}}
-      end
-    else
-      RemoteChain.RPCCache.rpc(chain, method, params)
+
+      true ->
+        RemoteChain.RPCCache.rpc(chain, method, params)
     end
   end
 
