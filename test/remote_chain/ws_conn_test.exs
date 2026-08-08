@@ -1,22 +1,23 @@
 defmodule RemoteChain.WSConnTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
 
   alias RemoteChain.WSConn
 
+  # In-process stand-in for a WSConn so the staleness predicate can be
+  # tested without opening a real socket. Mirrors the more capable
+  # `WSConnStateStub` in `NodeProxyTest`; intentionally small here
+  # because these tests only need `:sys.get_state/2` to return a
+  # `%WSConn{}` struct.
   defmodule WSConnStateStub do
-    @moduledoc """
-    In-process stand-in for a WSConn so the staleness predicate can be
-    tested without opening a real socket. `:sys.get_state/2` returns the
-    `WSConn` struct we configure here.
-    """
     use GenServer
 
-    def start(state) do
-      GenServer.start(__MODULE__, state)
-    end
+    def start(state), do: GenServer.start(__MODULE__, state)
 
     @impl true
     def init(state), do: {:ok, state}
+
+    @impl true
+    def handle_info(_msg, state), do: {:noreply, state}
   end
 
   describe "stale?/2" do

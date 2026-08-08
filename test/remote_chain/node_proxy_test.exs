@@ -590,5 +590,34 @@ defmodule RemoteChain.NodeProxyTest do
       assert new_state.fallback == state.fallback
       assert new_state.fallback_url == @fallback_url
     end
+
+    test "evicts a never-blocked connection whose WSConn has gone stale" do
+      # Regression: a WSConn that finished its handshake but never received
+      # a newHeads frame (no entry in `lastblocks`) used to skip the
+      # eviction contract entirely. The fix uses the WSConn's own
+      # `lastblock_at` (initialised at start) as a fallback.
+      very_stale = DateTime.add(DateTime.utc_now(), -1800, :second)
+      started_at = DateTime.utc_now()
+
+      {:ok, fallback} = WSConnStateStub.start_state(%WSConn{started_at: started_at})
+      Globals.put({WSConn, fallback}, :fake_conn)
+
+      :sys.replace_state(fallback, fn %WSConn{} = wsconn ->
+        %{wsconn | lastblock_at: very_stale}
+      end)
+
+      state = %NodeProxy{
+        chain: Chains.OasisSapphire,
+        connections: %{},
+        fallback: fallback,
+        fallback_url: @fallback_url,
+        lastblocks: %{}
+      }
+
+      new_state = NodeProxy.prune_stale_connections(state)
+
+      assert new_state.fallback == nil
+      assert new_state.fallback_url == nil
+    end
   end
 end

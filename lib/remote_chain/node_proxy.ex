@@ -194,10 +194,10 @@ defmodule RemoteChain.NodeProxy do
     # fallback would block every block advance (the us1/Oasis incident).
     live_voter_count =
       Enum.count(lastblocks, fn {_url, {block, lastblock_at}} ->
-        block >= block_number and not stale_entry?(chain, lastblock_at)
+        block >= block_number and not RemoteChain.WSConn.stale_at?(lastblock_at, chain)
       end)
 
-    fallback_live? = fallback != nil and live_fallback?(chain, state)
+    fallback_live? = fallback != nil and not RemoteChain.WSConn.stale?(fallback, chain)
     security_level = if fallback_live?, do: @security_level + 1, else: @security_level
 
     block_number =
@@ -434,7 +434,7 @@ defmodule RemoteChain.NodeProxy do
 
             close_and_remove(state, pid)
 
-          data_stale?(state, chain, url) ->
+          data_stale?(state, chain, url, pid) ->
             Logger.warning(
               "Evicting data-stale WSConn #{inspect(pid)} for #{inspect(state.chain)} [#{url}] " <>
                 "(no new blocks for >#{@stale_eviction_intervals} block intervals)"
@@ -451,38 +451,27 @@ defmodule RemoteChain.NodeProxy do
     # even though the chain config still lists fallback URLs. Schedule a
     # refill so the next fallback URL (or none, if all are stale) takes
     # its place.
-    if fallback != nil and not has_fallback?(state) do
+    if fallback != nil and (state.fallback == nil or state.fallback_url == nil) do
       schedule_ensure_connections(state, 0)
     else
       state
     end
   end
 
-  defp data_stale?(%NodeProxy{lastblocks: lastblocks}, chain, url) do
-    case Map.get(lastblocks, url) do
-      {_block, lastblock_at} ->
-        age = DateTime.diff(DateTime.utc_now(), lastblock_at, :second)
-        age > chain.expected_block_intervall() * @stale_eviction_intervals
+  # Whether `url` is associated with a WSConn that has been silent for
+  # longer than `@stale_eviction_intervals` block intervals. Uses the
+  # cached `lastblocks` entry when present (more accurate than
+  # WSConn's `lastblock_at`, which is the connection's last frame), and
+  # falls back to the WSConn's own `lastblock_at` via `lastblock_at/1`
+  # so a never-blocked connection is still evicted after the cutoff.
+  defp data_stale?(%NodeProxy{lastblocks: lastblocks}, chain, url, pid) do
+    lastblock_at =
+      case Map.get(lastblocks, url) do
+        {_block, ts} -> ts
+        nil -> RemoteChain.WSConn.lastblock_at(pid)
+      end
 
-      nil ->
-        # Never received a block from this provider; rely on WSConn's own
-        # `lastblock_at` (which is initialized to `started_at` and updated
-        # by `new_block`).
-        false
-    end
-  end
-
-  defp has_fallback?(%NodeProxy{fallback: fallback, fallback_url: fallback_url}) do
-    fallback != nil and fallback_url != nil
-  end
-
-  defp stale_entry?(chain, lastblock_at) do
-    age = DateTime.diff(DateTime.utc_now(), lastblock_at, :second)
-    age > chain.expected_block_intervall() * 10
-  end
-
-  defp live_fallback?(chain, %{fallback: fallback}) do
-    fallback != nil and not RemoteChain.WSConn.stale?(fallback, chain)
+    RemoteChain.WSConn.stale_at?(lastblock_at, chain, @stale_eviction_intervals)
   end
 
   defp close_and_remove(state, pid) do

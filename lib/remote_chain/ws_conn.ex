@@ -27,33 +27,57 @@ defmodule RemoteChain.WSConn do
 
   # A connection is considered stale (and excluded from the block-number
   # consensus) once its last observed block is older than this many expected
-  # block intervals. Matches the cutoff the `:ping` handler uses to declare a
-  # live connection dead on the same chain.
+  # block intervals. Single source of truth for the staleness threshold used
+  # by `stale?/2`, the `:ping` close handler, and `NodeProxy`'s staleness-
+  # aware consensus.
   @stale_threshold_intervals 10
+
+  @doc """
+  Whether `lastblock_at` is older than the staleness cutoff for `chain`.
+
+  The default cutoff is `chain.expected_block_intervall() * #{@stale_threshold_intervals}`
+  seconds. `intervals` overrides the multiplier — used by `NodeProxy` for
+  its eviction pass (two ping cycles, `@stale_eviction_intervals`).
+
+  This is the single threshold shared by `stale?/2` (pid-based), the
+  `:ping` close handler, and `NodeProxy`'s consensus and eviction logic.
+  """
+  def stale_at?(lastblock_at, chain, intervals \\ @stale_threshold_intervals) do
+    case lastblock_at do
+      nil ->
+        false
+
+      %DateTime{} ->
+        age = DateTime.diff(DateTime.utc_now(), lastblock_at, :second)
+        age > chain.expected_block_intervall() * intervals
+    end
+  end
+
+  @doc """
+  The `lastblock_at` recorded in the WSConn state, or `nil` if the pid
+  is not a live WSConn (dead, handshaking, or another process).
+
+  Used by `NodeProxy` to evaluate eviction without depending on the
+  private `try_get_state/1`.
+  """
+  def lastblock_at(pid) when is_pid(pid) do
+    case try_get_state(pid) do
+      %__MODULE__{lastblock_at: lastblock_at} -> lastblock_at
+      _ -> nil
+    end
+  end
+
+  def lastblock_at(_other), do: nil
 
   @doc """
   Whether the WSConn has stopped receiving block updates even though the
   underlying socket is still alive.
 
-  A connection is stale if its last observed block is older than
-  `chain.expected_block_intervall() * 10` seconds, the same cutoff the
-  `:ping` handler uses to declare a live connection dead. Used by
-  `NodeProxy` to exclude frozen providers from the block-number consensus
-  while keeping the connection in the pool (so it can recover without a
-  restart).
-
   Returns `false` for processes that are not `WSConn` instances or that
   cannot be inspected (dead, handshaking, mid-`sys.get_state` call).
   """
   def stale?(pid, chain) when is_pid(pid) do
-    case try_get_state(pid) do
-      %__MODULE__{lastblock_at: lastblock_at} when not is_nil(lastblock_at) ->
-        age = DateTime.diff(DateTime.utc_now(), lastblock_at, :second)
-        age > chain.expected_block_intervall() * @stale_threshold_intervals
-
-      _ ->
-        false
-    end
+    stale_at?(lastblock_at(pid), chain)
   end
 
   def stale?(_other, _chain), do: false
@@ -231,15 +255,13 @@ defmodule RemoteChain.WSConn do
   @impl true
   def handle_info(
         :ping,
-        %WSConn{chain: chain, lastblock_at: lastblock_at, ws_url: ws_url} = state
+        %WSConn{chain: chain, ws_url: ws_url} = state
       ) do
     if state.subscription_id == nil do
       raise "No subscription id received, aborting connection with #{ws_url}"
     end
 
-    age = DateTime.diff(DateTime.utc_now(), lastblock_at, :second)
-
-    if age > chain.expected_block_intervall() * 10 do
+    if stale_at?(state.lastblock_at, chain) do
       {:message_queue_len, len} = Process.info(self(), :message_queue_len)
 
       Logger.warning(
