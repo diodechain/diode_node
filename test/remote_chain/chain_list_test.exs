@@ -257,6 +257,30 @@ defmodule RemoteChain.ChainListTest do
     end
   end
 
+  describe "live_ws_endpoints/2" do
+    test "includes additional endpoints (fallback URLs) that pass test?/2" do
+      with_ws_mock([timestamp: hex_timestamp(System.os_time(:second))], fn url ->
+        assert RemoteChain.ChainList.live_ws_endpoints(Chains.Anvil, [url]) == [url]
+      end)
+    end
+
+    test "drops an additional endpoint that fails the staleness probe" do
+      # Regression for us1: a fallback URL like the simplystaking.xyz
+      # endpoint returns 403 on the HTTP probe and must be excluded from
+      # the live list so NodeProxy does not re-attach it.
+      url = "https://unreachable.invalid/rpc"
+      assert RemoteChain.ChainList.live_ws_endpoints(Chains.Anvil, [url]) == []
+    end
+
+    test "deduplicates the union of chainlist and additional URLs" do
+      with_ws_mock([timestamp: hex_timestamp(System.os_time(:second))], fn url ->
+        # The same URL appears in both lists; the result must be unique.
+        result = RemoteChain.ChainList.live_ws_endpoints(Chains.Anvil, [url, url])
+        assert result == [url]
+      end)
+    end
+  end
+
   defp mock_ref(), do: {__MODULE__, :current_mock}
 
   defp hex_timestamp(seconds), do: "0x" <> Integer.to_string(seconds, 16)
