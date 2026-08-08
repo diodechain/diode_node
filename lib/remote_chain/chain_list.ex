@@ -8,11 +8,6 @@ defmodule RemoteChain.ChainList do
   # the background, so callers never block on provider probes.
   @test_cache_ttl_ms :timer.minutes(5)
 
-  # A provider counts as current if its latest block is at most this many
-  # expected block intervals old — the same cutoff WSConn uses to declare a
-  # live connection dead.
-  @max_stale_intervals 10
-
   # How far ahead of the local clock a block timestamp may be (producer skew).
   @max_future_skew_seconds 60
 
@@ -21,21 +16,33 @@ defmodule RemoteChain.ChainList do
     |> check_endpoints(chain)
   end
 
+  @doc """
+  WebSocket endpoints for `chain`, optionally extended with caller-supplied
+  URLs. Returns only endpoints that pass the staleness probe.
+
+  Callers that supply their own fallback URLs (e.g. `NodeProxy`) should
+  prefer `live_ws_endpoints/2` instead — `ws_endpoints/2` does not re-test
+  the additional URLs on every call, so a permanently stale fallback would
+  be re-attached after every eviction. See `live_ws_endpoints/2`.
+  """
   def ws_endpoints(chain, additional_endpoints \\ []) do
     endpoints(chain, additional_endpoints)[:ws]
     |> check_endpoints(chain)
   end
 
   @doc """
-  WebSocket endpoints that are currently considered live for the given
-  chain, including the supplied `additional_endpoints` (typically the
-  configured fallback URLs).
+  WebSocket endpoints that are currently considered live for `chain`,
+  including the supplied `additional_endpoints` (typically the configured
+  fallback URLs).
 
-  `ws_endpoints/2` already runs every chainlist URL through `test?/2`,
-  so the chain URLs need no further filtering. The additional URLs do
-  not, so they are tested here. Used by `NodeProxy.ensure_connections/1`
-  to keep permanently stale fallback URLs (e.g. simplystaking.xyz on
-  us1) from being re-attached.
+  `ws_endpoints/2` already runs every chainlist URL through `test?/2`, so
+  the chain URLs need no further filtering; this function re-tests only the
+  `additional_endpoints`. A `ws_endpoints/2` that returns `nil` (chain id
+  not in the chainlist) is treated as "no chain URLs, only additional" so
+  this function still has well-defined behaviour for unknown chains.
+
+  Used by `NodeProxy.ensure_connections/1` to keep permanently stale
+  fallback URLs (e.g. simplystaking.xyz on us1) from being re-attached.
   """
   def live_ws_endpoints(chain, additional_endpoints \\ []) do
     chain_urls = ws_endpoints(chain) || []
@@ -218,12 +225,20 @@ defmodule RemoteChain.ChainList do
   keep responding to requests while stuck on an old block, which makes them
   unusable as block sources even though they pass an `eth_chainId` check.
 
-  A block counts as current if its timestamp is at most
-  `expected_block_intervall * 10` seconds old (the same cutoff `WSConn` uses
-  to declare a live connection dead), and not implausibly in the future.
+  The age cutoff is shared with `RemoteChain.WSConn.stale_at?/3` (the same
+  `@stale_threshold_intervals` constant), so an endpoint that passes here
+  will not be flagged as stale by the WSConn's `:ping` handler. Future clock
+  skew is bounded separately by `@max_future_skew_seconds` because the
+  staleness predicate only checks how stale a `lastblock_at` is — never how
+  far in the future it sits.
   """
   def block_current?(chain, %{"timestamp" => timestamp}) when is_binary(timestamp) do
-    timestamp_current?(max_block_age_seconds(chain), Base16.decode_int(timestamp))
+    block_ts = Base16.decode_int(timestamp)
+    now = System.os_time(:second)
+    age = now - block_ts
+
+    age >= -@max_future_skew_seconds and
+      not RemoteChain.WSConn.stale_at?(block_age_to_lastblock_at(now, age), chain)
   end
 
   def block_current?(_chain, _block), do: false
@@ -237,7 +252,15 @@ defmodule RemoteChain.ChainList do
 
   @doc false
   def max_block_age_seconds(chain) do
-    RemoteChain.chainimpl(chain).expected_block_intervall() * @max_stale_intervals
+    RemoteChain.chainimpl(chain).expected_block_intervall() *
+      RemoteChain.WSConn.stale_threshold_intervals()
+  end
+
+  # Reconstruct a synthetic `lastblock_at` so we can reuse `WSConn.stale_at?/3`
+  # for the staleness check. The predicate only looks at `DateTime.diff/3`,
+  # so any reference point with the right age is equivalent.
+  defp block_age_to_lastblock_at(now, age) do
+    DateTime.from_unix!(now - age)
   end
 
   @loaded_key {__MODULE__, :loaded}

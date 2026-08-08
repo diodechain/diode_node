@@ -1,5 +1,5 @@
 defmodule RemoteChain.WSConnTest do
-  use ExUnit.Case, async: false
+  use ExUnit.Case, async: true
 
   alias RemoteChain.WSConn
 
@@ -72,6 +72,21 @@ defmodule RemoteChain.WSConnTest do
       ref = Process.monitor(pid)
       assert_receive {:DOWN, ^ref, :process, ^pid, _}, 1_000
       refute WSConn.stale?(pid, Chains.Anvil)
+    end
+  end
+
+  describe "stale_at?/3" do
+    test "honours the intervals override, not just the default 10" do
+      # 16s old on Anvil (15s cadence) is fresh under the default 10-interval
+      # (150s) cutoff but stale under a 1-interval (15s) cutoff.
+      sixteen_seconds_ago = DateTime.utc_now() |> DateTime.add(-16, :second)
+
+      refute WSConn.stale_at?(sixteen_seconds_ago, Chains.Anvil)
+      assert WSConn.stale_at?(sixteen_seconds_ago, Chains.Anvil, 1)
+    end
+
+    test "stale_threshold_intervals/0 exposes the default as the same constant" do
+      assert WSConn.stale_threshold_intervals() == 10
     end
   end
 end

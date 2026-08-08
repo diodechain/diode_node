@@ -28,19 +28,29 @@ defmodule RemoteChain.WSConn do
   # A connection is considered stale (and excluded from the block-number
   # consensus) once its last observed block is older than this many expected
   # block intervals. Single source of truth for the staleness threshold used
-  # by `stale?/2`, the `:ping` close handler, and `NodeProxy`'s staleness-
-  # aware consensus.
+  # by `stale?/2`, the `:ping` close handler, `NodeProxy`'s staleness-aware
+  # consensus and eviction, and `ChainList.block_current?/2`.
   @stale_threshold_intervals 10
+
+  @doc """
+  The default staleness threshold expressed as a multiple of
+  `chain.expected_block_intervall()`. Exposed so `ChainList.block_current?/2`
+  can share the same threshold instead of baking the literal `10` into its
+  own predicate.
+  """
+  def stale_threshold_intervals, do: @stale_threshold_intervals
 
   @doc """
   Whether `lastblock_at` is older than the staleness cutoff for `chain`.
 
-  The default cutoff is `chain.expected_block_intervall() * #{@stale_threshold_intervals}`
-  seconds. `intervals` overrides the multiplier — used by `NodeProxy` for
-  its eviction pass (two ping cycles, `@stale_eviction_intervals`).
+  The default cutoff is `chain.expected_block_intervall() *
+  stale_threshold_intervals()` seconds (currently 10 intervals). `intervals`
+  overrides the multiplier — used by `NodeProxy` for its eviction pass (two
+  ping cycles, `@stale_eviction_intervals`).
 
   This is the single threshold shared by `stale?/2` (pid-based), the
-  `:ping` close handler, and `NodeProxy`'s consensus and eviction logic.
+  `:ping` close handler, `NodeProxy`'s consensus and eviction logic, and
+  `ChainList.block_current?/2`.
   """
   def stale_at?(lastblock_at, chain, intervals \\ @stale_threshold_intervals) do
     case lastblock_at do
@@ -72,6 +82,11 @@ defmodule RemoteChain.WSConn do
   @doc """
   Whether the WSConn has stopped receiving block updates even though the
   underlying socket is still alive.
+
+  A stale WSConn is excluded from `NodeProxy`'s block-number consensus and
+  from the `pick_connection/1` rotation (it stays in the pool so it can
+  recover without a restart) and is forcibly evicted after two ping
+  cycles.
 
   Returns `false` for processes that are not `WSConn` instances or that
   cannot be inspected (dead, handshaking, mid-`sys.get_state` call).

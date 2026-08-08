@@ -537,31 +537,6 @@ defmodule RemoteChain.NodeProxyTest do
   describe "prune_stale_connections/1 eviction" do
     @fallback_url "wss://fallback.example/oasis/mainnet/"
 
-    defp with_fallback(state, lastblock_at) do
-      # Mark the stub as ready (so the handshake-stale check is not the
-      # one evicting) and use a started_at that is within the handshake
-      # timeout. Only the data-staleness check should apply.
-      started_at = DateTime.utc_now()
-      {:ok, fallback} = WSConnStateStub.start_state(%WSConn{started_at: started_at})
-      Globals.put({WSConn, fallback}, :fake_conn)
-      # Stash the desired lastblock_at into the stub via :sys.replace_state.
-      :sys.replace_state(fallback, fn %WSConn{} = wsconn ->
-        %{wsconn | lastblock_at: lastblock_at}
-      end)
-
-      %{state | fallback: fallback, fallback_url: @fallback_url}
-    end
-
-    defp build_min_state do
-      %NodeProxy{
-        chain: Chains.OasisSapphire,
-        connections: %{},
-        fallback: nil,
-        fallback_url: nil,
-        lastblocks: %{}
-      }
-    end
-
     test "evicts a fallback that has not produced a block for >20 block intervals" do
       # 30 minutes = 1800s on a 6s cadence = 300 intervals, well past the
       # 20-interval (120s) eviction cutoff for Oasis.
@@ -597,27 +572,38 @@ defmodule RemoteChain.NodeProxyTest do
       # eviction contract entirely. The fix uses the WSConn's own
       # `lastblock_at` (initialised at start) as a fallback.
       very_stale = DateTime.add(DateTime.utc_now(), -1800, :second)
-      started_at = DateTime.utc_now()
-
-      {:ok, fallback} = WSConnStateStub.start_state(%WSConn{started_at: started_at})
-      Globals.put({WSConn, fallback}, :fake_conn)
-
-      :sys.replace_state(fallback, fn %WSConn{} = wsconn ->
-        %{wsconn | lastblock_at: very_stale}
-      end)
-
-      state = %NodeProxy{
-        chain: Chains.OasisSapphire,
-        connections: %{},
-        fallback: fallback,
-        fallback_url: @fallback_url,
-        lastblocks: %{}
-      }
+      state = with_fallback(build_min_state(), very_stale)
 
       new_state = NodeProxy.prune_stale_connections(state)
 
       assert new_state.fallback == nil
       assert new_state.fallback_url == nil
     end
+  end
+
+  # Shared helpers for the `prune_stale_connections/1` eviction tests.
+  # Mark the stub as ready (so the handshake-stale check is not the one
+  # evicting) and use a started_at that is within the handshake timeout.
+  # Only the data-staleness check should apply.
+  defp with_fallback(state, lastblock_at) do
+    started_at = DateTime.utc_now()
+    {:ok, fallback} = WSConnStateStub.start_state(%WSConn{started_at: started_at})
+    Globals.put({WSConn, fallback}, :fake_conn)
+
+    :sys.replace_state(fallback, fn %WSConn{} = wsconn ->
+      %{wsconn | lastblock_at: lastblock_at}
+    end)
+
+    %{state | fallback: fallback, fallback_url: "wss://fallback.example/oasis/mainnet/"}
+  end
+
+  defp build_min_state do
+    %NodeProxy{
+      chain: Chains.OasisSapphire,
+      connections: %{},
+      fallback: nil,
+      fallback_url: nil,
+      lastblocks: %{}
+    }
   end
 end

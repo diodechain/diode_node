@@ -183,7 +183,8 @@ defmodule RemoteChain.NodeProxy do
           lastblocks: lastblocks,
           subscriptions: subs,
           lastblock: lastblock,
-          fallback: fallback
+          fallback: fallback,
+          fallback_url: fallback_url
         }
       ) do
     now = DateTime.utc_now()
@@ -197,7 +198,16 @@ defmodule RemoteChain.NodeProxy do
         block >= block_number and not RemoteChain.WSConn.stale_at?(lastblock_at, chain)
       end)
 
-    fallback_live? = fallback != nil and not RemoteChain.WSConn.stale?(fallback, chain)
+    # Prefer the cached `lastblocks` entry so the consensus path never makes
+    # a `:sys.get_state` call to the fallback pid. Fall back to the WSConn's
+    # own `lastblock_at` only when the fallback has never reported a block.
+    fallback_live? =
+      fallback != nil and
+        case Map.get(lastblocks, fallback_url) do
+          {_block, lastblock_at} -> not RemoteChain.WSConn.stale_at?(lastblock_at, chain)
+          nil -> not RemoteChain.WSConn.stale?(fallback, chain)
+        end
+
     security_level = if fallback_live?, do: @security_level + 1, else: @security_level
 
     block_number =
@@ -451,7 +461,9 @@ defmodule RemoteChain.NodeProxy do
     # even though the chain config still lists fallback URLs. Schedule a
     # refill so the next fallback URL (or none, if all are stale) takes
     # its place.
-    if fallback != nil and (state.fallback == nil or state.fallback_url == nil) do
+    removed_fallback? = fallback != nil and state.fallback == nil
+
+    if removed_fallback? do
       schedule_ensure_connections(state, 0)
     else
       state
