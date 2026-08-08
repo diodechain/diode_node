@@ -26,6 +26,25 @@ defmodule RemoteChain.ChainList do
     |> check_endpoints(chain)
   end
 
+  @doc """
+  WebSocket endpoints that are currently considered live for the given
+  chain. Filters `ws_endpoints/2` plus the supplied `additional_endpoints`
+  through `test?/2`, so providers that fail the staleness probe
+  (eth_chainId + eth_getBlockByNumber) are excluded.
+
+  Unlike `ws_endpoints/2`, this is meant to be called repeatedly on the
+  NodeProxy refill path: a provider that was healthy at startup but has
+  since gone stale gets a fresh probe within the 5-minute TTL and drops
+  out of the pool automatically.
+  """
+  def live_ws_endpoints(chain, additional_endpoints \\ []) do
+    chain_urls = ws_endpoints(chain) || []
+
+    (chain_urls ++ additional_endpoints)
+    |> Enum.uniq()
+    |> Enum.filter(fn url -> test?(url, chain) end)
+  end
+
   defp check_endpoints(endpoints, chain) do
     if endpoints == nil or endpoints == [] do
       Logger.error("No endpoints found for chain #{chain}")

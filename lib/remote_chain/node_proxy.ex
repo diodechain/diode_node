@@ -14,6 +14,14 @@ defmodule RemoteChain.NodeProxy do
   @rate_limit_reconnect_ms 15_000
   @security_level 1
 
+  # A WSConn that has gone this many expected block intervals without a new
+  # block is forcibly evicted, even though the socket itself is still alive.
+  # Two consecutive ping cycles (each 2 * expected_block_intervall seconds) is
+  # the upper bound: WSConn's own :ping handler closes a connection at 10 *
+  # expected_block_intervall, so we keep it in the pool for one cycle longer
+  # in case it recovers, then evict + ask ChainList to re-test the URL.
+  @stale_eviction_intervals 20
+
   defstruct [
     :chain,
     connections: %{},
@@ -178,11 +186,22 @@ defmodule RemoteChain.NodeProxy do
           fallback: fallback
         }
       ) do
-    lastblocks = Map.put(lastblocks, ws_url, block_number)
-    security_level = if fallback != nil, do: @security_level + 1, else: @security_level
+    now = DateTime.utc_now()
+    lastblocks = Map.put(lastblocks, ws_url, {block_number, now})
+
+    # A provider that has been silent for more than the staleness cutoff
+    # contributes zero votes to the quorum. Otherwise a single frozen
+    # fallback would block every block advance (the us1/Oasis incident).
+    live_voter_count =
+      Enum.count(lastblocks, fn {_url, {block, lastblock_at}} ->
+        block >= block_number and not stale_entry?(chain, lastblock_at)
+      end)
+
+    fallback_live? = fallback != nil and live_fallback?(chain, state)
+    security_level = if fallback_live?, do: @security_level + 1, else: @security_level
 
     block_number =
-      if Enum.count(lastblocks, fn {_, block} -> block >= block_number end) >= security_level do
+      if live_voter_count >= security_level do
         max(block_number, lastblock)
       else
         lastblock
@@ -391,29 +410,79 @@ defmodule RemoteChain.NodeProxy do
     }
   end
 
-  defp prune_stale_connections(
-         state = %NodeProxy{
-           connections: connections,
-           fallback: fallback,
-           fallback_url: fallback_url
-         }
-       ) do
+  @doc false
+  def prune_stale_connections(
+        state = %NodeProxy{
+          chain: chain,
+          connections: connections,
+          fallback: fallback,
+          fallback_url: fallback_url
+        }
+      ) do
     pool =
       if fallback_url && fallback,
         do: Map.put(connections, fallback_url, fallback),
         else: connections
 
-    Enum.reduce(pool, state, fn {url, pid}, state ->
-      if RemoteChain.WSConn.handshake_stale?(pid) do
-        Logger.warning(
-          "Evicting stale WSConn #{inspect(pid)} for #{inspect(state.chain)} [#{url}]"
-        )
+    state =
+      Enum.reduce(pool, state, fn {url, pid}, state ->
+        cond do
+          RemoteChain.WSConn.handshake_stale?(pid) ->
+            Logger.warning(
+              "Evicting handshake-stale WSConn #{inspect(pid)} for #{inspect(state.chain)} [#{url}]"
+            )
 
-        close_and_remove(state, pid)
-      else
-        state
-      end
-    end)
+            close_and_remove(state, pid)
+
+          data_stale?(state, chain, url) ->
+            Logger.warning(
+              "Evicting data-stale WSConn #{inspect(pid)} for #{inspect(state.chain)} [#{url}] " <>
+                "(no new blocks for >#{@stale_eviction_intervals} block intervals)"
+            )
+
+            close_and_remove(state, pid)
+
+          true ->
+            state
+        end
+      end)
+
+    # If we removed the fallback, the pool is now operating without one
+    # even though the chain config still lists fallback URLs. Schedule a
+    # refill so the next fallback URL (or none, if all are stale) takes
+    # its place.
+    if fallback != nil and not has_fallback?(state) do
+      schedule_ensure_connections(state, 0)
+    else
+      state
+    end
+  end
+
+  defp data_stale?(%NodeProxy{lastblocks: lastblocks}, chain, url) do
+    case Map.get(lastblocks, url) do
+      {_block, lastblock_at} ->
+        age = DateTime.diff(DateTime.utc_now(), lastblock_at, :second)
+        age > chain.expected_block_intervall() * @stale_eviction_intervals
+
+      nil ->
+        # Never received a block from this provider; rely on WSConn's own
+        # `lastblock_at` (which is initialized to `started_at` and updated
+        # by `new_block`).
+        false
+    end
+  end
+
+  defp has_fallback?(%NodeProxy{fallback: fallback, fallback_url: fallback_url}) do
+    fallback != nil and fallback_url != nil
+  end
+
+  defp stale_entry?(chain, lastblock_at) do
+    age = DateTime.diff(DateTime.utc_now(), lastblock_at, :second)
+    age > chain.expected_block_intervall() * 10
+  end
+
+  defp live_fallback?(chain, %{fallback: fallback}) do
+    fallback != nil and not RemoteChain.WSConn.stale?(fallback, chain)
   end
 
   defp close_and_remove(state, pid) do
@@ -492,10 +561,17 @@ defmodule RemoteChain.NodeProxy do
   defp ensure_connections(state = %NodeProxy{chain: chain}) do
     state = prune_stale_connections(state)
     %NodeProxy{connections: connections, fallback: fallback} = state
-    urls = MapSet.new(RemoteChain.ws_endpoints(chain))
+
+    # Apply `live_ws_endpoints/1` to BOTH the primary list and the configured
+    # fallback URLs. Without filtering fallback URLs, a permanently stale
+    # WS-only fallback (e.g. the simplystaking.xyz endpoint on us1) would be
+    # re-attached after every eviction and silently freeze the published
+    # block number forever.
+    fallback_candidates = RemoteChain.ws_fallback_endpoints(chain)
+    urls = MapSet.new(RemoteChain.ChainList.live_ws_endpoints(chain, fallback_candidates))
     existing = MapSet.new(Map.keys(connections))
     new_urls = MapSet.difference(urls, existing) |> Enum.to_list() |> Enum.shuffle()
-    fallback_url = List.first(Enum.shuffle(RemoteChain.ws_fallback_endpoints(chain)) ++ new_urls)
+    fallback_url = List.first(Enum.shuffle(fallback_candidates) ++ new_urls)
 
     cond do
       map_size(connections) < @security_level ->

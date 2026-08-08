@@ -25,6 +25,39 @@ defmodule RemoteChain.WSConn do
   def connection_timeout_ms(), do: @connection_timeout_ms
   def handshake_timeout_ms(), do: @connection_timeout_ms
 
+  # A connection is considered stale (and excluded from the block-number
+  # consensus) once its last observed block is older than this many expected
+  # block intervals. Matches the cutoff the `:ping` handler uses to declare a
+  # live connection dead on the same chain.
+  @stale_threshold_intervals 10
+
+  @doc """
+  Whether the WSConn has stopped receiving block updates even though the
+  underlying socket is still alive.
+
+  A connection is stale if its last observed block is older than
+  `chain.expected_block_intervall() * 10` seconds, the same cutoff the
+  `:ping` handler uses to declare a live connection dead. Used by
+  `NodeProxy` to exclude frozen providers from the block-number consensus
+  while keeping the connection in the pool (so it can recover without a
+  restart).
+
+  Returns `false` for processes that are not `WSConn` instances or that
+  cannot be inspected (dead, handshaking, mid-`sys.get_state` call).
+  """
+  def stale?(pid, chain) when is_pid(pid) do
+    case try_get_state(pid) do
+      %__MODULE__{lastblock_at: lastblock_at} when not is_nil(lastblock_at) ->
+        age = DateTime.diff(DateTime.utc_now(), lastblock_at, :second)
+        age > chain.expected_block_intervall() * @stale_threshold_intervals
+
+      _ ->
+        false
+    end
+  end
+
+  def stale?(_other, _chain), do: false
+
   def start(owner, chain, ws_url) do
     state = %__MODULE__{
       owner: owner,

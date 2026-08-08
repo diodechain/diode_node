@@ -16,11 +16,21 @@ defmodule RemoteChain.NodeProxyTest do
     use GenServer
 
     def start(started_at) do
-      GenServer.start(__MODULE__, started_at)
+      GenServer.start(__MODULE__, %WSConn{started_at: started_at})
+    end
+
+    def start_state(%WSConn{} = state), do: GenServer.start(__MODULE__, state)
+
+    @impl true
+    def init(state), do: {:ok, state}
+
+    @impl true
+    def handle_info({:"$websockex_cast", :close}, state) do
+      {:stop, :normal, state}
     end
 
     @impl true
-    def init(started_at), do: {:ok, %WSConn{started_at: started_at}}
+    def handle_info(_msg, state), do: {:noreply, state}
   end
 
   defp stale_started_at do
@@ -387,6 +397,198 @@ defmodule RemoteChain.NodeProxyTest do
 
       refute NodeProxy.rate_limited_disconnect?(:normal)
       refute NodeProxy.rate_limited_disconnect?({:error, :closed})
+    end
+  end
+
+  describe "handle_info({:new_block, ...}) consensus" do
+    # Regression for the us1/Oasis incident: a fallback WSConn silently
+    # stopped pushing newHeads frames while staying connected. The primary
+    # provider kept advancing, but `NodeProxy` published the stale fallback
+    # block forever because the consensus required 2/2 votes.
+    @primary_url "wss://primary.example/ws"
+    @fallback_url "wss://fallback.example/oasis/mainnet/"
+
+    defp fresh_date, do: DateTime.utc_now()
+
+    defp alive_noop_pid do
+      spawn(fn ->
+        receive do
+          :stop -> :ok
+        end
+      end)
+    end
+
+    defp build_state(primary_lastblocks, fallback) do
+      %NodeProxy{
+        chain: Chains.OasisSapphire,
+        connections: %{@primary_url => alive_noop_pid()},
+        fallback: fallback,
+        fallback_url: if(fallback, do: @fallback_url, else: nil),
+        lastblocks: primary_lastblocks,
+        lastblock: 0
+      }
+    end
+
+    defp stub_fallback(lastblock_at) do
+      {:ok, pid} =
+        WSConnStateStub.start_state(%WSConn{started_at: lastblock_at, lastblock_at: lastblock_at})
+
+      pid
+    end
+
+    defp apply_new_block(state, url, block) do
+      {:noreply, new_state} = NodeProxy.handle_info({:new_block, url, block}, state)
+      new_state
+    end
+
+    test "ignores a frozen fallback when the primary advances (the us1/Oasis bug)" do
+      fallback = stub_fallback(DateTime.add(fresh_date(), -30 * 60, :second))
+      state = build_state(%{}, fallback)
+
+      state = apply_new_block(state, @primary_url, 20)
+
+      # Without the fix, published block stays at 0 because the frozen
+      # fallback only has block 10 and security_level is 2. With the fix,
+      # the frozen fallback is excluded from the quorum and the primary
+      # alone advances the published block.
+      assert state.lastblock == 20
+    end
+
+    test "advances when both providers are live and reporting recent blocks" do
+      fallback = stub_fallback(fresh_date())
+      state = build_state(%{}, fallback)
+
+      state = apply_new_block(state, @primary_url, 10)
+      # Only the primary has reached 10. With security_level = 2 (fallback
+      # configured), the published block stays at 0.
+      assert state.lastblock == 0
+
+      state = apply_new_block(state, @fallback_url, 10)
+      # Both providers agree at 10; the published block advances.
+      assert state.lastblock == 10
+    end
+
+    test "re-admits a previously-frozen fallback once it posts a fresh block" do
+      stale_ts = DateTime.add(fresh_date(), -30 * 60, :second)
+
+      # Both the WSConn's `lastblock_at` and the cached `lastblocks` entry
+      # are stale. The fallback is treated as not present for the consensus.
+      fallback = stub_fallback(stale_ts)
+
+      state =
+        build_state(
+          %{@fallback_url => {10, stale_ts}},
+          fallback
+        )
+
+      # Primary alone advances to 22 (fallback is stale, security_level = 1).
+      state = apply_new_block(state, @primary_url, 22)
+      assert state.lastblock == 22
+
+      # Fallback recovers with a fresh block at 22. With security_level = 2
+      # the consensus now needs two providers at 22, so the published block
+      # advances to 22.
+      state = apply_new_block(state, @fallback_url, 22)
+      assert state.lastblock == 22
+    end
+
+    test "degrades to security_level=1 when no fallback is configured" do
+      state = build_state(%{}, nil)
+
+      state = apply_new_block(state, @primary_url, 5)
+      assert state.lastblock == 5
+    end
+
+    test "degrades to security_level=1 when the configured fallback is stale" do
+      fallback = stub_fallback(DateTime.add(fresh_date(), -30 * 60, :second))
+      state = build_state(%{}, fallback)
+
+      # Even though `fallback != nil`, the staleness check should drop
+      # security_level back to 1 so the primary advances.
+      state = apply_new_block(state, @primary_url, 5)
+      assert state.lastblock == 5
+    end
+
+    test "ignores newHeads from a stale provider when computing the quorum" do
+      # Both providers have stale entries in lastblocks (the test simulates
+      # a scenario where a provider was previously healthy but now silent).
+      stale_ts = DateTime.add(fresh_date(), -30 * 60, :second)
+      fallback = stub_fallback(stale_ts)
+
+      state =
+        build_state(
+          %{
+            @primary_url => {5, stale_ts},
+            @fallback_url => {5, stale_ts}
+          },
+          fallback
+        )
+
+      state = apply_new_block(state, @primary_url, 6)
+
+      # The primary's new block has a fresh `lastblock_at`, but the
+      # fallback's entry is stale. Stale entries contribute zero votes, so
+      # the primary's single live vote satisfies the (now-degraded)
+      # security_level = 1.
+      assert state.lastblock == 6
+    end
+  end
+
+  describe "prune_stale_connections/1 eviction" do
+    @fallback_url "wss://fallback.example/oasis/mainnet/"
+
+    defp with_fallback(state, lastblock_at) do
+      # Mark the stub as ready (so the handshake-stale check is not the
+      # one evicting) and use a started_at that is within the handshake
+      # timeout. Only the data-staleness check should apply.
+      started_at = DateTime.utc_now()
+      {:ok, fallback} = WSConnStateStub.start_state(%WSConn{started_at: started_at})
+      Globals.put({WSConn, fallback}, :fake_conn)
+      # Stash the desired lastblock_at into the stub via :sys.replace_state.
+      :sys.replace_state(fallback, fn %WSConn{} = wsconn ->
+        %{wsconn | lastblock_at: lastblock_at}
+      end)
+
+      %{state | fallback: fallback, fallback_url: @fallback_url}
+    end
+
+    defp build_min_state do
+      %NodeProxy{
+        chain: Chains.OasisSapphire,
+        connections: %{},
+        fallback: nil,
+        fallback_url: nil,
+        lastblocks: %{}
+      }
+    end
+
+    test "evicts a fallback that has not produced a block for >20 block intervals" do
+      # 30 minutes = 1800s on a 6s cadence = 300 intervals, well past the
+      # 20-interval (120s) eviction cutoff for Oasis.
+      very_stale = DateTime.add(DateTime.utc_now(), -1800, :second)
+
+      state =
+        build_min_state()
+        |> with_fallback(very_stale)
+        |> Map.put(:lastblocks, %{@fallback_url => {10, very_stale}})
+
+      new_state = NodeProxy.prune_stale_connections(state)
+
+      assert new_state.fallback == nil
+      assert new_state.fallback_url == nil
+    end
+
+    test "keeps a fallback that has produced a block within the last 20 intervals" do
+      # 30s on Oasis (6s cadence) = 5 intervals, well below the 20-interval
+      # eviction cutoff.
+      fresh = DateTime.add(DateTime.utc_now(), -30, :second)
+      state = with_fallback(build_min_state(), fresh)
+      state = %{state | lastblocks: %{@fallback_url => {10, fresh}}}
+
+      new_state = NodeProxy.prune_stale_connections(state)
+
+      assert new_state.fallback == state.fallback
+      assert new_state.fallback_url == @fallback_url
     end
   end
 end
