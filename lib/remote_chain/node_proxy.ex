@@ -563,15 +563,12 @@ defmodule RemoteChain.NodeProxy do
     state = prune_stale_connections(state)
     %NodeProxy{connections: connections, fallback: fallback} = state
 
-    # Apply `live_ws_endpoints/1` to BOTH the primary list and the configured
-    # fallback URLs. Without filtering fallback URLs, a permanently stale
-    # WS-only fallback (e.g. the simplystaking.xyz endpoint on us1) would be
-    # re-attached after every eviction and silently freeze the published
-    # block number forever.
-    fallback_candidates = RemoteChain.ws_fallback_endpoints(chain)
-    urls = MapSet.new(RemoteChain.ChainList.live_ws_endpoints(chain, fallback_candidates))
+    # Canonical path: RemoteChain (env) -> ChainImpl -> ChainList.
+    # Do not call ChainList directly here; that skips CHAINS_*_WS overrides.
+    urls = MapSet.new(RemoteChain.ws_endpoints(chain))
     existing = MapSet.new(Map.keys(connections))
     new_urls = MapSet.difference(urls, existing) |> Enum.to_list() |> Enum.shuffle()
+    fallback_candidates = RemoteChain.ws_fallback_endpoints(chain)
     fallback_url = List.first(Enum.shuffle(fallback_candidates) ++ new_urls)
 
     cond do
