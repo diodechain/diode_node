@@ -257,26 +257,64 @@ defmodule RemoteChain.ChainListTest do
     end
   end
 
-  describe "live_ws_endpoints/2" do
-    test "includes additional endpoints (fallback URLs) that pass test?/2" do
-      with_ws_mock([timestamp: hex_timestamp(System.os_time(:second))], fn url ->
-        assert RemoteChain.ChainList.live_ws_endpoints(Chains.Anvil, [url]) == [url]
+  describe "endpoints/2 filtering scope" do
+    test "appends additional endpoints without a health probe" do
+      # Additional URLs (ChainImpl extras / overrides) must remain available even
+      # when they would fail test?/2. Only chainlist entries are filtered.
+      dead = "wss://unreachable.invalid/ws-additional"
+      assert RemoteChain.ChainList.ws_endpoints(Chains.Anvil, [dead]) == [dead]
+      # Ensure we never ran a probe that would hang on DNS.
+      assert Globals.get({RemoteChain.ChainList, :test, dead}) == nil
+    end
+
+    test "drops chainlist URLs that fail the health probe" do
+      chain_id = Chains.Anvil.chain_id()
+      dead_ws = "wss://unreachable-chainlist.invalid/ws"
+      dead_rpc = "https://unreachable-chainlist.invalid/rpc"
+      extra_ws = "ws://override.example/ws"
+
+      Globals.put(@loaded_key, true)
+
+      Globals.put(cache_key(chain_id), %{
+        "chainId" => chain_id,
+        "name" => "anvil-filter-scope",
+        "rpc" => [%{"url" => dead_rpc}, %{"url" => dead_ws}]
+      })
+
+      # Pre-seed failed verdicts so filter_endpoints does not open the network.
+      now = System.monotonic_time(:millisecond)
+      Globals.put({RemoteChain.ChainList, :test, dead_ws}, {false, now})
+      Globals.put({RemoteChain.ChainList, :test, dead_rpc}, {false, now})
+
+      on_exit(fn ->
+        Globals.pop(cache_key(chain_id))
+        Globals.pop({RemoteChain.ChainList, :test, dead_ws})
+        Globals.pop({RemoteChain.ChainList, :test, dead_rpc})
+        clear_chain_cache()
       end)
+
+      ws = RemoteChain.ChainList.ws_endpoints(Chains.Anvil, [extra_ws])
+      rpc = RemoteChain.ChainList.rpc_endpoints(Chains.Anvil, [extra_ws])
+
+      assert ws == [extra_ws]
+      refute dead_ws in (ws || [])
+      # WS-looking additional must land in :ws, not poison the rpc list when grouped.
+      assert rpc == nil or dead_rpc not in rpc
     end
 
-    test "drops an additional endpoint that fails the staleness probe" do
-      # Regression for us1: a fallback URL like the simplystaking.xyz
-      # endpoint returns 403 on the HTTP probe and must be excluded from
-      # the live list so NodeProxy does not re-attach it.
-      url = "https://unreachable.invalid/rpc"
-      assert RemoteChain.ChainList.live_ws_endpoints(Chains.Anvil, [url]) == []
-    end
-
-    test "deduplicates the union of chainlist and additional URLs" do
+    test "deduplicates filtered chainlist and additional URLs" do
       with_ws_mock([timestamp: hex_timestamp(System.os_time(:second))], fn url ->
-        # The same URL appears in both lists; the result must be unique.
-        result = RemoteChain.ChainList.live_ws_endpoints(Chains.Anvil, [url, url])
-        assert result == [url]
+        Globals.put(@loaded_key, true)
+
+        Globals.put(cache_key(Chains.Anvil.chain_id()), %{
+          "chainId" => Chains.Anvil.chain_id(),
+          "name" => "anvil-dedupe",
+          "rpc" => [%{"url" => url}]
+        })
+
+        on_exit(&clear_chain_cache/0)
+
+        assert RemoteChain.ChainList.ws_endpoints(Chains.Anvil, [url, url]) == [url]
       end)
     end
   end

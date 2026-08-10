@@ -18,36 +18,16 @@ defmodule RemoteChain.ChainList do
 
   @doc """
   WebSocket endpoints for `chain`, optionally extended with caller-supplied
-  URLs. Returns only endpoints that pass the staleness probe.
+  URLs.
 
-  Callers that supply their own fallback URLs (e.g. `NodeProxy`) should
-  prefer `live_ws_endpoints/2` instead — `ws_endpoints/2` does not re-test
-  the additional URLs on every call, so a permanently stale fallback would
-  be re-attached after every eviction. See `live_ws_endpoints/2`.
+  Only URLs from the community chainlist pass the staleness probe. Caller
+  `additional_endpoints` (e.g. ChainImpl extras) are appended without
+  filtering so env/ChainImpl overrides remain available via the canonical
+  path RemoteChain -> ChainImpl -> ChainList.
   """
   def ws_endpoints(chain, additional_endpoints \\ []) do
     endpoints(chain, additional_endpoints)[:ws]
     |> check_endpoints(chain)
-  end
-
-  @doc """
-  WebSocket endpoints that are currently considered live for `chain`,
-  including the supplied `additional_endpoints` (typically the configured
-  fallback URLs).
-
-  `ws_endpoints/2` already runs every chainlist URL through `test?/2`, so
-  the chain URLs need no further filtering; this function re-tests only the
-  `additional_endpoints`. A `ws_endpoints/2` that returns `nil` (chain id
-  not in the chainlist) is treated as "no chain URLs, only additional" so
-  this function still has well-defined behaviour for unknown chains.
-
-  Used by `NodeProxy.ensure_connections/1` to keep permanently stale
-  fallback URLs (e.g. simplystaking.xyz on us1) from being re-attached.
-  """
-  def live_ws_endpoints(chain, additional_endpoints \\ []) do
-    chain_urls = ws_endpoints(chain) || []
-    extra_live = Enum.filter(additional_endpoints, fn url -> test?(url, chain) end)
-    Enum.uniq(chain_urls ++ extra_live)
   end
 
   defp check_endpoints(endpoints, chain) do
@@ -62,9 +42,11 @@ defmodule RemoteChain.ChainList do
     chain_id = RemoteChain.chainimpl(chain).chain_id()
     rpc = get(chain_id)["rpc"] || []
 
-    Enum.map(rpc, fn rpc -> rpc["url"] end)
-    |> Enum.concat(additional_endpoints)
-    |> filter_endpoints(chain)
+    chainlist_urls = Enum.map(rpc, fn entry -> entry["url"] end)
+    filtered = filter_endpoints(chainlist_urls, chain)
+
+    (filtered ++ additional_endpoints)
+    |> Enum.uniq()
     |> Enum.group_by(fn endpoint ->
       cond do
         String.ends_with?(endpoint, "/http") -> :rpc

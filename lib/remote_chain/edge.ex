@@ -380,7 +380,7 @@ defmodule RemoteChain.Edge do
     # In order to ensure delivery we're broadcasting to all known endpoints of this chain
     RemoteChain.RPC.send_raw_transaction(chain, payload)
 
-    for endpoint <- Enum.shuffle(chain.rpc_endpoints()) do
+    for endpoint <- Enum.shuffle(RemoteChain.rpc_endpoints(chain)) do
       RemoteChain.HTTP.send_raw_transaction(endpoint, payload)
     end
   end
