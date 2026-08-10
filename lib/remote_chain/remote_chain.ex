@@ -96,6 +96,33 @@ defmodule RemoteChain do
     chainimpl(chain) != Chains.Moonbeam
   end
 
+  @doc """
+  Whether the chain has stopped producing blocks permanently.
+
+  Opt-in per chain via `Chain.frozen?/0`; defaults to `false` for chains
+  that do not declare the function. Used to disable the WSConn staleness
+  watchdog and the endpoint freshness check, both of which would otherwise
+  reject healthy connections to a chain whose head is fixed.
+  """
+  def frozen?(chain) do
+    impl = chainimpl(chain)
+    Code.ensure_loaded?(impl) and function_exported?(impl, :frozen?, 0) and impl.frozen?()
+  end
+
+  @doc """
+  The final block number of a frozen chain, or `nil` for chains that are
+  still producing blocks (or have not declared `Chain.final_block_number/0`).
+  """
+  def final_block_number(chain) do
+    impl = chainimpl(chain)
+
+    cond do
+      not Code.ensure_loaded?(impl) -> nil
+      not function_exported?(impl, :final_block_number, 0) -> nil
+      true -> impl.final_block_number()
+    end
+  end
+
   @doc false
   def execution_reverted_rpc_error do
     %{"code" => -32000, "message" => "execution reverted"}

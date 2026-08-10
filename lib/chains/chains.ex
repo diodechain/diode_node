@@ -132,6 +132,14 @@ end
 defmodule Chains.Moonbeam do
   alias DiodeClient.{Base16, Hash}
 
+  @doc """
+  Last block Moonbeam produced before the chain halted. Treated as the
+  permanent head by `RemoteChain` so the staleness watchdog does not keep
+  evicting healthy connections to a chain that will never produce another
+  block. Update this if/when the chain resumes or hard-forks.
+  """
+  @final_block_number 16_796_699
+
   def chain_id(), do: 1284
   def expected_block_intervall(), do: 6
   def epoch(n), do: Chains.epoch(__MODULE__, n)
@@ -141,6 +149,17 @@ defmodule Chains.Moonbeam do
 
   def epoch_duration(), do: 2_592_000
   def chain_prefix(), do: "glmr"
+
+  @doc """
+  Whether this chain has stopped producing blocks permanently. When true,
+  the WSConn staleness watchdog is disabled (the chain will never satisfy
+  it) and the provider's `latest` block must match `final_block_number/0`
+  for endpoint health checks.
+  """
+  def frozen?, do: true
+
+  @doc "The final block number of this chain. Only meaningful when `frozen?/0` is true."
+  def final_block_number, do: @final_block_number
 
   def additional_endpoints() do
     ~w(

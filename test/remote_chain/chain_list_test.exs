@@ -181,6 +181,50 @@ defmodule RemoteChain.ChainListTest do
     end
   end
 
+  describe "block_current?/2 for frozen chains" do
+    # Regression: Moonbeam stopped producing blocks at 16_796_699. A
+    # healthy provider's `eth_getBlockByNumber("latest")` returns that
+    # block with an ancient timestamp; the age-based check rejects it,
+    # which causes the endpoint probe to fail on every TTL refresh.
+    test "accepts the final block on a frozen chain regardless of timestamp" do
+      final = RemoteChain.final_block_number(Chains.Moonbeam)
+      ancient = System.os_time(:second) - 365 * 24 * 3600
+
+      assert RemoteChain.ChainList.block_current?(Chains.Moonbeam, %{
+               "number" => "0x" <> Integer.to_string(final, 16),
+               "timestamp" => hex_timestamp(ancient)
+             })
+    end
+
+    test "rejects a block whose number does not match the final block on a frozen chain" do
+      # Provider reports a block newer than the freeze → must be wrong
+      # (or the chain has resumed and the final_block_number is stale).
+      final = RemoteChain.final_block_number(Chains.Moonbeam)
+      wrong = "0x" <> Integer.to_string(final + 1, 16)
+
+      refute RemoteChain.ChainList.block_current?(Chains.Moonbeam, %{
+               "number" => wrong,
+               "timestamp" => hex_timestamp(System.os_time(:second))
+             })
+    end
+
+    test "rejects a frozen-chain block without a decodable number" do
+      refute RemoteChain.ChainList.block_current?(Chains.Moonbeam, %{
+               "timestamp" => hex_timestamp(System.os_time(:second))
+             })
+    end
+
+    test "still applies the timestamp check to non-frozen chains" do
+      # Sanity check: a 24h-old block on Anvil (15s cadence) is rejected.
+      stale = System.os_time(:second) - 24 * 3600
+
+      refute RemoteChain.ChainList.block_current?(Chains.Anvil, %{
+               "number" => "0x1",
+               "timestamp" => hex_timestamp(stale)
+             })
+    end
+  end
+
   describe "timestamp_current?/2" do
     test "accepts blocks within max age, rejects older ones" do
       now = System.os_time(:second)

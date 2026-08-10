@@ -48,16 +48,25 @@ defmodule RemoteChain.WSConn do
   overrides the multiplier — used by `NodeProxy` for its eviction pass (two
   ping cycles, `@stale_eviction_intervals`).
 
+  Frozen chains (see `RemoteChain.frozen?/1`) never satisfy this predicate:
+  the chain is not producing blocks, so `lastblock_at` stays at connect
+  time and would otherwise trigger constant evictions of healthy
+  connections. Provider health is still enforced by TCP/WS disconnects
+  and the subscription handshake (`handle_info(:ping, ...)`).
+
   This is the single threshold shared by `stale?/2` (pid-based), the
   `:ping` close handler, `NodeProxy`'s consensus and eviction logic, and
   `ChainList.block_current?/2`.
   """
   def stale_at?(lastblock_at, chain, intervals \\ @stale_threshold_intervals) do
-    case lastblock_at do
-      nil ->
+    cond do
+      RemoteChain.frozen?(chain) ->
         false
 
-      %DateTime{} ->
+      is_nil(lastblock_at) ->
+        false
+
+      true ->
         age = DateTime.diff(DateTime.utc_now(), lastblock_at, :second)
         age > chain.expected_block_intervall() * intervals
     end
@@ -276,16 +285,24 @@ defmodule RemoteChain.WSConn do
       raise "No subscription id received, aborting connection with #{ws_url}"
     end
 
-    if stale_at?(state.lastblock_at, chain) do
-      {:message_queue_len, len} = Process.info(self(), :message_queue_len)
+    # Frozen chains: the staleness predicate can never be satisfied, so
+    # skip it. The subscription_id check above still guards against a
+    # WSConn that lost its `eth_subscribe("newHeads")` confirmation.
+    cond do
+      RemoteChain.frozen?(chain) ->
+        {:ok, state}
 
-      Logger.warning(
-        "WSConn #{inspect({self(), len})} block timeout #{chain} (#{ws_url}). Restarting..."
-      )
+      stale_at?(state.lastblock_at, chain) ->
+        {:message_queue_len, len} = Process.info(self(), :message_queue_len)
 
-      {:close, state}
-    else
-      {:ok, state}
+        Logger.warning(
+          "WSConn #{inspect({self(), len})} block timeout #{chain} (#{ws_url}). Restarting..."
+        )
+
+        {:close, state}
+
+      true ->
+        {:ok, state}
     end
   end
 

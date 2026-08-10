@@ -213,8 +213,30 @@ defmodule RemoteChain.ChainList do
   skew is bounded separately by `@max_future_skew_seconds` because the
   staleness predicate only checks how stale a `lastblock_at` is — never how
   far in the future it sits.
+
+  Frozen chains (see `RemoteChain.frozen?/1`) have a fixed head; any
+  provider that returns a block matching `RemoteChain.final_block_number/1`
+  is considered current regardless of timestamp age, because age and
+  staleness are not meaningful when the chain will never produce a newer
+  block.
   """
-  def block_current?(chain, %{"timestamp" => timestamp}) when is_binary(timestamp) do
+  def block_current?(chain, block) when is_map(block) do
+    cond do
+      RemoteChain.frozen?(chain) ->
+        final = RemoteChain.final_block_number(chain)
+        is_integer(final) and current_by_block_number?(block, final)
+
+      is_binary(block["timestamp"]) ->
+        block_current_by_timestamp(chain, block["timestamp"])
+
+      true ->
+        false
+    end
+  end
+
+  def block_current?(_chain, _block), do: false
+
+  defp block_current_by_timestamp(chain, timestamp) do
     block_ts = Base16.decode_int(timestamp)
     now = System.os_time(:second)
     age = now - block_ts
@@ -223,7 +245,11 @@ defmodule RemoteChain.ChainList do
       not RemoteChain.WSConn.stale_at?(block_age_to_lastblock_at(now, age), chain)
   end
 
-  def block_current?(_chain, _block), do: false
+  defp current_by_block_number?(%{"number" => number}, final) when is_binary(number) do
+    Base16.decode_int(number) == final
+  end
+
+  defp current_by_block_number?(_block, _final), do: false
 
   @doc false
   def timestamp_current?(max_age_seconds, block_timestamp)
