@@ -1,9 +1,17 @@
 name: "CI"
-on: ["push", "pull_request"]
+
+# `push` is scoped to protected branches to avoid running CI twice when a
+# branch is pushed and then opened as a pull request (both events would
+# otherwise fire on the same commit). PRs to any branch are covered by the
+# un-scoped `pull_request` trigger below.
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
 
 jobs:
   test_and_build:
-    name: "Build and lint"
+    name: "Build, lint, and test"
     runs-on: "ubuntu-latest"
     steps:
     - name: Install deps
@@ -17,16 +25,49 @@ jobs:
           libtool
 
     - uses: actions/checkout@v1
-    
+
     - name: Setup elixir
       uses: erlef/setup-beam@v1
       with:
         version-file: .tool-versions
         version-type: strict
 
+    - name: Install Foundry (anvil)
+      # The full test suite needs a local chain; TestHelper.restart_chain/0
+      # spawns `anvil` (the Foundry local node) and contract deployment
+      # uses `forge`. We install anvil so the integration tests have a
+      # ready local chain. Downloading the release tarball directly is
+      # more reliable than the bootstrapper at foundry.paradigm.xyz,
+      # which currently leaves no foundryup binary behind on Ubuntu 24.04
+      # runners.
+      #
+      # Foundry only publishes stable tags occasionally; the GitHub
+      # `releases/latest` endpoint returns nightly builds whose asset
+      # names don't match the stable pattern, so we pin a known good
+      # version. Bump here when a newer foundry stable is desired.
+      run: |
+        set -euo pipefail
+        VERSION="v1.4.0"
+        URL="https://github.com/foundry-rs/foundry/releases/download/${VERSION}/foundry_${VERSION}_linux_amd64.tar.gz"
+        mkdir -p /tmp/foundry "$HOME/.local/bin"
+        curl -fsSL -o /tmp/foundry.tar.gz "$URL"
+        tar -xzf /tmp/foundry.tar.gz -C /tmp/foundry
+        # The tarball extracts anvil, cast, forge, chisel at the top level.
+        install -m 0755 /tmp/foundry/anvil "$HOME/.local/bin/anvil"
+        echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+        anvil --version
+
     - run: |
         mix local.hex --force
         mix local.rebar --force
         mix deps.get
         mix lint
-        # mix test
+        # Run the test aliases that are designed for isolated, no-anvil CI
+        # environments (see docs/testing.md and the `test.turn`/`test.nat`
+        # aliases in mix.exs). The full `mix test` suite additionally needs:
+        #   * gitignored PEM fixtures in test/pems/ (no committed generator)
+        #   * forge + deployed Solidity contracts via Chains.Anvil
+        #   * the WireGuard kernel interface (CAP_NET_ADMIN)
+        # Wiring all of that up is tracked separately.
+        mix test.turn
+        mix test.nat
