@@ -73,4 +73,36 @@ defmodule RemoteChainTest do
       assert RemoteChain.rpc_endpoints(Chains.Diode) == ["http://local-override.example:3834"]
     end
   end
+
+  describe "frozen?/1" do
+    test "returns true for chains that opt in via frozen?/0 (Moonbeam)" do
+      assert RemoteChain.frozen?(Chains.Moonbeam)
+    end
+
+    test "returns false for chains that do not declare frozen?/0" do
+      refute RemoteChain.frozen?(Chains.Diode)
+      refute RemoteChain.frozen?(Chains.OasisSapphire)
+      refute RemoteChain.frozen?(Chains.Base)
+    end
+
+    test "accepts chain_id and chain prefix dispatch" do
+      assert RemoteChain.frozen?(Chains.Moonbeam.chain_id())
+      assert RemoteChain.frozen?("glmr")
+    end
+  end
+
+  describe "final_block_number/1" do
+    test "returns the chain's declared final block number (Moonbeam)" do
+      assert is_integer(RemoteChain.final_block_number(Chains.Moonbeam))
+
+      assert RemoteChain.final_block_number(Chains.Moonbeam) ==
+               Chains.Moonbeam.final_block_number()
+    end
+
+    test "returns nil for chains that have not declared final_block_number/0" do
+      assert RemoteChain.final_block_number(Chains.Diode) == nil
+      assert RemoteChain.final_block_number(Chains.OasisSapphire) == nil
+      assert RemoteChain.final_block_number(Chains.Base) == nil
+    end
+  end
 end

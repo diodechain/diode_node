@@ -89,4 +89,40 @@ defmodule RemoteChain.WSConnTest do
       assert WSConn.stale_threshold_intervals() == 10
     end
   end
+
+  describe "stale_at?/3 for frozen chains" do
+    # Regression: Moonbeam stopped producing blocks at 16_796_699. Without a
+    # short-circuit, every WSConn's `lastblock_at` is "ancient" relative to
+    # the staleness window, and the watchdog closes/restarts them
+    # continuously, swamping the NodeProxy mailbox and starving RPCs.
+    test "returns false for a frozen chain regardless of how old lastblock_at is" do
+      ancient = DateTime.utc_now() |> DateTime.add(-365 * 24 * 3600, :second)
+      refute WSConn.stale_at?(ancient, Chains.Moonbeam)
+      refute WSConn.stale_at?(ancient, Chains.Moonbeam, 1)
+    end
+
+    test "returns false for a frozen chain even with intervals=0" do
+      ancient = DateTime.utc_now() |> DateTime.add(-3600, :second)
+      refute WSConn.stale_at?(ancient, Chains.Moonbeam, 0)
+    end
+
+    test "returns false for a frozen chain when lastblock_at is nil" do
+      refute WSConn.stale_at?(nil, Chains.Moonbeam)
+    end
+
+    test "still returns true for non-frozen chains with old lastblock_at" do
+      # Sanity check: the short-circuit only affects frozen chains. A 1-day
+      # old timestamp on Anvil (15s cadence) is still stale.
+      ancient = DateTime.utc_now() |> DateTime.add(-24 * 3600, :second)
+      assert WSConn.stale_at?(ancient, Chains.Anvil)
+    end
+  end
+
+  describe "stale?/2 for frozen chains" do
+    test "returns false for a frozen chain with a never-updated lastblock_at" do
+      ancient = DateTime.utc_now() |> DateTime.add(-3600, :second)
+      {:ok, pid} = WSConnStateStub.start(%WSConn{lastblock_at: ancient})
+      refute WSConn.stale?(pid, Chains.Moonbeam)
+    end
+  end
 end
