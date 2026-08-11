@@ -559,7 +559,8 @@ defmodule RemoteChain.NodeProxy do
     limited?
   end
 
-  defp ensure_connections(state = %NodeProxy{chain: chain}) do
+  @doc false
+  def ensure_connections(state = %NodeProxy{chain: chain}) do
     state = prune_stale_connections(state)
     %NodeProxy{connections: connections, fallback: fallback} = state
 
@@ -569,7 +570,17 @@ defmodule RemoteChain.NodeProxy do
     existing = MapSet.new(Map.keys(connections))
     new_urls = MapSet.difference(urls, existing) |> Enum.to_list() |> Enum.shuffle()
     fallback_candidates = RemoteChain.ws_fallback_endpoints(chain)
-    fallback_url = List.first(Enum.shuffle(fallback_candidates) ++ new_urls)
+
+    # The fallback must come exclusively from the explicit CHAINS_*_WS_FALLBACK
+    # env var. Falling back to `new_urls` (the regular ws_endpoints pool)
+    # raises `security_level` to 2 with a single unique URL, which can lock
+    # `lastblock` at 0 if the randomly-chosen fallback URL happens to
+    # coincide with an existing connection URL.
+    fallback_url =
+      case fallback_candidates do
+        [] -> nil
+        candidates -> List.first(Enum.shuffle(candidates))
+      end
 
     cond do
       map_size(connections) < @security_level ->

@@ -606,4 +606,110 @@ defmodule RemoteChain.NodeProxyTest do
       lastblocks: %{}
     }
   end
+
+  describe "ensure_connections/1 fallback URL" do
+    @ws_env_key "CHAINS_ANVIL_WS"
+    @fb_env_key "CHAINS_ANVIL_WS_FALLBACK"
+
+    setup do
+      prev_ws = System.get_env(@ws_env_key)
+      prev_fb = System.get_env(@fb_env_key)
+
+      on_exit(fn ->
+        if prev_ws,
+          do: System.put_env(@ws_env_key, prev_ws),
+          else: System.delete_env(@ws_env_key)
+
+        if prev_fb,
+          do: System.put_env(@fb_env_key, prev_fb),
+          else: System.delete_env(@fb_env_key)
+      end)
+
+      :ok
+    end
+
+    test "does not create a fallback from regular ws_endpoints when CHAINS_*_WS_FALLBACK is unset" do
+      # Regression for the eu1 Base deadlock (2026-08-10): NodeProxy was
+      # silently falling back to `new_urls` when no CHAINS_BASE_WS_FALLBACK
+      # was set, raising security_level to 2 with only one unique URL ever
+      # available. The result was `live_voter_count = 1 >= security_level = 2`
+      # being false forever, so `RPCCache.block_number/1` stayed at nil and
+      # every EdgeV2 device timed out.
+      System.put_env(@ws_env_key, "ws://a.example/ ws://b.example/")
+      System.delete_env(@fb_env_key)
+
+      pid = alive_noop_pid()
+
+      state = %NodeProxy{
+        chain: Chains.Anvil,
+        connections: %{"ws://a.example/" => pid},
+        fallback: nil,
+        fallback_url: nil
+      }
+
+      new_state = NodeProxy.ensure_connections(state)
+
+      # With the fix: fallback_url stays nil, no fallback is spawned, and
+      # security_level stays at 1 so the single live voter is enough to
+      # advance the published block.
+      assert new_state.fallback == nil
+      assert new_state.fallback_url == nil
+
+      send(pid, :stop)
+    end
+
+    test "creates a fallback from CHAINS_*_WS_FALLBACK when configured" do
+      System.put_env(@ws_env_key, "ws://a.example/ ws://b.example/")
+      System.put_env(@fb_env_key, "ws://fallback.example/")
+
+      pid = alive_noop_pid()
+
+      state = %NodeProxy{
+        chain: Chains.Anvil,
+        connections: %{"ws://a.example/" => pid},
+        fallback: nil,
+        fallback_url: nil
+      }
+
+      new_state = NodeProxy.ensure_connections(state)
+
+      # The fallback URL must come from the explicit CHAINS_*_WS_FALLBACK
+      # list, never from the regular ws_endpoints pool. The pid slot is
+      # populated regardless of whether the WebSocket itself can connect;
+      # production behaviour is unchanged from before the fix.
+      assert new_state.fallback_url == "ws://fallback.example/"
+      assert is_pid(new_state.fallback)
+
+      send(pid, :stop)
+
+      if is_pid(new_state.fallback) and Process.alive?(new_state.fallback),
+        do: RemoteChain.WSConn.close(new_state.fallback)
+    end
+
+    test "handles a multi-URL CHAINS_*_WS_FALLBACK by picking one at random" do
+      System.put_env(@ws_env_key, "ws://a.example/ ws://b.example/")
+
+      fb_urls = ["ws://fb1.example/", "ws://fb2.example/", "ws://fb3.example/"]
+      System.put_env(@fb_env_key, Enum.join(fb_urls, " "))
+
+      pid = alive_noop_pid()
+
+      state = %NodeProxy{
+        chain: Chains.Anvil,
+        connections: %{"ws://a.example/" => pid},
+        fallback: nil,
+        fallback_url: nil
+      }
+
+      new_state = NodeProxy.ensure_connections(state)
+
+      assert new_state.fallback_url in fb_urls
+      assert is_pid(new_state.fallback)
+
+      send(pid, :stop)
+
+      if is_pid(new_state.fallback) and Process.alive?(new_state.fallback),
+        do: RemoteChain.WSConn.close(new_state.fallback)
+    end
+  end
 end
