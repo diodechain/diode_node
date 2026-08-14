@@ -325,7 +325,7 @@ defmodule RemoteChain.ChainListTest do
         "rpc" => [%{"url" => dead_rpc}, %{"url" => dead_ws}]
       })
 
-      # Pre-seed failed verdicts so filter_endpoints does not open the network.
+      # Pre-seed failed verdicts so the background probe does not open the network.
       now = System.monotonic_time(:millisecond)
       Globals.put({RemoteChain.ChainList, :test, dead_ws}, {false, now})
       Globals.put({RemoteChain.ChainList, :test, dead_rpc}, {false, now})
@@ -337,13 +337,34 @@ defmodule RemoteChain.ChainListTest do
         clear_chain_cache()
       end)
 
-      ws = RemoteChain.ChainList.ws_endpoints(Chains.Anvil, [extra_ws])
-      rpc = RemoteChain.ChainList.rpc_endpoints(Chains.Anvil, [extra_ws])
+      # Cold cache: first call returns the deduped chainlist synchronously,
+      # without probing. The dead URLs are visible until the background
+      # refresh settles — this is the new contract: callers never block.
+      cold_ws = RemoteChain.ChainList.ws_endpoints(Chains.Anvil, [extra_ws])
+      assert dead_ws in cold_ws
+      assert extra_ws in cold_ws
 
-      assert ws == [extra_ws]
-      refute dead_ws in (ws || [])
+      # Background refresh drops the failed URLs and the warm cache returns the
+      # filtered list synchronously.
+      assert eventually(
+               fn ->
+                 case Globals.get(endpoint_cache_key(chain_id)) do
+                   {urls, _ts} -> urls == []
+                   _ -> false
+                 end
+               end,
+               2_000
+             ),
+             "background refresh did not populate the endpoint cache (got: " <>
+               inspect(Globals.get(endpoint_cache_key(chain_id))) <> ")"
+
+      warm_ws = RemoteChain.ChainList.ws_endpoints(Chains.Anvil, [extra_ws])
+      warm_rpc = RemoteChain.ChainList.rpc_endpoints(Chains.Anvil, [extra_ws])
+
+      assert warm_ws == [extra_ws]
+      refute dead_ws in warm_ws
       # WS-looking additional must land in :ws, not poison the rpc list when grouped.
-      assert rpc == nil or dead_rpc not in rpc
+      assert warm_rpc == nil or dead_rpc not in warm_rpc
     end
 
     test "deduplicates filtered chainlist and additional URLs" do
@@ -360,6 +381,166 @@ defmodule RemoteChain.ChainListTest do
 
         assert RemoteChain.ChainList.ws_endpoints(Chains.Anvil, [url, url]) == [url]
       end)
+    end
+
+    test "cold cache returns synchronously and never opens a probe" do
+      # Regression for the eu1 Base deadlock (2026-08-14): filter_endpoints/2
+      # was blocking the NodeProxy GenServer on a Task.async_stream of HTTP /
+      # WS health probes. With the cache, a slow probe is now background
+      # work and the caller returns immediately.
+      chain_id = Chains.Anvil.chain_id()
+      good_url = "wss://unreachable.invalid/ws-cold-good"
+      bad_url = "wss://unreachable.invalid/ws-cold-bad"
+
+      Globals.put(@loaded_key, true)
+
+      Globals.put(cache_key(chain_id), %{
+        "chainId" => chain_id,
+        "rpc" => [%{"url" => good_url}, %{"url" => bad_url}]
+      })
+
+      # Pre-seed verdicts so the background probe does no network work.
+      now = System.monotonic_time(:millisecond)
+      Globals.put({RemoteChain.ChainList, :test, good_url}, {true, now})
+      Globals.put({RemoteChain.ChainList, :test, bad_url}, {false, now})
+
+      on_exit(fn ->
+        Globals.pop(cache_key(chain_id))
+        Globals.pop({RemoteChain.ChainList, :test, good_url})
+        Globals.pop({RemoteChain.ChainList, :test, bad_url})
+        clear_chain_cache()
+      end)
+
+      started = System.monotonic_time(:millisecond)
+      result = RemoteChain.ChainList.filter_endpoints([good_url, bad_url], Chains.Anvil)
+      elapsed = System.monotonic_time(:millisecond) - started
+
+      # Synchronous, no probe work in this process.
+      assert elapsed < 50
+      assert good_url in result
+      assert bad_url in result
+    end
+
+    test "warm cache returns the cached list without invoking the probe" do
+      chain_id = Chains.Anvil.chain_id()
+      cached_urls = ["wss://cached-a.invalid/", "wss://cached-b.invalid/"]
+
+      Globals.put(
+        endpoint_cache_key(chain_id),
+        {cached_urls, System.monotonic_time(:millisecond)}
+      )
+
+      on_exit(fn ->
+        Globals.pop(endpoint_cache_key(chain_id))
+        clear_chain_cache()
+      end)
+
+      assert RemoteChain.ChainList.filter_endpoints(["wss://never.probed.invalid/"], Chains.Anvil) ==
+               cached_urls
+    end
+
+    test "stale cache returns the stale value and schedules a refresh" do
+      chain_id = Chains.Anvil.chain_id()
+      stale_urls = ["wss://stale.invalid/"]
+
+      Globals.put(
+        endpoint_cache_key(chain_id),
+        {stale_urls, System.monotonic_time(:millisecond) - :timer.seconds(120)}
+      )
+
+      on_exit(fn ->
+        Globals.pop(endpoint_cache_key(chain_id))
+        clear_chain_cache()
+      end)
+
+      assert RemoteChain.ChainList.filter_endpoints(["wss://never.invalid/"], Chains.Anvil) ==
+               stale_urls
+    end
+
+    test "cold-cache callers trigger exactly one probe per chain" do
+      # Concurrent refresh triggers are collapsed via the per-chain in-flight
+      # flag: 20 simultaneous cold-cache calls should produce a single
+      # background probe — not 20.
+      chain_id = Chains.Anvil.chain_id()
+      url = "wss://debounce.invalid/"
+
+      Globals.put(@loaded_key, true)
+      Globals.put(cache_key(chain_id), %{"chainId" => chain_id, "rpc" => [%{"url" => url}]})
+
+      # Pre-seed `true` so the probe, when it runs, produces a non-empty list.
+      now = System.monotonic_time(:millisecond)
+      Globals.put({RemoteChain.ChainList, :test, url}, {true, now})
+
+      on_exit(fn ->
+        Globals.pop(cache_key(chain_id))
+        Globals.pop({RemoteChain.ChainList, :test, url})
+        clear_chain_cache()
+      end)
+
+      tasks =
+        for _ <- 1..20,
+            do:
+              Task.async(fn ->
+                RemoteChain.ChainList.filter_endpoints([url], Chains.Anvil)
+              end)
+
+      results = Task.await_many(tasks, 2_000)
+      assert Enum.all?(results, &(&1 == [url]))
+
+      assert eventually(
+               fn ->
+                 match?({[_], _ts}, Globals.get(endpoint_cache_key(chain_id)))
+               end,
+               2_000
+             )
+    end
+
+    test "refresh_chains/1 invalidates the endpoint cache for affected chains" do
+      chain_id = Chains.Anvil.chain_id()
+      cached_urls = ["wss://stale.invalid/"]
+
+      # Prime the chain cache so refresh_chains/1 (called with only_cached: true)
+      # actually updates this chain.
+      Globals.put(@loaded_key, true)
+
+      Globals.put(cache_key(chain_id), %{
+        "chainId" => chain_id,
+        "name" => "anvil-invalidate-before",
+        "rpc" => []
+      })
+
+      Globals.put(
+        endpoint_cache_key(chain_id),
+        {cached_urls, System.monotonic_time(:millisecond)}
+      )
+
+      on_exit(&clear_chain_cache/0)
+
+      cached = Globals.get(endpoint_cache_key(chain_id))
+      assert {^cached_urls, ts} = cached
+      assert is_integer(ts)
+
+      updated = %{"chainId" => chain_id, "name" => "anvil-invalidate", "rpc" => []}
+      RemoteChain.ChainList.refresh_chains([updated])
+
+      assert Globals.get(endpoint_cache_key(chain_id)) == nil
+    end
+
+    test "pocket.network and curie.radiumblock.co are dropped from the cold-cache path" do
+      # `best_effort_urls/1` must apply the same static filter that the probe
+      # path applies — otherwise a known-broken URL leaks into the cold
+      # result and ends up in NodeProxy's pool.
+      result =
+        RemoteChain.ChainList.filter_endpoints(
+          [
+            "wss://rpc.pocket.network/abc",
+            "https://curie.radiumblock.co/rpc",
+            "https://good.invalid/rpc"
+          ],
+          Chains.Anvil
+        )
+
+      assert result == ["https://good.invalid/rpc"]
     end
   end
 
@@ -403,8 +584,37 @@ defmodule RemoteChain.ChainListTest do
   defp clear_chain_cache() do
     Globals.pop(@loaded_key)
 
-    Enum.each([@chain_id, @other_chain_id, 99_999], fn chain_id ->
+    Enum.each([@chain_id, @other_chain_id, 99_999, Chains.Anvil.chain_id()], fn chain_id ->
       Globals.pop(cache_key(chain_id))
+      # Bumps the generation counter so any in-flight probe from a previous
+      # test skips its write — otherwise it would resurrect the cache the new
+      # test just cleared.
+      RemoteChain.ChainList.invalidate_endpoint_cache(chain_id)
     end)
+  end
+
+  defp endpoint_cache_key(chain_id),
+    do: {RemoteChain.ChainList, :ws_endpoints, chain_id}
+
+  # Poll a condition until it holds or the timeout elapses. Returns the value
+  # of the last evaluation; callers should assert on the boolean.
+  defp eventually(fun, timeout_ms, interval_ms \\ 25) do
+    deadline = System.monotonic_time(:millisecond) + timeout_ms
+    do_eventually(fun, deadline, interval_ms)
+  end
+
+  defp do_eventually(fun, deadline, interval_ms) do
+    case fun.() do
+      true ->
+        true
+
+      false ->
+        if System.monotonic_time(:millisecond) >= deadline do
+          false
+        else
+          Process.sleep(interval_ms)
+          do_eventually(fun, deadline, interval_ms)
+        end
+    end
   end
 end

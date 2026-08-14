@@ -8,6 +8,14 @@ defmodule RemoteChain.ChainList do
   # the background, so callers never block on provider probes.
   @test_cache_ttl_ms :timer.minutes(5)
 
+  # Stale-while-revalidate cache for the *list* of healthy providers per chain.
+  # Distinct from @test_cache_ttl_ms (per-URL verdict) — this caches the filtered
+  # set so `RemoteChain.ws_endpoints/1` never blocks the caller, even on the
+  # very first call after startup. Cold callers fall back to the unfiltered
+  # chainlist (deduped + known-broken providers stripped) and the probe runs in
+  # a detached Task, not in the caller's process.
+  @endpoint_cache_ttl_ms :timer.seconds(60)
+
   # How far ahead of the local clock a block timestamp may be (producer skew).
   @max_future_skew_seconds 60
 
@@ -58,17 +66,109 @@ defmodule RemoteChain.ChainList do
   end
 
   def filter_endpoints(endpoints, chain) do
-    endpoints
-    |> Enum.uniq()
-    |> Task.async_stream(fn url -> {url, test?(url, chain)} end,
+    cache_key = endpoint_cache_key(chain)
+
+    case Globals.get(cache_key) do
+      {urls, ts} when is_list(urls) ->
+        if cache_stale?(ts), do: schedule_endpoint_refresh(endpoints, chain)
+        urls
+
+      nil ->
+        # Cold cache: kick off a background probe (never in this process) and
+        # return the deduped, pre-filtered list synchronously. Unhealthy URLs
+        # will surface as connect failures and be pruned by NodeProxy
+        # normally; the next refresh cycle drops them from the list.
+        schedule_endpoint_refresh(endpoints, chain)
+        best_effort_urls(endpoints)
+    end
+  end
+
+  defp endpoint_cache_key(chain),
+    do: {__MODULE__, :ws_endpoints, RemoteChain.chainimpl(chain).chain_id()}
+
+  defp cache_stale?(ts),
+    do: System.monotonic_time(:millisecond) - ts > @endpoint_cache_ttl_ms
+
+  defp best_effort_urls(endpoints),
+    do: endpoints |> Enum.uniq() |> Enum.reject(&rejected_provider?/1)
+
+  defp schedule_endpoint_refresh(endpoints, chain) do
+    chain_id = elem(endpoint_cache_key(chain), 2)
+
+    # Only one refresh task per chain in flight. Use a per-chain flag in
+    # Globals (read-then-claim) so concurrent callers don't pile up probes,
+    # while sequential callers (across tests or RPC requests) can each
+    # schedule one. The closure snapshots the current generation; if the
+    # cache has been invalidated since scheduling, the worker skips.
+    unless refresh_in_flight?(chain_id) do
+      mark_refresh_in_flight(chain_id)
+      generation = read_generation(chain_id)
+
+      Task.start(fn ->
+        try do
+          if read_generation(chain_id) == generation do
+            case Globals.get(endpoint_cache_key(chain)) do
+              {_, ts} ->
+                if cache_stale?(ts), do: refresh_endpoint_cache(endpoints, chain)
+
+              nil ->
+                refresh_endpoint_cache(endpoints, chain)
+            end
+          end
+        after
+          Globals.pop(refresh_in_flight_key(chain_id))
+        end
+      end)
+    end
+  end
+
+  defp refresh_in_flight?(chain_id),
+    do: Globals.get(refresh_in_flight_key(chain_id)) == :in_flight
+
+  defp mark_refresh_in_flight(chain_id),
+    do: Globals.put(refresh_in_flight_key(chain_id), :in_flight)
+
+  defp refresh_in_flight_key(chain_id),
+    do: {__MODULE__, :ws_endpoint_refresh, chain_id}
+
+  # Per-chain counter bumped every time the endpoint cache is invalidated
+  # (`clear_chain_cache/0`, chainlist refresh, etc.). Background probes carry
+  # the value at scheduling time and skip their write if it has since changed,
+  # so a worker outliving its test (or its process) cannot resurrect a
+  # cache that was explicitly cleared.
+  defp bump_generation(chain_id) do
+    key = {__MODULE__, :ws_generation, chain_id}
+    Globals.incr(key) + 1
+  end
+
+  defp read_generation(chain_id) do
+    case Globals.get({__MODULE__, :ws_generation, chain_id}) do
+      nil -> 0
+      gen when is_integer(gen) -> gen
+      _ -> 0
+    end
+  end
+
+  defp refresh_endpoint_cache(endpoints, chain) do
+    filtered =
+      endpoints
+      |> best_effort_urls()
+      |> probe_pass(chain)
+
+    Globals.put(endpoint_cache_key(chain), {filtered, System.monotonic_time(:millisecond)})
+  end
+
+  defp probe_pass(urls, chain) do
+    urls
+    |> Task.async_stream(
+      fn url -> {url, test?(url, chain)} end,
       timeout: :infinity,
       max_concurrency: 10
     )
     |> Enum.to_list()
-    |> Enum.filter(fn {:ok, {_, result}} -> result end)
-    |> Enum.map(fn {:ok, {url, _}} -> url end)
-    |> Enum.reject(fn url ->
-      String.contains?(url, "pocket.network") or String.contains?(url, "curie.radiumblock.co")
+    |> Enum.flat_map(fn
+      {:ok, {url, true}} -> [url]
+      _ -> []
     end)
   end
 
@@ -87,6 +187,13 @@ defmodule RemoteChain.ChainList do
         elem(entry, 0)
     end
   end
+
+  # Providers the chainlist sometimes lists but that we know are unusable.
+  # Applied both before the probe (so we don't waste a slot probing them) and
+  # after (so a URL that happens to pass the probe is still kept out of the
+  # pool).
+  defp rejected_provider?(url),
+    do: String.contains?(url, "pocket.network") or String.contains?(url, "curie.radiumblock.co")
 
   defp expired?(tested_at) do
     System.monotonic_time(:millisecond) - tested_at > @test_cache_ttl_ms
@@ -333,8 +440,23 @@ defmodule RemoteChain.ChainList do
 
       if not only_cached? or not is_nil(Globals.get(key)) do
         Globals.put(key, chain)
+        # Drop the cached endpoint list so the next ws_endpoints/1 call picks
+        # up the new chainlist URLs (and probes any newly-listed providers).
+        invalidate_endpoint_cache(id)
       end
     end)
+  end
+
+  defp endpoint_cache_key_for_id(chain_id),
+    do: {__MODULE__, :ws_endpoints, chain_id}
+
+  # Called by `put_chains/2` (chainlist refresh) and from tests. Invalidation
+  # also bumps the per-chain generation counter so any probe scheduled
+  # before the invalidation can no longer write its result.
+  def invalidate_endpoint_cache(chain_id) do
+    bump_generation(chain_id)
+    Globals.pop(endpoint_cache_key_for_id(chain_id))
+    Globals.pop(refresh_in_flight_key(chain_id))
   end
 
   def update() do
