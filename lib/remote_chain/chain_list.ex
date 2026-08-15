@@ -94,19 +94,25 @@ defmodule RemoteChain.ChainList do
 
   defp schedule_endpoint_refresh(endpoints, chain) do
     chain_id = elem(endpoint_cache_key(chain), 2)
+    generation = read_generation(chain_id)
 
-    # Only one refresh task per chain in flight. Use a per-chain flag in
-    # Globals (read-then-claim) so concurrent callers don't pile up probes,
-    # while sequential callers (across tests or RPC requests) can each
-    # schedule one. The closure snapshots the current generation; if the
-    # cache has been invalidated since scheduling, the worker skips.
-    unless refresh_in_flight?(chain_id) do
-      mark_refresh_in_flight(chain_id)
-      generation = read_generation(chain_id)
-
-      Task.start(fn ->
-        try do
-          if read_generation(chain_id) == generation do
+    # Debouncer.immediate/3 coalesces concurrent callers: the first call
+    # runs the closure (which spawns the actual probe as a detached Task);
+    # subsequent calls within the cooldown window update events and return
+    # without spawning extra probes. `timeout: 0` makes the cooldown
+    # window effectively instant so the next sequential caller, after the
+    # timer fires, gets a fresh worker too.
+    #
+    # The outer closure snapshots the generation counter; the spawned Task
+    # reads it again before doing any work, so a `clear_chain_cache` bump
+    # between scheduling and the Task running causes the Task to no-op
+    # (the gen check is also re-checked inside `refresh_endpoint_cache/3`
+    # right before the write).
+    Debouncer.immediate(
+      {__MODULE__, :ws_endpoint_refresh, chain_id},
+      fn ->
+        if read_generation(chain_id) == generation do
+          Task.start(fn ->
             case Globals.get(endpoint_cache_key(chain)) do
               {_, ts} ->
                 if cache_stale?(ts),
@@ -115,22 +121,12 @@ defmodule RemoteChain.ChainList do
               nil ->
                 refresh_endpoint_cache(endpoints, chain, generation)
             end
-          end
-        after
-          Globals.pop(refresh_in_flight_key(chain_id))
+          end)
         end
-      end)
-    end
+      end,
+      0
+    )
   end
-
-  defp refresh_in_flight?(chain_id),
-    do: Globals.get(refresh_in_flight_key(chain_id)) == :in_flight
-
-  defp mark_refresh_in_flight(chain_id),
-    do: Globals.put(refresh_in_flight_key(chain_id), :in_flight)
-
-  defp refresh_in_flight_key(chain_id),
-    do: {__MODULE__, :ws_endpoint_refresh, chain_id}
 
   # Per-chain counter bumped every time the endpoint cache is invalidated
   # (`clear_chain_cache/0`, chainlist refresh, etc.). Background probes carry
@@ -156,15 +152,19 @@ defmodule RemoteChain.ChainList do
       |> best_effort_urls()
       |> probe_pass(chain)
 
+    chain_id = RemoteChain.chainimpl(chain).chain_id()
+
     # Re-check the generation right before the write. A `clear_chain_cache`
     # mid-probe bumps the counter; without this check the worker would
     # overwrite the freshly-cleared cache with stale data.
-    if read_generation(RemoteChain.chainimpl(chain).chain_id()) == generation do
+    if read_generation(chain_id) == generation do
       Globals.put(
         endpoint_cache_key(chain),
         {filtered, System.monotonic_time(:millisecond)}
       )
     end
+
+    :ok
   end
 
   defp probe_pass(urls, chain) do
@@ -465,7 +465,6 @@ defmodule RemoteChain.ChainList do
   def invalidate_endpoint_cache(chain_id) do
     bump_generation(chain_id)
     Globals.pop(endpoint_cache_key_for_id(chain_id))
-    Globals.pop(refresh_in_flight_key(chain_id))
   end
 
   def update() do

@@ -458,8 +458,11 @@ defmodule RemoteChain.ChainListTest do
     end
 
     test "cold-cache callers trigger exactly one probe per chain" do
-      # Concurrent refresh triggers are collapsed via the per-chain in-flight
-      # flag: 20 simultaneous cold-cache calls should produce a single
+      # Concurrent refresh triggers are collapsed via `Debouncer.immediate/3`:
+      # the first call runs the closure (which spawns the probe as a detached
+      # Task); subsequent calls within the cooldown window update the
+      # Debouncer's events entry and return without spawning extra probes.
+      # 20 simultaneous cold-cache calls therefore produce a single
       # background probe — not 20.
       chain_id = Chains.Anvil.chain_id()
       url = "wss://debounce.invalid/"
