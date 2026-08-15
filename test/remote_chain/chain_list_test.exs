@@ -526,10 +526,46 @@ defmodule RemoteChain.ChainListTest do
       assert Globals.get(endpoint_cache_key(chain_id)) == nil
     end
 
+    test "a probe in flight at clear_chain_cache time does not resurrect the cache" do
+      # Regression for the eu1 Base deadlock (2026-08-14): a worker that
+      # outlives its test must not write to the endpoint cache after the
+      # cache has been cleared. The pre-write generation check protects
+      # against this: even if the worker is still inside `probe_pass/2`
+      # when `clear_chain_cache/0` bumps the counter, the write is
+      # skipped because the captured generation no longer matches.
+      chain_id = Chains.Anvil.chain_id()
+      url = "wss://toctou.invalid/"
+
+      Globals.put(@loaded_key, true)
+      Globals.put(cache_key(chain_id), %{"chainId" => chain_id, "rpc" => [%{"url" => url}]})
+      now = System.monotonic_time(:millisecond)
+      Globals.put({RemoteChain.ChainList, :test, url}, {true, now})
+
+      on_exit(fn ->
+        Globals.pop(cache_key(chain_id))
+        Globals.pop({RemoteChain.ChainList, :test, url})
+        clear_chain_cache()
+      end)
+
+      # Schedule a refresh — a Task is spawned and the in-flight flag is
+      # set. Before the Task can complete, simulate `clear_chain_cache` by
+      # bumping the generation and clearing the cache.
+      _ = RemoteChain.ChainList.filter_endpoints([url], Chains.Anvil)
+
+      gen_before_clear = Globals.get({RemoteChain.ChainList, :ws_generation, chain_id})
+      RemoteChain.ChainList.invalidate_endpoint_cache(chain_id)
+      assert Globals.get(endpoint_cache_key(chain_id)) == nil
+
+      # Wait long enough for any in-flight probe to finish, then assert the
+      # cache stayed empty — the worker must have skipped its write because
+      # the generation check failed.
+      Process.sleep(50)
+      assert Globals.get(endpoint_cache_key(chain_id)) == nil
+      # Sanity: the generation moved.
+      assert Globals.get({RemoteChain.ChainList, :ws_generation, chain_id}) > gen_before_clear
+    end
+
     test "pocket.network and curie.radiumblock.co are dropped from the cold-cache path" do
-      # `best_effort_urls/1` must apply the same static filter that the probe
-      # path applies — otherwise a known-broken URL leaks into the cold
-      # result and ends up in NodeProxy's pool.
       result =
         RemoteChain.ChainList.filter_endpoints(
           [

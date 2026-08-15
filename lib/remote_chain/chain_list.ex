@@ -109,10 +109,11 @@ defmodule RemoteChain.ChainList do
           if read_generation(chain_id) == generation do
             case Globals.get(endpoint_cache_key(chain)) do
               {_, ts} ->
-                if cache_stale?(ts), do: refresh_endpoint_cache(endpoints, chain)
+                if cache_stale?(ts),
+                  do: refresh_endpoint_cache(endpoints, chain, generation)
 
               nil ->
-                refresh_endpoint_cache(endpoints, chain)
+                refresh_endpoint_cache(endpoints, chain, generation)
             end
           end
         after
@@ -149,13 +150,21 @@ defmodule RemoteChain.ChainList do
     end
   end
 
-  defp refresh_endpoint_cache(endpoints, chain) do
+  defp refresh_endpoint_cache(endpoints, chain, generation) do
     filtered =
       endpoints
       |> best_effort_urls()
       |> probe_pass(chain)
 
-    Globals.put(endpoint_cache_key(chain), {filtered, System.monotonic_time(:millisecond)})
+    # Re-check the generation right before the write. A `clear_chain_cache`
+    # mid-probe bumps the counter; without this check the worker would
+    # overwrite the freshly-cleared cache with stale data.
+    if read_generation(RemoteChain.chainimpl(chain).chain_id()) == generation do
+      Globals.put(
+        endpoint_cache_key(chain),
+        {filtered, System.monotonic_time(:millisecond)}
+      )
+    end
   end
 
   defp probe_pass(urls, chain) do
