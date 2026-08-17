@@ -325,7 +325,7 @@ defmodule RemoteChain.ChainListTest do
         "rpc" => [%{"url" => dead_rpc}, %{"url" => dead_ws}]
       })
 
-      # Pre-seed failed verdicts so filter_endpoints does not open the network.
+      # Pre-seed failed verdicts so the background probe does not open the network.
       now = System.monotonic_time(:millisecond)
       Globals.put({RemoteChain.ChainList, :test, dead_ws}, {false, now})
       Globals.put({RemoteChain.ChainList, :test, dead_rpc}, {false, now})
@@ -337,13 +337,31 @@ defmodule RemoteChain.ChainListTest do
         clear_chain_cache()
       end)
 
-      ws = RemoteChain.ChainList.ws_endpoints(Chains.Anvil, [extra_ws])
-      rpc = RemoteChain.ChainList.rpc_endpoints(Chains.Anvil, [extra_ws])
+      # Cold cache: first call returns the deduped chainlist synchronously,
+      # without probing. The dead URLs are visible until the background
+      # refresh settles — this is the new contract: callers never block.
+      cold_ws = RemoteChain.ChainList.ws_endpoints(Chains.Anvil, [extra_ws])
+      assert dead_ws in cold_ws
+      assert extra_ws in cold_ws
 
-      assert ws == [extra_ws]
-      refute dead_ws in (ws || [])
+      # Background refresh drops the failed URLs and the warm cache returns the
+      # filtered list synchronously.
+      assert eventually(
+               fn ->
+                 Globals.get(endpoint_cache_key(chain_id)) == []
+               end,
+               2_000
+             ),
+             "background refresh did not populate the endpoint cache (got: " <>
+               inspect(Globals.get(endpoint_cache_key(chain_id))) <> ")"
+
+      warm_ws = RemoteChain.ChainList.ws_endpoints(Chains.Anvil, [extra_ws])
+      warm_rpc = RemoteChain.ChainList.rpc_endpoints(Chains.Anvil, [extra_ws])
+
+      assert warm_ws == [extra_ws]
+      refute dead_ws in warm_ws
       # WS-looking additional must land in :ws, not poison the rpc list when grouped.
-      assert rpc == nil or dead_rpc not in rpc
+      assert warm_rpc == nil or dead_rpc not in warm_rpc
     end
 
     test "deduplicates filtered chainlist and additional URLs" do
@@ -360,6 +378,130 @@ defmodule RemoteChain.ChainListTest do
 
         assert RemoteChain.ChainList.ws_endpoints(Chains.Anvil, [url, url]) == [url]
       end)
+    end
+
+    test "cold cache returns synchronously and never opens a probe" do
+      # Regression for the eu1 Base deadlock (2026-08-14): filter_endpoints/2
+      # was blocking the NodeProxy GenServer on a Task.async_stream of HTTP /
+      # WS health probes. With the cache, a slow probe is now background
+      # work and the caller returns immediately.
+      chain_id = Chains.Anvil.chain_id()
+      good_url = "wss://unreachable.invalid/ws-cold-good"
+      bad_url = "wss://unreachable.invalid/ws-cold-bad"
+
+      Globals.put(@loaded_key, true)
+
+      Globals.put(cache_key(chain_id), %{
+        "chainId" => chain_id,
+        "rpc" => [%{"url" => good_url}, %{"url" => bad_url}]
+      })
+
+      # Pre-seed verdicts so the background probe does no network work.
+      now = System.monotonic_time(:millisecond)
+      Globals.put({RemoteChain.ChainList, :test, good_url}, {true, now})
+      Globals.put({RemoteChain.ChainList, :test, bad_url}, {false, now})
+
+      on_exit(fn ->
+        Globals.pop(cache_key(chain_id))
+        Globals.pop({RemoteChain.ChainList, :test, good_url})
+        Globals.pop({RemoteChain.ChainList, :test, bad_url})
+        clear_chain_cache()
+      end)
+
+      started = System.monotonic_time(:millisecond)
+      result = RemoteChain.ChainList.filter_endpoints([good_url, bad_url], Chains.Anvil)
+      elapsed = System.monotonic_time(:millisecond) - started
+
+      # Synchronous, no probe work in this process.
+      assert elapsed < 50
+      assert good_url in result
+      assert bad_url in result
+    end
+
+    test "warm cache returns the cached list without invoking the probe" do
+      chain_id = Chains.Anvil.chain_id()
+      cached_urls = ["wss://cached-a.invalid/", "wss://cached-b.invalid/"]
+
+      Globals.put(
+        endpoint_cache_key(chain_id),
+        cached_urls
+      )
+
+      on_exit(fn ->
+        Globals.pop(endpoint_cache_key(chain_id))
+        clear_chain_cache()
+      end)
+
+      assert RemoteChain.ChainList.filter_endpoints(["wss://never.probed.invalid/"], Chains.Anvil) ==
+               cached_urls
+    end
+
+    test "stale cache returns the stale value and schedules a refresh" do
+      chain_id = Chains.Anvil.chain_id()
+      stale_urls = ["wss://stale.invalid/"]
+
+      Globals.put(
+        endpoint_cache_key(chain_id),
+        stale_urls
+      )
+
+      on_exit(fn ->
+        Globals.pop(endpoint_cache_key(chain_id))
+        clear_chain_cache()
+      end)
+
+      assert RemoteChain.ChainList.filter_endpoints(["wss://never.invalid/"], Chains.Anvil) ==
+               stale_urls
+    end
+
+    test "a probe in flight at clear_chain_cache time does not resurrect the cache" do
+      # Regression for the eu1 Base deadlock (2026-08-14): a worker that
+      # outlives its test must not write to the endpoint cache after the
+      # cache has been cleared. The pre-write generation check protects
+      # against this: even if the worker is still inside `probe_pass/2`
+      # when `clear_chain_cache/0` bumps the counter, the write is
+      # skipped because the captured generation no longer matches.
+      chain_id = Chains.Anvil.chain_id()
+      url = "wss://toctou.invalid/"
+
+      Globals.put(@loaded_key, true)
+      Globals.put(cache_key(chain_id), %{"chainId" => chain_id, "rpc" => [%{"url" => url}]})
+      now = System.monotonic_time(:millisecond)
+      Globals.put({RemoteChain.ChainList, :test, url}, {true, now})
+
+      on_exit(fn ->
+        Globals.pop(cache_key(chain_id))
+        Globals.pop({RemoteChain.ChainList, :test, url})
+        clear_chain_cache()
+      end)
+
+      # Schedule a refresh — a Task is spawned and the in-flight flag is
+      # set. Before the Task can complete, simulate `clear_chain_cache` by
+      # bumping the generation and clearing the cache.
+      _ = RemoteChain.ChainList.filter_endpoints([url], Chains.Anvil)
+
+      Globals.pop(endpoint_cache_key(chain_id))
+      assert Globals.get(endpoint_cache_key(chain_id)) == nil
+
+      # Wait long enough for any in-flight probe to finish, then assert the
+      # cache stayed empty — the worker must have skipped its write because
+      # the generation check failed.
+      Process.sleep(50)
+      assert Globals.get(endpoint_cache_key(chain_id)) == nil
+    end
+
+    test "pocket.network and curie.radiumblock.co are dropped from the cold-cache path" do
+      result =
+        RemoteChain.ChainList.filter_endpoints(
+          [
+            "wss://rpc.pocket.network/abc",
+            "https://curie.radiumblock.co/rpc",
+            "https://good.invalid/rpc"
+          ],
+          Chains.Anvil
+        )
+
+      assert result == ["https://good.invalid/rpc"]
     end
   end
 
@@ -403,8 +545,35 @@ defmodule RemoteChain.ChainListTest do
   defp clear_chain_cache() do
     Globals.pop(@loaded_key)
 
-    Enum.each([@chain_id, @other_chain_id, 99_999], fn chain_id ->
+    Enum.each([@chain_id, @other_chain_id, 99_999, Chains.Anvil.chain_id()], fn chain_id ->
       Globals.pop(cache_key(chain_id))
+      Globals.pop(endpoint_cache_key(chain_id))
+      Debouncer.cancel({RemoteChain.ChainList, :ws_endpoint_refresh, chain_id})
     end)
+  end
+
+  defp endpoint_cache_key(chain_id),
+    do: {RemoteChain.ChainList, :ws_endpoints, chain_id}
+
+  # Poll a condition until it holds or the timeout elapses. Returns the value
+  # of the last evaluation; callers should assert on the boolean.
+  defp eventually(fun, timeout_ms, interval_ms \\ 25) do
+    deadline = System.monotonic_time(:millisecond) + timeout_ms
+    do_eventually(fun, deadline, interval_ms)
+  end
+
+  defp do_eventually(fun, deadline, interval_ms) do
+    case fun.() do
+      true ->
+        true
+
+      false ->
+        if System.monotonic_time(:millisecond) >= deadline do
+          false
+        else
+          Process.sleep(interval_ms)
+          do_eventually(fun, deadline, interval_ms)
+        end
+    end
   end
 end

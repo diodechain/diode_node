@@ -8,6 +8,14 @@ defmodule RemoteChain.ChainList do
   # the background, so callers never block on provider probes.
   @test_cache_ttl_ms :timer.minutes(5)
 
+  # Stale-while-revalidate cache for the *list* of healthy providers per chain.
+  # Distinct from @test_cache_ttl_ms (per-URL verdict) — this caches the filtered
+  # set so `RemoteChain.ws_endpoints/1` never blocks the caller, even on the
+  # very first call after startup. Cold callers fall back to the unfiltered
+  # chainlist (deduped + known-broken providers stripped) and the probe runs in
+  # a detached Task, not in the caller's process.
+  @endpoint_cache_ttl_ms :timer.seconds(60)
+
   # How far ahead of the local clock a block timestamp may be (producer skew).
   @max_future_skew_seconds 60
 
@@ -58,17 +66,50 @@ defmodule RemoteChain.ChainList do
   end
 
   def filter_endpoints(endpoints, chain) do
-    endpoints
-    |> Enum.uniq()
-    |> Task.async_stream(fn url -> {url, test?(url, chain)} end,
+    cache_key = endpoint_cache_key(chain)
+    schedule_endpoint_refresh(endpoints, chain)
+    Globals.get(cache_key) || best_effort_urls(endpoints)
+  end
+
+  defp endpoint_cache_key(chain),
+    do: {__MODULE__, :ws_endpoints, RemoteChain.chainimpl(chain).chain_id()}
+
+  defp best_effort_urls(endpoints),
+    do: endpoints |> Enum.uniq() |> Enum.reject(&rejected_provider?/1)
+
+  defp schedule_endpoint_refresh(endpoints, chain) do
+    chain_id = elem(endpoint_cache_key(chain), 2)
+
+    Debouncer.immediate(
+      {__MODULE__, :ws_endpoint_refresh, chain_id},
+      fn ->
+        refresh_endpoint_cache(endpoints, chain)
+      end,
+      @endpoint_cache_ttl_ms
+    )
+  end
+
+  defp refresh_endpoint_cache(endpoints, chain) do
+    filtered =
+      endpoints
+      |> best_effort_urls()
+      |> probe_pass(chain)
+
+    Globals.put(endpoint_cache_key(chain), filtered)
+    :ok
+  end
+
+  defp probe_pass(urls, chain) do
+    urls
+    |> Task.async_stream(
+      fn url -> {url, test?(url, chain)} end,
       timeout: :infinity,
       max_concurrency: 10
     )
     |> Enum.to_list()
-    |> Enum.filter(fn {:ok, {_, result}} -> result end)
-    |> Enum.map(fn {:ok, {url, _}} -> url end)
-    |> Enum.reject(fn url ->
-      String.contains?(url, "pocket.network") or String.contains?(url, "curie.radiumblock.co")
+    |> Enum.flat_map(fn
+      {:ok, {url, true}} -> [url]
+      _ -> []
     end)
   end
 
@@ -87,6 +128,13 @@ defmodule RemoteChain.ChainList do
         elem(entry, 0)
     end
   end
+
+  # Providers the chainlist sometimes lists but that we know are unusable.
+  # Applied both before the probe (so we don't waste a slot probing them) and
+  # after (so a URL that happens to pass the probe is still kept out of the
+  # pool).
+  defp rejected_provider?(url),
+    do: String.contains?(url, "pocket.network") or String.contains?(url, "curie.radiumblock.co")
 
   defp expired?(tested_at) do
     System.monotonic_time(:millisecond) - tested_at > @test_cache_ttl_ms

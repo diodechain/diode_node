@@ -24,7 +24,7 @@ defmodule ChainAgent do
   end
 
   defp do_restart(state = %{port: port}) do
-    System.cmd("killall", ["-w", "anvil"])
+    kill_all_w("anvil")
 
     if port != nil do
       try do
@@ -48,6 +48,19 @@ defmodule ChainAgent do
       ])
 
     await(%{state | port: port, out: ""})
+  end
+
+  defp kill_all_w(what) do
+    case System.cmd("killall", [what]) do
+      {_, 0} ->
+        # Means process was found and signal sent,
+        # will keep sending until process is gone
+        Process.sleep(100)
+        kill_all_w(what)
+
+      {_, _} ->
+        :ok
+    end
   end
 
   defp await(state = %{port: port, out: out, log: log}) do
