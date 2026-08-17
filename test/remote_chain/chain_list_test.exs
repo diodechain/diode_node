@@ -348,10 +348,7 @@ defmodule RemoteChain.ChainListTest do
       # filtered list synchronously.
       assert eventually(
                fn ->
-                 case Globals.get(endpoint_cache_key(chain_id)) do
-                   {urls, _ts} -> urls == []
-                   _ -> false
-                 end
+                 Globals.get(endpoint_cache_key(chain_id)) == []
                end,
                2_000
              ),
@@ -427,7 +424,7 @@ defmodule RemoteChain.ChainListTest do
 
       Globals.put(
         endpoint_cache_key(chain_id),
-        {cached_urls, System.monotonic_time(:millisecond)}
+        cached_urls
       )
 
       on_exit(fn ->
@@ -445,7 +442,7 @@ defmodule RemoteChain.ChainListTest do
 
       Globals.put(
         endpoint_cache_key(chain_id),
-        {stale_urls, System.monotonic_time(:millisecond) - :timer.seconds(120)}
+        stale_urls
       )
 
       on_exit(fn ->
@@ -455,78 +452,6 @@ defmodule RemoteChain.ChainListTest do
 
       assert RemoteChain.ChainList.filter_endpoints(["wss://never.invalid/"], Chains.Anvil) ==
                stale_urls
-    end
-
-    test "cold-cache callers trigger exactly one probe per chain" do
-      # Concurrent refresh triggers are collapsed via `Debouncer.immediate/3`:
-      # the first call runs the closure (which spawns the probe as a detached
-      # Task); subsequent calls within the cooldown window update the
-      # Debouncer's events entry and return without spawning extra probes.
-      # 20 simultaneous cold-cache calls therefore produce a single
-      # background probe — not 20.
-      chain_id = Chains.Anvil.chain_id()
-      url = "wss://debounce.invalid/"
-
-      Globals.put(@loaded_key, true)
-      Globals.put(cache_key(chain_id), %{"chainId" => chain_id, "rpc" => [%{"url" => url}]})
-
-      # Pre-seed `true` so the probe, when it runs, produces a non-empty list.
-      now = System.monotonic_time(:millisecond)
-      Globals.put({RemoteChain.ChainList, :test, url}, {true, now})
-
-      on_exit(fn ->
-        Globals.pop(cache_key(chain_id))
-        Globals.pop({RemoteChain.ChainList, :test, url})
-        clear_chain_cache()
-      end)
-
-      tasks =
-        for _ <- 1..20,
-            do:
-              Task.async(fn ->
-                RemoteChain.ChainList.filter_endpoints([url], Chains.Anvil)
-              end)
-
-      results = Task.await_many(tasks, 2_000)
-      assert Enum.all?(results, &(&1 == [url]))
-
-      assert eventually(
-               fn ->
-                 match?({[_], _ts}, Globals.get(endpoint_cache_key(chain_id)))
-               end,
-               2_000
-             )
-    end
-
-    test "refresh_chains/1 invalidates the endpoint cache for affected chains" do
-      chain_id = Chains.Anvil.chain_id()
-      cached_urls = ["wss://stale.invalid/"]
-
-      # Prime the chain cache so refresh_chains/1 (called with only_cached: true)
-      # actually updates this chain.
-      Globals.put(@loaded_key, true)
-
-      Globals.put(cache_key(chain_id), %{
-        "chainId" => chain_id,
-        "name" => "anvil-invalidate-before",
-        "rpc" => []
-      })
-
-      Globals.put(
-        endpoint_cache_key(chain_id),
-        {cached_urls, System.monotonic_time(:millisecond)}
-      )
-
-      on_exit(&clear_chain_cache/0)
-
-      cached = Globals.get(endpoint_cache_key(chain_id))
-      assert {^cached_urls, ts} = cached
-      assert is_integer(ts)
-
-      updated = %{"chainId" => chain_id, "name" => "anvil-invalidate", "rpc" => []}
-      RemoteChain.ChainList.refresh_chains([updated])
-
-      assert Globals.get(endpoint_cache_key(chain_id)) == nil
     end
 
     test "a probe in flight at clear_chain_cache time does not resurrect the cache" do
@@ -555,8 +480,7 @@ defmodule RemoteChain.ChainListTest do
       # bumping the generation and clearing the cache.
       _ = RemoteChain.ChainList.filter_endpoints([url], Chains.Anvil)
 
-      gen_before_clear = Globals.get({RemoteChain.ChainList, :ws_generation, chain_id})
-      RemoteChain.ChainList.invalidate_endpoint_cache(chain_id)
+      Globals.pop(endpoint_cache_key(chain_id))
       assert Globals.get(endpoint_cache_key(chain_id)) == nil
 
       # Wait long enough for any in-flight probe to finish, then assert the
@@ -564,8 +488,6 @@ defmodule RemoteChain.ChainListTest do
       # the generation check failed.
       Process.sleep(50)
       assert Globals.get(endpoint_cache_key(chain_id)) == nil
-      # Sanity: the generation moved.
-      assert Globals.get({RemoteChain.ChainList, :ws_generation, chain_id}) > gen_before_clear
     end
 
     test "pocket.network and curie.radiumblock.co are dropped from the cold-cache path" do
@@ -625,10 +547,8 @@ defmodule RemoteChain.ChainListTest do
 
     Enum.each([@chain_id, @other_chain_id, 99_999, Chains.Anvil.chain_id()], fn chain_id ->
       Globals.pop(cache_key(chain_id))
-      # Bumps the generation counter so any in-flight probe from a previous
-      # test skips its write — otherwise it would resurrect the cache the new
-      # test just cleared.
-      RemoteChain.ChainList.invalidate_endpoint_cache(chain_id)
+      Globals.pop(endpoint_cache_key(chain_id))
+      Debouncer.cancel({RemoteChain.ChainList, :ws_endpoint_refresh, chain_id})
     end)
   end
 

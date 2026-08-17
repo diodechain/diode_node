@@ -67,103 +67,35 @@ defmodule RemoteChain.ChainList do
 
   def filter_endpoints(endpoints, chain) do
     cache_key = endpoint_cache_key(chain)
-
-    case Globals.get(cache_key) do
-      {urls, ts} when is_list(urls) ->
-        if cache_stale?(ts), do: schedule_endpoint_refresh(endpoints, chain)
-        urls
-
-      nil ->
-        # Cold cache: kick off a background probe (never in this process) and
-        # return the deduped, pre-filtered list synchronously. Unhealthy URLs
-        # will surface as connect failures and be pruned by NodeProxy
-        # normally; the next refresh cycle drops them from the list.
-        schedule_endpoint_refresh(endpoints, chain)
-        best_effort_urls(endpoints)
-    end
+    schedule_endpoint_refresh(endpoints, chain)
+    Globals.get(cache_key) || best_effort_urls(endpoints)
   end
 
   defp endpoint_cache_key(chain),
     do: {__MODULE__, :ws_endpoints, RemoteChain.chainimpl(chain).chain_id()}
-
-  defp cache_stale?(ts),
-    do: System.monotonic_time(:millisecond) - ts > @endpoint_cache_ttl_ms
 
   defp best_effort_urls(endpoints),
     do: endpoints |> Enum.uniq() |> Enum.reject(&rejected_provider?/1)
 
   defp schedule_endpoint_refresh(endpoints, chain) do
     chain_id = elem(endpoint_cache_key(chain), 2)
-    generation = read_generation(chain_id)
 
-    # Debouncer.immediate/3 coalesces concurrent callers: the first call
-    # runs the closure (which spawns the actual probe as a detached Task);
-    # subsequent calls within the cooldown window update events and return
-    # without spawning extra probes. `timeout: 0` makes the cooldown
-    # window effectively instant so the next sequential caller, after the
-    # timer fires, gets a fresh worker too.
-    #
-    # The outer closure snapshots the generation counter; the spawned Task
-    # reads it again before doing any work, so a `clear_chain_cache` bump
-    # between scheduling and the Task running causes the Task to no-op
-    # (the gen check is also re-checked inside `refresh_endpoint_cache/3`
-    # right before the write).
     Debouncer.immediate(
       {__MODULE__, :ws_endpoint_refresh, chain_id},
       fn ->
-        if read_generation(chain_id) == generation do
-          Task.start(fn ->
-            case Globals.get(endpoint_cache_key(chain)) do
-              {_, ts} ->
-                if cache_stale?(ts),
-                  do: refresh_endpoint_cache(endpoints, chain, generation)
-
-              nil ->
-                refresh_endpoint_cache(endpoints, chain, generation)
-            end
-          end)
-        end
+        refresh_endpoint_cache(endpoints, chain)
       end,
-      0
+      @endpoint_cache_ttl_ms
     )
   end
 
-  # Per-chain counter bumped every time the endpoint cache is invalidated
-  # (`clear_chain_cache/0`, chainlist refresh, etc.). Background probes carry
-  # the value at scheduling time and skip their write if it has since changed,
-  # so a worker outliving its test (or its process) cannot resurrect a
-  # cache that was explicitly cleared.
-  defp bump_generation(chain_id) do
-    key = {__MODULE__, :ws_generation, chain_id}
-    Globals.incr(key) + 1
-  end
-
-  defp read_generation(chain_id) do
-    case Globals.get({__MODULE__, :ws_generation, chain_id}) do
-      nil -> 0
-      gen when is_integer(gen) -> gen
-      _ -> 0
-    end
-  end
-
-  defp refresh_endpoint_cache(endpoints, chain, generation) do
+  defp refresh_endpoint_cache(endpoints, chain) do
     filtered =
       endpoints
       |> best_effort_urls()
       |> probe_pass(chain)
 
-    chain_id = RemoteChain.chainimpl(chain).chain_id()
-
-    # Re-check the generation right before the write. A `clear_chain_cache`
-    # mid-probe bumps the counter; without this check the worker would
-    # overwrite the freshly-cleared cache with stale data.
-    if read_generation(chain_id) == generation do
-      Globals.put(
-        endpoint_cache_key(chain),
-        {filtered, System.monotonic_time(:millisecond)}
-      )
-    end
-
+    Globals.put(endpoint_cache_key(chain), filtered)
     :ok
   end
 
@@ -449,22 +381,8 @@ defmodule RemoteChain.ChainList do
 
       if not only_cached? or not is_nil(Globals.get(key)) do
         Globals.put(key, chain)
-        # Drop the cached endpoint list so the next ws_endpoints/1 call picks
-        # up the new chainlist URLs (and probes any newly-listed providers).
-        invalidate_endpoint_cache(id)
       end
     end)
-  end
-
-  defp endpoint_cache_key_for_id(chain_id),
-    do: {__MODULE__, :ws_endpoints, chain_id}
-
-  # Called by `put_chains/2` (chainlist refresh) and from tests. Invalidation
-  # also bumps the per-chain generation counter so any probe scheduled
-  # before the invalidation can no longer write its result.
-  def invalidate_endpoint_cache(chain_id) do
-    bump_generation(chain_id)
-    Globals.pop(endpoint_cache_key_for_id(chain_id))
   end
 
   def update() do
