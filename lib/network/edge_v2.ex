@@ -347,10 +347,10 @@ defmodule Network.EdgeV2 do
           do_handle_async_msg(msg, state)
         end,
         timeout: 10_000,
-        fun: fn ->
+        fun: fn peer ->
           Logger.warning(
             "#{label} stuck for 10000#{slow_rpc_provider_hint(msg)}\n" <>
-              Profiler.format_stacktrace(self())
+              Profiler.format_stacktrace(peer)
           )
         end
       )

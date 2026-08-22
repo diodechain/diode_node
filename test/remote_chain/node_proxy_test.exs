@@ -581,6 +581,143 @@ defmodule RemoteChain.NodeProxyTest do
     end
   end
 
+  describe "prune_unresponsive_connections/1 watchdog" do
+    test "watchdog_timeout_ms is 5x the caller timeout (25s)" do
+      assert NodeProxy.watchdog_timeout_ms() == 5 * 25_000
+    end
+
+    test "evicts a connection whose request went unanswered past the watchdog timeout" do
+      # Zombie-provider regression (sapphire.oasis.io incident): the WS
+      # connection stayed alive and kept streaming newHeads, but never
+      # answered any RPC. Without the watchdog NodeProxy kept routing
+      # requests to it for minutes and every caller died on the 25s
+      # GenServer.call timeout.
+      conn = spawn(fn -> receive do: (:stop -> :ok) end)
+      from = {self(), make_ref()}
+      overdue_ms = System.os_time(:millisecond) - NodeProxy.watchdog_timeout_ms() - 1_000
+
+      state = %NodeProxy{
+        chain: Chains.OasisSapphire,
+        connections: %{"wss://sapphire.example/ws" => conn},
+        fallback: nil,
+        fallback_url: nil,
+        requests: %{
+          409 => %{
+            from: from,
+            method: "eth_getBlockByNumber",
+            params: ["0xeacb9d", false],
+            start_ms: overdue_ms,
+            conn: conn,
+            ws_url: "wss://sapphire.example/ws"
+          }
+        }
+      }
+
+      new_state = NodeProxy.prune_unresponsive_connections(state)
+
+      assert new_state.connections == %{}, "zombie WSConn must be evicted"
+      assert new_state.requests == %{}, "dead requests on the evicted WSConn must be cleared"
+
+      # The orphaned caller gets a disconnect reply (harmless if it has
+      # already timed out) instead of the entry leaking forever.
+      from_ref = elem(from, 1)
+      assert_receive {^from_ref, {:error, :disconnect}}, 1_000
+    end
+
+    test "keeps connections whose requests are still within the watchdog timeout" do
+      conn = spawn(fn -> receive do: (:stop -> :ok) end)
+
+      state = %NodeProxy{
+        chain: Chains.OasisSapphire,
+        connections: %{"wss://sapphire.example/ws" => conn},
+        fallback: nil,
+        fallback_url: nil,
+        requests: %{
+          410 => %{
+            from: {self(), make_ref()},
+            method: "eth_getBlockByNumber",
+            params: ["0xeacb9e", false],
+            start_ms: System.os_time(:millisecond),
+            conn: conn,
+            ws_url: "wss://sapphire.example/ws"
+          }
+        }
+      }
+
+      new_state = NodeProxy.prune_unresponsive_connections(state)
+
+      assert new_state.connections == state.connections
+      assert new_state.requests == state.requests
+
+      send(conn, :stop)
+    end
+
+    test "evicts an unresponsive fallback connection too" do
+      conn = spawn(fn -> receive do: (:stop -> :ok) end)
+      overdue_ms = System.os_time(:millisecond) - NodeProxy.watchdog_timeout_ms() - 1_000
+
+      state = %NodeProxy{
+        chain: Chains.OasisSapphire,
+        connections: %{},
+        fallback: conn,
+        fallback_url: "wss://fallback.example/oasis/mainnet/",
+        requests: %{
+          411 => %{
+            from: {self(), make_ref()},
+            method: "eth_getBlockByNumber",
+            params: ["0xeacb9f", false],
+            start_ms: overdue_ms,
+            conn: conn,
+            ws_url: "wss://fallback.example/oasis/mainnet/"
+          }
+        }
+      }
+
+      new_state = NodeProxy.prune_unresponsive_connections(state)
+
+      assert new_state.fallback == nil
+      assert new_state.fallback_url == nil
+      assert new_state.requests == %{}
+    end
+
+    test "handle_info(:watchdog) prunes and re-arms itself" do
+      prev = :persistent_term.get({NodeProxy, :watchdog_interval_ms}, nil)
+
+      try do
+        NodeProxy.set_watchdog_interval_ms(10)
+
+        conn = spawn(fn -> receive do: (:stop -> :ok) end)
+        overdue_ms = System.os_time(:millisecond) - NodeProxy.watchdog_timeout_ms() - 1_000
+
+        state = %NodeProxy{
+          chain: Chains.OasisSapphire,
+          connections: %{"wss://sapphire.example/ws" => conn},
+          fallback: nil,
+          fallback_url: nil,
+          requests: %{
+            412 => %{
+              from: {self(), make_ref()},
+              method: "eth_getBlockByNumber",
+              params: ["0xeacba0", false],
+              start_ms: overdue_ms,
+              conn: conn,
+              ws_url: "wss://sapphire.example/ws"
+            }
+          }
+        }
+
+        assert {:noreply, new_state} = NodeProxy.handle_info(:watchdog, state)
+        assert new_state.connections == %{}
+
+        # The watchdog must re-arm itself, otherwise a single run would
+        # silently disable the protection permanently.
+        assert_receive :watchdog, 1_000
+      after
+        if prev, do: :persistent_term.put({NodeProxy, :watchdog_interval_ms}, prev)
+      end
+    end
+  end
+
   # Shared helpers for the `prune_stale_connections/1` eviction tests.
   # Mark the stub as ready (so the handshake-stale check is not the one
   # evicting) and use a started_at that is within the handshake timeout.
