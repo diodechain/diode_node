@@ -14,6 +14,19 @@ defmodule RemoteChain.NodeProxy do
   @rate_limit_reconnect_ms 15_000
   @security_level 1
 
+  # A request that has gone unanswered for this multiple of the caller
+  # timeout marks its WSConn as unresponsive. By then (5 x 25s = 125s)
+  # five generations of callers have already died on their own 25s
+  # GenServer.call timeout, so no useful answer can still arrive: the
+  # provider accepted the socket data but is not servicing RPCs (zombie
+  # connection — the sapphire.oasis.io incident where blocks kept
+  # streaming while every request went unanswered for minutes). Evict
+  # the connection and let ChainList re-test the URL.
+  @watchdog_factor 5
+
+  # How often the watchdog scans the in-flight requests.
+  @watchdog_interval_ms @default_timeout
+
   # A WSConn that has gone this many expected block intervals without a new
   # block is forcibly evicted, even though the socket itself is still alive.
   # Two consecutive ping cycles (each 2 * expected_block_intervall seconds) is
@@ -46,7 +59,25 @@ defmodule RemoteChain.NodeProxy do
     File.mkdir_p!("logs")
     {:ok, log} = RotatingFile.start_link(file: "logs/#{state.chain}.log", name: nil)
     state = %NodeProxy{state | log: log}
+    schedule_watchdog()
     {:ok, ensure_connections(state)}
+  end
+
+  @doc false
+  def watchdog_timeout_ms(), do: @watchdog_factor * @default_timeout
+
+  @doc false
+  def watchdog_interval_ms do
+    :persistent_term.get({__MODULE__, :watchdog_interval_ms}, @watchdog_interval_ms)
+  end
+
+  @doc false
+  def set_watchdog_interval_ms(ms) when is_integer(ms) and ms > 0 do
+    :persistent_term.put({__MODULE__, :watchdog_interval_ms}, ms)
+  end
+
+  defp schedule_watchdog() do
+    Process.send_after(self(), :watchdog, watchdog_interval_ms())
   end
 
   def rpc(chain, method, params) do
@@ -230,6 +261,11 @@ defmodule RemoteChain.NodeProxy do
     end
 
     {:noreply, %{state | lastblocks: lastblocks, lastblock: block_number}}
+  end
+
+  def handle_info(:watchdog, state) do
+    schedule_watchdog()
+    {:noreply, prune_unresponsive_connections(state)}
   end
 
   def handle_info(
@@ -418,6 +454,33 @@ defmodule RemoteChain.NodeProxy do
         fallback: new_fallback,
         fallback_url: new_fallback_url
     }
+  end
+
+  @doc false
+  def prune_unresponsive_connections(state = %NodeProxy{requests: requests, chain: chain}) do
+    cutoff = System.os_time(:millisecond) - watchdog_timeout_ms()
+
+    unresponsive =
+      requests
+      |> Enum.filter(fn {_id, req} -> req.start_ms < cutoff end)
+      |> Enum.map(fn {_id, req} -> req.conn end)
+      |> Enum.uniq()
+
+    if unresponsive == [] do
+      state
+    else
+      state =
+        Enum.reduce(unresponsive, state, fn conn, state ->
+          Logger.warning(
+            "Evicting unresponsive WSConn #{inspect(conn)} for #{inspect(chain)} " <>
+              "[#{conn_url(state, conn)}] (request unanswered for > #{watchdog_timeout_ms()}ms)"
+          )
+
+          close_and_remove(state, conn)
+        end)
+
+      schedule_ensure_connections(state)
+    end
   end
 
   @doc false
