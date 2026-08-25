@@ -399,7 +399,7 @@ defmodule RemoteChain.ChainList do
 
   defp download_update() do
     json =
-      HTTPoison.get!("https://chainlist.org/rpcs.json")
+      Req.get!(chainlist_url(), decode_body: false, retry: false, max_redirects: 0)
       |> Map.get(:body)
 
     # Just ensure it's valid JSON
@@ -408,6 +408,11 @@ defmodule RemoteChain.ChainList do
     Globals.pop(@loaded_key)
     refresh_chains()
     :updated
+  end
+
+  # Overridable so tests can point the chainlist download at a local mock.
+  defp chainlist_url() do
+    Application.get_env(:diode, :chainlist_url, "https://chainlist.org/rpcs.json")
   end
 
   def file_path() do

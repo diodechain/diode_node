@@ -505,15 +505,97 @@ defmodule RemoteChain.ChainListTest do
     end
   end
 
+  describe "update/0 chainlist download" do
+    # Stand-in for https://chainlist.org/rpcs.json
+    defmodule ChainListPlug do
+      import Plug.Conn
+
+      def init(opts), do: opts
+
+      def call(conn, opts) do
+        if test_pid = opts[:test_pid] do
+          send(test_pid, {:chainlist_request, conn.request_path})
+        end
+
+        conn
+        |> put_resp_content_type("application/json")
+        |> send_resp(200, opts[:body])
+      end
+    end
+
+    @mock_chain_id 9_999_911
+
+    setup do
+      {:ok, _} = Application.ensure_all_started(:plug_cowboy)
+      {:ok, _} = Application.ensure_all_started(:req)
+
+      chains_file = Diode.data_dir("chains.json")
+      File.mkdir_p!(Diode.data_dir())
+      File.rm(chains_file)
+
+      on_exit(fn ->
+        Application.delete_env(:diode, :chainlist_url)
+        File.rm(chains_file)
+        Globals.pop({RemoteChain.ChainList, :loaded})
+        Globals.pop({RemoteChain.ChainList, @mock_chain_id})
+      end)
+
+      :ok
+    end
+
+    test "downloads the chainlist, stores it and refreshes the cache" do
+      json =
+        Jason.encode!([
+          %{
+            "chainId" => @mock_chain_id,
+            "name" => "Mock",
+            "rpc" => [%{"url" => "http://mock.invalid/http"}]
+          }
+        ])
+
+      with_chainlist_mock([body: json, test_pid: self()], fn ->
+        assert RemoteChain.ChainList.update() == :updated
+        assert_received {:chainlist_request, "/rpcs.json"}
+
+        assert File.read!(Diode.data_dir("chains.json")) == json
+        chain = RemoteChain.ChainList.get(@mock_chain_id)
+        assert chain["chainId"] == @mock_chain_id
+      end)
+    end
+
+    test "raises when the downloaded payload is not valid JSON" do
+      with_chainlist_mock([body: "not json"], fn ->
+        assert_raise MatchError, fn -> RemoteChain.ChainList.update() end
+      end)
+    end
+
+    defp with_chainlist_mock(opts, fun) do
+      ref = {__MODULE__, :chainlist}
+      {:ok, _pid} = Plug.Cowboy.http(ChainListPlug, opts, port: 0, ref: ref)
+
+      Application.put_env(
+        :diode,
+        :chainlist_url,
+        "http://127.0.0.1:#{:ranch.get_port(ref)}/rpcs.json"
+      )
+
+      try do
+        fun.()
+      after
+        Plug.Cowboy.shutdown(ref)
+      end
+    end
+  end
+
   defp mock_ref(), do: {__MODULE__, :current_mock}
 
   defp hex_timestamp(seconds), do: "0x" <> Integer.to_string(seconds, 16)
 
   defp with_http_mock(opts, fun) do
     {:ok, _} = Application.ensure_all_started(:plug_cowboy)
-    # Needed for DIODE_MINIMAL_TEST runs where the app (and its hackney HTTP
+    # Needed for DIODE_MINIMAL_TEST runs where the app (and its Req HTTP
     # client) is not started.
-    {:ok, _} = Application.ensure_all_started(:httpoison)
+    {:ok, _} = Application.ensure_all_started(:req)
     ref = mock_ref()
 
     {:ok, _pid} = Plug.Cowboy.http(MockChainRpcPlug, opts, port: 0, ref: ref)

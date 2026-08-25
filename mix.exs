@@ -127,7 +127,7 @@ defmodule Diode.Mixfile do
       {:ex_doc, "~> 0.28", only: :dev, runtime: false},
       {:exqlite, github: "dominicletz/exqlite"},
       {:globals, "~> 1.0"},
-      {:httpoison, "~> 2.0"},
+      {:req, "~> 0.7"},
       {:diode_client, github: "diodechain/diode_client_ex"},
       {:keccakf1600, github: "diodechain/erlang-keccakf1600"},
       {:libsecp256k1, "~> 0.1", hex: :libsecp256k1_diode_fork},

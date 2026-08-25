@@ -715,24 +715,22 @@ defmodule Network.Rpc do
       "id" => 1
     }
 
-    HTTPoison.post("http://#{host}:8545", Poison.encode!(request), [
-      {"Content-Type", "application/json"},
-      {"Accept-Encoding", "gzip"}
-    ])
-    |> case do
+    case Req.post(
+           "http://#{host}:#{node_rpc_port()}",
+           body: Poison.encode!(request),
+           headers: [{"content-type", "application/json"}],
+           compressed: true,
+           decode_body: false,
+           retry: false,
+           max_redirects: 0
+         ) do
       {:ok, %{body: ""}} ->
         result("")
 
       {:ok, %{body: body, headers: headers}} ->
-        headers = Enum.map(headers, fn {k, v} -> {String.downcase(k), v} end)
-
-        body =
-          if List.keyfind(headers, "content-encoding", 0) ==
-               {"content-encoding", "gzip"} do
-            :zlib.gunzip(body)
-          else
-            body
-          end
+        # Req normalizes header names to lowercase; flatten multi-values to
+        # {name, value} pairs as returned by HTTPoison previously.
+        headers = for {name, values} <- headers, value <- values, do: {name, value}
 
         if opts[:validate] != true or validate_signature(node_id, body, headers) do
           body
@@ -747,6 +745,13 @@ defmodule Network.Rpc do
         Logger.error("Error fetching #{method} from #{host}: #{inspect(error)}")
         result(nil, 502)
     end
+  end
+
+  # Diode nodes serve their JSON-RPC API on port 8545 by default (see
+  # `Diode.Config` "RPC_PORT"). Overridable so tests can point proxy
+  # requests at a local mock server.
+  defp node_rpc_port() do
+    Application.get_env(:diode, :node_rpc_port, 8545)
   end
 
   defp validate_signature(node_id, body, headers) do
