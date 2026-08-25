@@ -125,4 +125,40 @@ defmodule RemoteChain.WSConnTest do
       refute WSConn.stale?(pid, Chains.Moonbeam)
     end
   end
+
+  describe "handle_frame/2 newHeads notifications" do
+    defp conn_state do
+      %WSConn{owner: self(), ws_url: "wss://provider.example/ws", subscription_id: "0xabc"}
+    end
+
+    test "forwards the full header from a subscription notification" do
+      header = %{
+        "number" => "0x1f4",
+        "hash" => "0x1111",
+        "parentHash" => "0x0000",
+        "miner" => "0x2222",
+        "stateRoot" => "0x3333",
+        "transactionsRoot" => "0x4444",
+        "nonce" => "0x0000000000000000",
+        "timestamp" => "0x66b3d350"
+      }
+
+      frame = Poison.encode!(%{"params" => %{"subscription" => "0xabc", "result" => header}})
+
+      assert {:ok, state} = WSConn.handle_frame({:text, frame}, conn_state())
+
+      assert_received {:new_block, "wss://provider.example/ws", 500, ^header}
+      assert state.lastblock_number == 500
+      assert state.lastblock_at != nil
+    end
+
+    test "forwards a nil header for number-only poll responses" do
+      frame = Poison.encode!(%{"id" => 2, "result" => "0x1f4"})
+
+      assert {:ok, state} = WSConn.handle_frame({:text, frame}, conn_state())
+
+      assert_received {:new_block, "wss://provider.example/ws", 500, nil}
+      assert state.lastblock_number == 500
+    end
+  end
 end

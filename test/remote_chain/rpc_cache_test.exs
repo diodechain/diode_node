@@ -85,4 +85,133 @@ defmodule RemoteChain.RPCCacheTest do
       assert_receive {:refreshed, ^ref}, 200
     end
   end
+
+  describe "inject_block_header/4" do
+    defp full_header do
+      %{
+        "hash" => "0x1111111111111111111111111111111111111111111111111111111111111111",
+        "nonce" => "0x0000000000000000",
+        "miner" => "0x2222222222222222222222222222222222222222",
+        "number" => "0x64",
+        "parentHash" => "0x3333333333333333333333333333333333333333333333333333333333333333",
+        "stateRoot" => "0x4444444444444444444444444444444444444444444444444444444444444444",
+        "timestamp" => "0x66b3d350",
+        "transactionsRoot" => "0x5555555555555555555555555555555555555555555555555555555555555555"
+      }
+    end
+
+    defp block_key(chain, hex_block) do
+      RemoteChain.RPCCache.cache_key(chain, "eth_getBlockByNumber", [hex_block, false])
+    end
+
+    test "stores the announced header under the eth_getBlockByNumber cache key" do
+      cache = Lru.new(10)
+
+      cache = RemoteChain.RPCCache.inject_block_header(cache, Chains.Anvil, 100, full_header())
+
+      assert %{"result" => block} = RemoteChain.Cache.get(cache, block_key(Chains.Anvil, "0x64"))
+      assert block["hash"] == full_header()["hash"]
+      # Shape parity with eth_getBlockByNumber(n, false) responses.
+      assert block["transactions"] == []
+      assert block["uncles"] == []
+    end
+
+    test "keeps transactions/uncles when the provider includes them" do
+      cache = Lru.new(10)
+      header = Map.merge(full_header(), %{"transactions" => ["0xtx"], "uncles" => ["0xu"]})
+
+      cache = RemoteChain.RPCCache.inject_block_header(cache, Chains.Anvil, 100, header)
+
+      assert %{"result" => block} = RemoteChain.Cache.get(cache, block_key(Chains.Anvil, "0x64"))
+      assert block["transactions"] == ["0xtx"]
+      assert block["uncles"] == ["0xu"]
+    end
+
+    test "skips nil headers (number-only announcements)" do
+      cache = Lru.new(10)
+      cache = RemoteChain.RPCCache.inject_block_header(cache, Chains.Anvil, 100, nil)
+      assert RemoteChain.Cache.get(cache, block_key(Chains.Anvil, "0x64")) == nil
+    end
+
+    test "skips headers missing a required field" do
+      cache = Lru.new(10)
+      header = Map.delete(full_header(), "stateRoot")
+
+      cache = RemoteChain.RPCCache.inject_block_header(cache, Chains.Anvil, 100, header)
+
+      assert RemoteChain.Cache.get(cache, block_key(Chains.Anvil, "0x64")) == nil
+    end
+
+    test "skips headers whose number does not match the announced block" do
+      cache = Lru.new(10)
+
+      cache = RemoteChain.RPCCache.inject_block_header(cache, Chains.Anvil, 101, full_header())
+
+      assert RemoteChain.Cache.get(cache, block_key(Chains.Anvil, "0x64")) == nil
+    end
+
+    test "requires minerSignature for diode chains" do
+      cache = Lru.new(10)
+
+      cache = RemoteChain.RPCCache.inject_block_header(cache, Chains.Diode, 100, full_header())
+      assert RemoteChain.Cache.get(cache, block_key(Chains.Diode, "0x64")) == nil
+
+      header = Map.put(full_header(), "minerSignature", "0xabc")
+      cache = RemoteChain.RPCCache.inject_block_header(cache, Chains.Diode, 100, header)
+      assert %{"result" => _} = RemoteChain.Cache.get(cache, block_key(Chains.Diode, "0x64"))
+    end
+  end
+
+  describe "handle_info({{NodeProxy, _}, :block_number, n, header})" do
+    setup do
+      previous = RemoteChain.RPCCache.optimistic_caching?()
+      RemoteChain.RPCCache.set_optimistic_caching(false)
+      on_exit(fn -> RemoteChain.RPCCache.set_optimistic_caching(previous) end)
+      :ok
+    end
+
+    test "primes the block cache from the NodeProxy notification" do
+      # Regression for EdgeV2 crashes (MatchError in
+      # RemoteChain.Edge.get_block_header/2): providers announce new blocks
+      # via newHeads slightly before serving them over eth_getBlockByNumber.
+      # The notification must prime the cache so subscriber fetches for the
+      # just-announced block are cache hits and never observe a nil result.
+      cache = Lru.new(10)
+      {:ok, pid} = GenServer.start_link(RemoteChain.RPCCache, {Chains.Anvil, cache})
+
+      header = %{
+        "hash" => "0x1111111111111111111111111111111111111111111111111111111111111111",
+        "nonce" => "0x0000000000000000",
+        "miner" => "0x2222222222222222222222222222222222222222",
+        "number" => "0x64",
+        "parentHash" => "0x3333333333333333333333333333333333333333333333333333333333333333",
+        "stateRoot" => "0x4444444444444444444444444444444444444444444444444444444444444444",
+        "timestamp" => "0x66b3d350",
+        "transactionsRoot" => "0x5555555555555555555555555555555555555555555555555555555555555555"
+      }
+
+      send(pid, {{RemoteChain.NodeProxy, Chains.Anvil}, :block_number, 100, header})
+
+      state = :sys.get_state(pid)
+      assert state.block_number == 100
+
+      key = RemoteChain.RPCCache.cache_key(Chains.Anvil, "eth_getBlockByNumber", ["0x64", false])
+      assert %{"result" => block} = RemoteChain.Cache.get(state.cache, key)
+      assert block["hash"] == header["hash"]
+      assert block["transactions"] == []
+    end
+
+    test "still updates block_number when the header is nil" do
+      cache = Lru.new(10)
+      {:ok, pid} = GenServer.start_link(RemoteChain.RPCCache, {Chains.Anvil, cache})
+
+      send(pid, {{RemoteChain.NodeProxy, Chains.Anvil}, :block_number, 100, nil})
+
+      state = :sys.get_state(pid)
+      assert state.block_number == 100
+
+      key = RemoteChain.RPCCache.cache_key(Chains.Anvil, "eth_getBlockByNumber", ["0x64", false])
+      assert RemoteChain.Cache.get(state.cache, key) == nil
+    end
+  end
 end

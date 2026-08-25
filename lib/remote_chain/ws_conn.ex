@@ -185,16 +185,16 @@ defmodule RemoteChain.WSConn do
         {:ok, %{state | subscription_id: subscription_id}}
 
       %{"id" => 2, "result" => <<"0", _x, hex_number::binary>>} ->
-        state = new_block(hex_number, state)
+        state = new_block(hex_number, nil, state)
         {:ok, state}
 
       %{
         "params" => %{
           "subscription" => ^subscription_id,
-          "result" => %{"number" => <<"0", _x, hex_number::binary>>}
+          "result" => %{"number" => <<"0", _x, hex_number::binary>>} = header
         }
       } ->
-        state = new_block(hex_number, state)
+        state = new_block(hex_number, header, state)
         {:ok, state}
 
       %{"id" => _} = other ->
@@ -306,9 +306,9 @@ defmodule RemoteChain.WSConn do
     end
   end
 
-  defp new_block(hex_number, state) do
+  defp new_block(hex_number, header, state) do
     block_number = String.to_integer(hex_number, 16)
-    send(state.owner, {:new_block, state.ws_url, block_number})
+    send(state.owner, {:new_block, state.ws_url, block_number, header})
     %{state | lastblock_at: DateTime.utc_now(), lastblock_number: block_number}
   end
 

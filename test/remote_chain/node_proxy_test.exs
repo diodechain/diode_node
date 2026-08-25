@@ -10,7 +10,7 @@ defmodule RemoteChain.NodeProxyTest do
   must evict stale ones and ready sockets that fail to send.
   """
   use ExUnit.Case, async: false
-  alias RemoteChain.{NodeProxy, WSConn}
+  alias RemoteChain.{NodeProxy, RPCCache, WSConn}
 
   defmodule WSConnStateStub do
     use GenServer
@@ -437,8 +437,48 @@ defmodule RemoteChain.NodeProxyTest do
     end
 
     defp apply_new_block(state, url, block) do
-      {:noreply, new_state} = NodeProxy.handle_info({:new_block, url, block}, state)
+      {:noreply, new_state} = NodeProxy.handle_info({:new_block, url, block, nil}, state)
       new_state
+    end
+
+    test "forwards the subscription header to RPCCache and keeps subscriber notifications" do
+      state = build_state(%{}, nil)
+
+      :yes = :global.register_name({RPCCache, Chains.OasisSapphire}, self())
+      on_exit(fn -> :global.unregister_name({RPCCache, Chains.OasisSapphire}) end)
+
+      subscriber = alive_noop_pid()
+      state = %{state | subscriptions: %{subscriber => make_ref()}}
+
+      header = %{"number" => "0x14", "hash" => "0xaa"}
+
+      {:noreply, new_state} =
+        NodeProxy.handle_info({:new_block, @primary_url, 20, header}, state)
+
+      assert new_state.lastblock == 20
+
+      # RPCCache receives the header so it can prime its block cache before
+      # any subscriber fetches the just-announced block.
+      assert_received {{NodeProxy, Chains.OasisSapphire}, :block_number, 20, ^header}
+
+      # Subscribers keep the existing three-element notification.
+      assert {:messages, messages} = Process.info(subscriber, :messages)
+      assert {{NodeProxy, Chains.OasisSapphire}, :block_number, 20} in messages
+    end
+
+    test "sends no RPCCache message when the quorum blocks the advance" do
+      fallback = stub_fallback(fresh_date())
+      state = build_state(%{}, fallback)
+
+      :yes = :global.register_name({RPCCache, Chains.OasisSapphire}, self())
+      on_exit(fn -> :global.unregister_name({RPCCache, Chains.OasisSapphire}) end)
+
+      # security_level = 2 with only one live voter: no advance, no message.
+      {:noreply, state} =
+        NodeProxy.handle_info({:new_block, @primary_url, 10, %{"number" => "0xa"}}, state)
+
+      assert state.lastblock == 0
+      refute_received {{NodeProxy, Chains.OasisSapphire}, :block_number, _, _}
     end
 
     test "ignores a frozen fallback when the primary advances (the us1/Oasis bug)" do

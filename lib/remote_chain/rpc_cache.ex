@@ -529,12 +529,14 @@ defmodule RemoteChain.RPCCache do
 
   @impl true
   def handle_info(
-        {{NodeProxy, _chain}, :block_number, block_number},
-        state = %RPCCache{block_number_requests: requests, chain: chain}
+        {{NodeProxy, _chain}, :block_number, block_number, header},
+        state = %RPCCache{block_number_requests: requests, chain: chain, cache: cache}
       ) do
     for from <- requests do
       GenServer.reply(from, block_number)
     end
+
+    cache = inject_block_header(cache, chain, block_number, header)
 
     # for development nodes we need to ensure block_number > 0 (genesis)
     # to prevent block-reorgs from causing issues we're doing 5 blocks delay
@@ -543,7 +545,8 @@ defmodule RemoteChain.RPCCache do
       spawn(__MODULE__, :optimistic_block_cache, [block_number, chain])
     end
 
-    {:noreply, %RPCCache{state | block_number: block_number, block_number_requests: []}}
+    {:noreply,
+     %RPCCache{state | cache: cache, block_number: block_number, block_number_requests: []}}
   end
 
   def handle_info(
@@ -598,6 +601,53 @@ defmodule RemoteChain.RPCCache do
         {:noreply, state}
     end
   end
+
+  @header_fields ~w(hash nonce miner number parentHash stateRoot timestamp transactionsRoot)
+
+  @doc """
+  Primes the `eth_getBlockByNumber(block, false)` cache entry from the block
+  header received via the `newHeads` subscription.
+
+  Providers announce new blocks via the subscription slightly before they are
+  able to serve them over `eth_getBlockByNumber`, so fetching the just
+  announced block can return a `nil` result for a short window. By injecting
+  the subscription header into the cache before `NodeProxy` notifies its
+  subscribers, those fetches become cache hits and never observe the gap.
+
+  Headers that are missing any required field (or whose `number` does not
+  match the announced block) are skipped, leaving the regular fetch path in
+  place. `nil` headers are sent for number-only announcements.
+
+  Returns the (possibly updated) cache.
+  """
+  def inject_block_header(cache, _chain, _block_number, nil), do: cache
+
+  def inject_block_header(cache, chain, block_number, header)
+      when is_map(header) do
+    fields = if diode?(chain), do: ["minerSignature" | @header_fields], else: @header_fields
+
+    valid? =
+      Enum.all?(fields, fn field ->
+        match?("0x" <> _, header[field])
+      end) and Base16.decode_int(header["number"]) == block_number
+
+    if valid? do
+      block =
+        header
+        |> Map.put_new("transactions", [])
+        |> Map.put_new("uncles", [])
+
+      Cache.put(
+        cache,
+        cache_key(chain, "eth_getBlockByNumber", [normalize_block(chain, block_number), false]),
+        %{"result" => block}
+      )
+    else
+      cache
+    end
+  end
+
+  def inject_block_header(cache, _chain, _block_number, _header), do: cache
 
   def optimistic_block_cache(block_number, chain) do
     if diode?(chain) do

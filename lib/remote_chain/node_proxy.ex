@@ -208,7 +208,7 @@ defmodule RemoteChain.NodeProxy do
 
   @impl true
   def handle_info(
-        {:new_block, ws_url, block_number},
+        {:new_block, ws_url, block_number, header},
         state = %NodeProxy{
           chain: chain,
           lastblocks: lastblocks,
@@ -252,7 +252,11 @@ defmodule RemoteChain.NodeProxy do
       pid = :global.whereis_name({RPCCache, chain})
 
       if pid != :undefined do
-        send(pid, {{__MODULE__, chain}, :block_number, block_number})
+        # Sent before the subscriber notifications so the RPCCache can prime
+        # its block cache from the subscription header (when present) before
+        # any subscriber fetches the block. RPCCache processes messages in
+        # order, so the injected entry is guaranteed to be visible first.
+        send(pid, {{__MODULE__, chain}, :block_number, block_number, header})
       end
 
       for {pid, _ref} <- subs do
