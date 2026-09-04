@@ -431,7 +431,8 @@ defmodule RemoteChain.NodeProxy do
            connections: connections,
            requests: requests,
            fallback: fallback,
-           fallback_url: fallback_url
+           fallback_url: fallback_url,
+           lastblocks: lastblocks
          },
          down_pid
        ) do
@@ -446,7 +447,18 @@ defmodule RemoteChain.NodeProxy do
       end)
       |> Map.new()
 
+    removed_urls =
+      for {url, pid} <- connections, pid == down_pid, do: url
+
+    removed_urls =
+      if fallback == down_pid and not is_nil(fallback_url) do
+        [fallback_url | removed_urls]
+      else
+        removed_urls
+      end
+
     new_connections = Enum.filter(connections, fn {_, pid} -> pid != down_pid end) |> Map.new()
+    lastblocks = Map.drop(lastblocks, removed_urls)
 
     {new_fallback, new_fallback_url} =
       if fallback == down_pid, do: {nil, nil}, else: {fallback, fallback_url}
@@ -455,6 +467,7 @@ defmodule RemoteChain.NodeProxy do
       state
       | connections: new_connections,
         requests: requests,
+        lastblocks: lastblocks,
         fallback: new_fallback,
         fallback_url: new_fallback_url
     }
