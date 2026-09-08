@@ -124,6 +124,97 @@ sudo sysctl --system
 
 # Operations
 
+## Remote RPC over SSH
+
+Nodes installed from the release tarball (see `deployment/fabfile.exs`) run out of `/opt/diode_node`
+and evaluate one-off expressions with the release CLI:
+
+| Command | Behaviour |
+| --- | --- |
+| `bin/diode_node rpc 'EXPR'` | Executes `EXPR` **remotely on the running node** (sees live state, needs the node up, a matching `releases/COOKIE` and `RELEASE_DISTRIBUTION`) |
+| `bin/diode_node eval 'EXPR'` | Executes `EXPR` on a **new, non-booted node** (no live state, no cookie) |
+| `bin/diode_node remote` | Attaches a remote shell (see `./remsh`) |
+
+A failing expression exits non-zero and its output comes back on the same ssh channel, so both
+commands are usable from scripts.
+
+### Proper call structure
+
+The one canonical way to call it in a single ssh command line is: the remote command wrapped in
+double quotes, the expression wrapped in single quotes, and Elixir string literals in **escaped**
+double quotes:
+
+```bash
+ssh us1 "/opt/diode_node/bin/diode_node rpc 'IO.puts(\"tes\")'"
+```
+
+The node receives `IO.puts("tes")` and prints `tes`. The same structure works for expressions with
+spaces, because the single quotes hold them together for the remote shell:
+
+```bash
+ssh us1 "/opt/diode_node/bin/diode_node rpc 'IO.inspect(%{a: 1, b: 2})'"
+```
+
+Why the escaping looks like that: `ssh HOST CMD ARGS` never execs argv. It joins all arguments with
+spaces and hands the resulting string to the remote login shell, so the expression is parsed **twice**
+— once locally, once remotely. The outer double quotes only protect the string on the local side, the
+inner single quotes protect it on the remote side, and `\"` is what survives *both* parses as a plain
+`"` for Elixir.
+
+Do not pass the expression as its own argument and escape the parentheses instead:
+
+```bash
+# WRONG: the remote shell eats \( \) and the single quotes, so the node compiles
+# IO.puts(tes) and dies with
+#   error: undefined variable "tes"
+#   ** (CompileError) nofile: cannot compile file (errors have been logged)
+ssh us1 /opt/diode_node/bin/diode_node rpc "IO.puts\('tes'\)"
+```
+
+Also wrong: dropping the backslashes in front of the string quotes
+(`ssh us1 "… rpc 'IO.puts("tes")'"`) — the local shell closes the double quote before `tes`, and the
+node again receives `IO.puts(tes)`.
+
+Rules of thumb:
+
+1. Use Elixir binaries (`"tes"`), never charlists (`'tes'` warns since Elixir 1.20).
+2. Count escapes for exactly two shell parses — or don't count, use one of the forms below.
+3. Keep `$`, backticks and `!` out of expressions that travel inside double quotes, or move them to a
+   form that does not expand anything.
+4. `rpc` takes exactly **one** argument (the shim forwards only `$2`), so anything past an
+   un-quoted space is silently dropped and shows up as a confusing syntax error. Expressions without
+   spaces are the least fragile, which is why `deployment/fabfile.exs` sticks to
+   `'IO.inspect(Mod.fun(args))'` calls.
+
+### Escaping-free alternatives for complex expressions
+
+```bash
+# let printf %q generate the escaping (needs bash locally)
+ssh us1 "$(printf '%q ' /opt/diode_node/bin/diode_node rpc 'IO.puts("tes $HOME")')"
+
+# no quoting at all: ship the expression on stdin (multi-line safe, immune to $ and backticks)
+printf '%s' 'IO.puts("tes $HOME")' | ssh us1 'expr=$(cat); /opt/diode_node/bin/diode_node rpc "$expr"'
+```
+
+Both deliver `IO.puts("tes $HOME")` verbatim, i.e. they print `tes $HOME` instead of expanding it.
+
+### UTF-8 locale
+
+Non-interactive ssh sessions often have no UTF-8 locale on the server, and the CLI node then warns
+`the VM is running with native name encoding of latin1 …`. Either give the remote command a locale:
+
+```bash
+ssh us1 "export LC_ALL=C.UTF-8; /opt/diode_node/bin/diode_node rpc 'IO.puts(\"tes\")'"
+```
+
+… or fix it for every release command (including `rpc`) by exporting `LANG`/`ELIXIR_ERL_OPTIONS="+fnu"`
+in `rel/env.sh.eex`, which the release wrapper sources for all subcommands.
+
+Note: snap installs route through `snap/run`, which re-expands the arguments unquoted (`$*`), so the
+expression is split **again** at every space: `sudo diode-node.rpc 'IO.puts("a b")'` reaches the node
+as `IO.puts("a`. Prefer expressions without spaces (`sudo diode-node.rpc 'Diode.Cmd.status'`) or attach
+a shell (`sudo diode-node.shell`).
+
 ## See last service restart reason
 
 When running the snap installation then it's a two step process to see the last service restart reason:
