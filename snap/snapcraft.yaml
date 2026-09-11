@@ -56,6 +56,8 @@ parts:
       # WireGuardNat (MASQUERADE/FORWARD) calls iptables + `ip route`; firewall-control plug required at runtime.
       - iptables
       - iproute2
+      # Unpinned: Snapcraft stages the Ubuntu archive libc used at build time.
+      # Rebuilds pick up USNs (e.g. USN-8737-2 / libc6 2.39-0ubuntu8.9); do not pin.
       - libc6
       - libncurses6
       - libsigsegv2
