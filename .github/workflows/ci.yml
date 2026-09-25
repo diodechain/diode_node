@@ -71,5 +71,7 @@ jobs:
         # Wiring all of that up is tracked separately.
         mix test.turn
         mix test.nat
+        # Port multiplexer unit tests (no anvil, no WireGuard).
+        DIODE_MINIMAL_TEST=1 mix test --no-start test/network/mux_test.exs
         # Snapcraft recipe contract (unpinned libc6 / USN rebuilds); no anvil.
         DIODE_MINIMAL_TEST=1 mix test --no-start test/snap/snapcraft_test.exs

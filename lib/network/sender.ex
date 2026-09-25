@@ -1,12 +1,14 @@
 defmodule Network.Sender do
-  @doc """
-    Quality-Of-Service aware network sender. The idea is to wrap
-    around a real socket and send on multiple "partitions". Small partitions
-    with fewer data in the queue are always preferred over the large partitions
+  @moduledoc """
+  Quality-Of-Service aware network sender. Wraps a socket and sends on
+  multiple partitions, rotating after each 64KB quantum.
+
+  Partition ordering lives in `Network.Mux`.
   """
   use GenServer
+  alias Network.Mux
   alias Network.Sender
-  defstruct [:partitions, :waiting, :relay]
+  defstruct [:mux, :waiting, :relay]
 
   def new(socket) do
     {:ok, pid} = GenServer.start_link(__MODULE__, [socket], hibernate_after: 5_000)
@@ -34,86 +36,38 @@ defmodule Network.Sender do
   end
 
   @impl true
-  def handle_call(
-        {:push_async, partition, data, trace},
-        _from,
-        state = %Sender{partitions: partitions, waiting: nil}
-      ) do
-    ps =
-      Map.update(partitions, partition, {[data], [{:trace, trace}]}, fn {q, rest} ->
-        {q ++ [data], rest ++ [{:trace, trace}]}
-      end)
-
-    {:reply, :ok, %Sender{state | partitions: ps}}
+  def handle_call({:push_async, partition, data, trace}, _from, state = %Sender{waiting: nil}) do
+    {:reply, :ok, enqueue(state, partition, data, {:trace, trace})}
   end
 
   @impl true
-  def handle_call(
-        {:push_async, _partition, data, trace},
-        _from,
-        state = %Sender{waiting: from}
-      ) do
-    GenServer.reply(from, data)
-    Network.EdgeV2.trace(trace)
-    {:reply, :ok, %Sender{state | waiting: nil}}
+  def handle_call({:push_async, partition, data, trace}, _from, state = %Sender{waiting: from})
+      when from != nil do
+    state = enqueue(state, partition, data, {:trace, trace})
+    deliver_waiting(state)
   end
 
   @impl true
-  def handle_call(
-        {:push, partition, data},
-        from,
-        state = %Sender{partitions: partitions, waiting: nil}
-      ) do
-    ps =
-      Map.update(partitions, partition, {[data], [from]}, fn {q, rest} ->
-        {q ++ [data], rest ++ [from]}
-      end)
-
-    {:noreply, %Sender{state | partitions: ps}}
+  def handle_call({:push, partition, data}, from, state = %Sender{waiting: nil}) do
+    {:noreply, enqueue(state, partition, data, from)}
   end
 
   @impl true
-  def handle_call(
-        {:push, _partition, data},
-        _from,
-        state = %Sender{waiting: from}
-      ) do
-    GenServer.reply(from, data)
-    {:reply, :ok, %Sender{state | waiting: nil}}
+  def handle_call({:push, partition, data}, from_push, state = %Sender{waiting: from})
+      when from != nil do
+    state = enqueue(state, partition, data, from_push)
+    deliver_waiting(state)
   end
 
   @impl true
-  def handle_call(:pop, _from, state = %Sender{partitions: partitions}) do
-    min =
-      Enum.min(
-        partitions,
-        fn {_ka, {data_a, _from_a}}, {_kb, {data_b, _from_b}} ->
-          :erts_debug.flat_size(data_a) < :erts_debug.flat_size(data_b)
-        end,
-        fn -> nil end
-      )
+  def handle_call(:pop, _from, state = %Sender{}) do
+    case Mux.pop(state.mux) do
+      {:empty, mux} ->
+        {:reply, nil, %Sender{state | mux: mux}}
 
-    case min do
-      nil ->
-        {:reply, nil, state}
-
-      {partition, {[data | q], [from | rest]}} ->
-        ps =
-          if q == [] do
-            Map.delete(partitions, partition)
-          else
-            Map.put(partitions, partition, {q, rest})
-          end
-
-        state = %Sender{state | partitions: ps}
-
-        case from do
-          nil -> :nop
-          {:trace, trace} -> Network.EdgeV2.trace(trace)
-          from -> GenServer.reply(from, :ok)
-        end
-
-        {:reply, data, state}
+      {:ok, mux, data, meta} ->
+        ack(meta)
+        {:reply, data, %Sender{state | mux: mux}}
     end
   end
 
@@ -122,9 +76,29 @@ defmodule Network.Sender do
     do_await(from, state)
   end
 
+  defp enqueue(state = %Sender{}, partition, data, meta) do
+    %Sender{state | mux: Mux.enqueue(state.mux, partition, data, meta)}
+  end
+
+  defp deliver_waiting(state = %Sender{waiting: from}) do
+    case Mux.pop(state.mux) do
+      {:empty, mux} ->
+        {:reply, :ok, %Sender{state | mux: mux}}
+
+      {:ok, mux, data, meta} ->
+        ack(meta)
+        GenServer.reply(from, data)
+        {:reply, :ok, %Sender{state | mux: mux, waiting: nil}}
+    end
+  end
+
+  defp ack(nil), do: :ok
+  defp ack({:trace, trace}), do: Network.EdgeV2.trace(trace)
+  defp ack(from), do: GenServer.reply(from, :ok)
+
   # Coalescing data frames into 64kb at least when available
-  defp do_await(data \\ "", from, state = %Sender{partitions: partitions, waiting: nil}) do
-    if map_size(partitions) > 0 and byte_size(data) < 64_000 do
+  defp do_await(data \\ "", from, state = %Sender{waiting: nil}) do
+    if Mux.partition_count(state.mux) > 0 and byte_size(data) < Mux.coalesce_limit() do
       {:reply, new_data, state} = handle_call(:pop, from, state)
       do_await(data <> new_data, from, state)
     else
@@ -149,7 +123,7 @@ defmodule Network.Sender do
   def init([socket]) do
     q = self()
     relay = spawn_link(__MODULE__, :relayer_loop, [q, socket])
-    {:ok, %Sender{partitions: %{}, waiting: nil, relay: relay}}
+    {:ok, %Sender{mux: Mux.new(), waiting: nil, relay: relay}}
   end
 
   def relayer_loop(q, socket) do
