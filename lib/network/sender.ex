@@ -1,7 +1,7 @@
 defmodule Network.Sender do
   @moduledoc """
   Quality-Of-Service aware network sender. Wraps a socket and sends on
-  multiple partitions. Small partitions are preferred over large ones.
+  multiple partitions, rotating after each 64KB quantum.
 
   Partition ordering lives in `Network.Mux`.
   """
@@ -41,10 +41,10 @@ defmodule Network.Sender do
   end
 
   @impl true
-  def handle_call({:push_async, _partition, data, trace}, _from, state = %Sender{waiting: from}) do
-    GenServer.reply(from, data)
-    Network.EdgeV2.trace(trace)
-    {:reply, :ok, %Sender{state | waiting: nil}}
+  def handle_call({:push_async, partition, data, trace}, _from, state = %Sender{waiting: from})
+      when from != nil do
+    state = enqueue(state, partition, data, {:trace, trace})
+    deliver_waiting(state)
   end
 
   @impl true
@@ -53,9 +53,10 @@ defmodule Network.Sender do
   end
 
   @impl true
-  def handle_call({:push, _partition, data}, _from, state = %Sender{waiting: from}) do
-    GenServer.reply(from, data)
-    {:reply, :ok, %Sender{state | waiting: nil}}
+  def handle_call({:push, partition, data}, from_push, state = %Sender{waiting: from})
+      when from != nil do
+    state = enqueue(state, partition, data, from_push)
+    deliver_waiting(state)
   end
 
   @impl true
@@ -77,6 +78,18 @@ defmodule Network.Sender do
 
   defp enqueue(state = %Sender{}, partition, data, meta) do
     %Sender{state | mux: Mux.enqueue(state.mux, partition, data, meta)}
+  end
+
+  defp deliver_waiting(state = %Sender{waiting: from}) do
+    case Mux.pop(state.mux) do
+      {:empty, mux} ->
+        {:reply, :ok, %Sender{state | mux: mux}}
+
+      {:ok, mux, data, meta} ->
+        ack(meta)
+        GenServer.reply(from, data)
+        {:reply, :ok, %Sender{state | mux: mux, waiting: nil}}
+    end
   end
 
   defp ack(nil), do: :ok
