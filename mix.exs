@@ -120,7 +120,7 @@ defmodule Diode.Mixfile do
 
   defp deps do
     [
-      {:certmagex, github: "dominicletz/certmagex"},
+      {:certmagex, github: "dominicletz/certmagex", branch: "fix/acme-fail-backoff"},
       {:debouncer, "~> 1.0", override: true},
       {:dets_plus, "~> 2.0"},
       {:eblake2, "~> 1.0"},
