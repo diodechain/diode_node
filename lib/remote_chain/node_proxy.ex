@@ -34,6 +34,7 @@ defmodule RemoteChain.NodeProxy do
   # expected_block_intervall, so we keep it in the pool for one cycle longer
   # in case it recovers, then evict + ask ChainList to re-test the URL.
   @stale_eviction_intervals 20
+  @min_max_block_jump 10_000
 
   defstruct [
     :chain,
@@ -42,6 +43,7 @@ defmodule RemoteChain.NodeProxy do
     requests: %{},
     lastblocks: %{},
     lastblock: 0,
+    lastblock_at: nil,
     subscriptions: %{},
     log: nil,
     fallback: nil,
@@ -203,7 +205,7 @@ defmodule RemoteChain.NodeProxy do
   end
 
   def handle_cast(:reset_lastblock, state = %NodeProxy{}) do
-    {:noreply, %{state | lastblock: 0, lastblocks: %{}}}
+    {:noreply, %{state | lastblock: 0, lastblock_at: nil, lastblocks: %{}}}
   end
 
   @impl true
@@ -214,57 +216,76 @@ defmodule RemoteChain.NodeProxy do
           lastblocks: lastblocks,
           subscriptions: subs,
           lastblock: lastblock,
+          lastblock_at: lastblock_at,
           fallback: fallback,
           fallback_url: fallback_url
         }
       ) do
     now = DateTime.utc_now()
-    lastblocks = Map.put(lastblocks, ws_url, {block_number, now})
 
-    # A provider that has been silent for more than the staleness cutoff
-    # contributes zero votes to the quorum. Otherwise a single frozen
-    # fallback would block every block advance (the us1/Oasis incident).
-    live_voter_count =
-      Enum.count(lastblocks, fn {_url, {block, lastblock_at}} ->
-        block >= block_number and not RemoteChain.WSConn.stale_at?(lastblock_at, chain)
-      end)
+    if implausible_jump?(block_number, lastblock, lastblock_at, chain, now) do
+      max_jump = max_block_jump(lastblock_at, chain, now)
 
-    # Prefer the cached `lastblocks` entry so the consensus path never makes
-    # a `:sys.get_state` call to the fallback pid. Fall back to the WSConn's
-    # own `lastblock_at` only when the fallback has never reported a block.
-    fallback_live? =
-      fallback != nil and
-        case Map.get(lastblocks, fallback_url) do
-          {_block, lastblock_at} -> not RemoteChain.WSConn.stale_at?(lastblock_at, chain)
-          nil -> not RemoteChain.WSConn.stale?(fallback, chain)
+      Logger.warning(
+        "NodeProxy(#{inspect(chain)}) ignoring implausible block jump from #{ws_url}: #{lastblock} -> #{block_number} (max_jump=#{max_jump})"
+      )
+
+      {:noreply, state}
+    else
+      lastblocks = Map.put(lastblocks, ws_url, {block_number, now})
+
+      # A provider that has been silent for more than the staleness cutoff
+      # contributes zero votes to the quorum. Otherwise a single frozen
+      # fallback would block every block advance (the us1/Oasis incident).
+      live_voter_count =
+        Enum.count(lastblocks, fn {_url, {block, lastblock_at}} ->
+          block >= block_number and not RemoteChain.WSConn.stale_at?(lastblock_at, chain)
+        end)
+
+      # Prefer the cached `lastblocks` entry so the consensus path never makes
+      # a `:sys.get_state` call to the fallback pid. Fall back to the WSConn's
+      # own `lastblock_at` only when the fallback has never reported a block.
+      fallback_live? =
+        fallback != nil and
+          case Map.get(lastblocks, fallback_url) do
+            {_block, lastblock_at} -> not RemoteChain.WSConn.stale_at?(lastblock_at, chain)
+            nil -> not RemoteChain.WSConn.stale?(fallback, chain)
+          end
+
+      security_level = if fallback_live?, do: @security_level + 1, else: @security_level
+
+      {next_block, next_lastblock_at, publish_header, publish?} =
+        next_published_block(
+          block_number,
+          header,
+          lastblock,
+          lastblock_at,
+          lastblocks,
+          live_voter_count,
+          security_level,
+          chain,
+          now
+        )
+
+      if publish? do
+        pid = :global.whereis_name({RPCCache, chain})
+
+        if pid != :undefined do
+          # Sent before the subscriber notifications so the RPCCache can prime
+          # its block cache from the subscription header (when present) before
+          # any subscriber fetches the block. RPCCache processes messages in
+          # order, so the injected entry is guaranteed to be visible first.
+          send(pid, {{__MODULE__, chain}, :block_number, next_block, publish_header})
         end
 
-    security_level = if fallback_live?, do: @security_level + 1, else: @security_level
-
-    block_number =
-      if live_voter_count >= security_level do
-        max(block_number, lastblock)
-      else
-        lastblock
+        for {pid, _ref} <- subs do
+          send(pid, {{__MODULE__, chain}, :block_number, next_block})
+        end
       end
 
-    if block_number > lastblock do
-      pid = :global.whereis_name({RPCCache, chain})
-
-      if pid != :undefined do
-        # Sent before the subscriber notifications so the RPCCache can prime
-        # its block cache from the subscription header (when present) before
-        # any subscriber fetches the block. RPCCache processes messages in
-        # order, so the injected entry is guaranteed to be visible first.
-        send(pid, {{__MODULE__, chain}, :block_number, block_number, header})
-      end
-
-      for {pid, _ref} <- subs do
-        send(pid, {{__MODULE__, chain}, :block_number, block_number})
-      end
+      {:noreply,
+       %{state | lastblocks: lastblocks, lastblock: next_block, lastblock_at: next_lastblock_at}}
     end
-
-    {:noreply, %{state | lastblocks: lastblocks, lastblock: block_number}}
   end
 
   def handle_info(:watchdog, state) do
@@ -333,6 +354,58 @@ defmodule RemoteChain.NodeProxy do
           GenServer.reply(from, response)
           {:noreply, %{state | requests: requests}}
         end
+    end
+  end
+
+  defp implausible_jump?(block_number, lastblock, lastblock_at, chain, now)
+       when lastblock > 0 and block_number > lastblock do
+    block_number - lastblock > max_block_jump(lastblock_at, chain, now)
+  end
+
+  defp implausible_jump?(_block_number, _lastblock, _lastblock_at, _chain, _now), do: false
+
+  defp max_block_jump(lastblock_at, chain, now) do
+    elapsed = if lastblock_at, do: max(DateTime.diff(now, lastblock_at, :second), 1), else: 1
+    max(@min_max_block_jump, div(elapsed * 4, max(chain.expected_block_intervall(), 1)))
+  end
+
+  defp next_published_block(
+         block_number,
+         header,
+         lastblock,
+         lastblock_at,
+         lastblocks,
+         live_voter_count,
+         security_level,
+         chain,
+         now
+       ) do
+    cond do
+      live_voter_count >= security_level and block_number > lastblock ->
+        {block_number, now, header, true}
+
+      lastblock > 0 and lastblock_at != nil and
+          RemoteChain.WSConn.stale_at?(lastblock_at, chain, @stale_eviction_intervals) ->
+        live_blocks =
+          for {_url, {b, ts}} <- lastblocks,
+              not RemoteChain.WSConn.stale_at?(ts, chain),
+              do: b
+
+        if length(live_blocks) >= security_level and Enum.all?(live_blocks, &(&1 < lastblock)) do
+          recovered = live_blocks |> Enum.sort(:desc) |> Enum.at(security_level - 1)
+
+          Logger.warning(
+            "NodeProxy(#{inspect(chain)}) resetting stale poisoned lastblock #{lastblock} -> #{recovered}"
+          )
+
+          pub_header = if recovered == block_number, do: header, else: nil
+          {recovered, now, pub_header, true}
+        else
+          {lastblock, lastblock_at, nil, false}
+        end
+
+      true ->
+        {lastblock, lastblock_at, nil, false}
     end
   end
 

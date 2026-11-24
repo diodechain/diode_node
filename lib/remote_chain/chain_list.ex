@@ -196,8 +196,8 @@ defmodule RemoteChain.ChainList do
              10_000
            ) do
         receive do
-          {:response, _ws_url, %{"id" => 99, "result" => _chain_id}} ->
-            current_block?(pid, chain)
+          {:response, _ws_url, %{"id" => 99, "result" => chain_id}} ->
+            chain_id_matches?(chain, chain_id) and current_block?(pid, chain)
 
           {:DOWN, _ref, :process, ^pid, _reason} ->
             false
@@ -216,13 +216,34 @@ defmodule RemoteChain.ChainList do
   end
 
   def do_test?(url, chain) do
-    with {:ok, _chain_id} <- RemoteChain.HTTP.rpc(url, "eth_chainId", []),
+    with {:ok, chain_id} <- RemoteChain.HTTP.rpc(url, "eth_chainId", []),
+         true <- chain_id_matches?(chain, chain_id),
          {:ok, block} <- RemoteChain.HTTP.rpc(url, "eth_getBlockByNumber", ["latest", false]) do
       block_current?(chain, block)
     else
       _ -> false
     end
   end
+
+  @doc """
+  Returns true when the `eth_chainId` value reported by a provider matches
+  `chain.chain_id()`.
+  """
+  def chain_id_matches?(chain, chain_id) when is_binary(chain_id) do
+    expected = RemoteChain.chainimpl(chain).chain_id()
+
+    try do
+      Base16.decode_int(chain_id) == expected
+    rescue
+      _ -> false
+    end
+  end
+
+  def chain_id_matches?(chain, chain_id) when is_integer(chain_id) do
+    chain_id == RemoteChain.chainimpl(chain).chain_id()
+  end
+
+  def chain_id_matches?(_chain, _chain_id), do: false
 
   defp current_block?(pid, chain) do
     if :ok ==
