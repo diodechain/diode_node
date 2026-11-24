@@ -572,6 +572,49 @@ defmodule RemoteChain.NodeProxyTest do
       # security_level = 1.
       assert state.lastblock == 6
     end
+
+    test "ignores implausible forward block jumps from a misconfigured provider" do
+      base_state = %{
+        build_state(%{}, nil)
+        | chain: Chains.Base,
+          lastblock: 56_858_956,
+          lastblock_at: DateTime.add(DateTime.utc_now(), -7, :second)
+      }
+
+      :yes = :global.register_name({RPCCache, Chains.Base}, self())
+      on_exit(fn -> :global.unregister_name({RPCCache, Chains.Base}) end)
+
+      bad_url = "wss://wrong-chain.example/ws"
+
+      {:noreply, next_state} =
+        NodeProxy.handle_info({:new_block, bad_url, 65_558_513, nil}, base_state)
+
+      assert next_state.lastblock == 56_858_956
+      refute Map.has_key?(next_state.lastblocks, bad_url)
+      refute_received {{NodeProxy, Chains.Base}, :block_number, _, _}
+    end
+
+    test "recovers from a stale poisoned lastblock when live providers stream lower blocks" do
+      stale_ts = DateTime.add(DateTime.utc_now(), -120, :second)
+
+      poisoned_state = %{
+        build_state(%{}, nil)
+        | chain: Chains.Base,
+          lastblock: 65_559_429,
+          lastblock_at: stale_ts
+      }
+
+      :yes = :global.register_name({RPCCache, Chains.Base}, self())
+      on_exit(fn -> :global.unregister_name({RPCCache, Chains.Base}) end)
+
+      header = %{"number" => "0x3af7308", "hash" => "0xbb"}
+
+      {:noreply, recovered_state} =
+        NodeProxy.handle_info({:new_block, @primary_url, 61_829_456, header}, poisoned_state)
+
+      assert recovered_state.lastblock == 61_829_456
+      assert_received {{NodeProxy, Chains.Base}, :block_number, 61_829_456, ^header}
+    end
   end
 
   describe "prune_stale_connections/1 eviction" do

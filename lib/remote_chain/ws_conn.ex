@@ -17,7 +17,8 @@ defmodule RemoteChain.WSConn do
     :lastblock_at,
     :subscription_id,
     :started_at,
-    lastblock_number: 0
+    lastblock_number: 0,
+    chain_verified?: true
   ]
 
   @connection_timeout_ms 20_000
@@ -112,7 +113,8 @@ defmodule RemoteChain.WSConn do
       chain: chain,
       ws_url: ws_url,
       lastblock_at: DateTime.utc_now(),
-      started_at: DateTime.utc_now()
+      started_at: DateTime.utc_now(),
+      chain_verified?: false
     }
 
     {:ok, pid} =
@@ -141,6 +143,15 @@ defmodule RemoteChain.WSConn do
     Process.monitor(state.owner)
     Globals.put({__MODULE__, self()}, conn)
     state = %{state | conn: conn}
+
+    %{
+      "jsonrpc" => "2.0",
+      "id" => 3,
+      "method" => "eth_chainId",
+      "params" => []
+    }
+    |> Poison.encode!()
+    |> send_frame(state)
 
     %{
       "jsonrpc" => "2.0",
@@ -178,9 +189,30 @@ defmodule RemoteChain.WSConn do
   @impl true
   def handle_frame(
         {:text, json},
-        state = %{ws_url: ws_url, chain: _chain, subscription_id: subscription_id}
+        state = %{ws_url: ws_url, chain: chain, subscription_id: subscription_id}
       ) do
     case Poison.decode!(json) do
+      %{"id" => 3, "result" => chain_id} when is_binary(chain_id) or is_integer(chain_id) ->
+        if RemoteChain.ChainList.chain_id_matches?(chain, chain_id) do
+          {:ok, %{state | chain_verified?: true}}
+        else
+          Logger.warning(
+            "WSConn #{ws_url} returned wrong chain_id #{inspect(chain_id)} for #{inspect(chain)}; closing"
+          )
+
+          {:close, state}
+        end
+
+      %{"id" => 3, "error" => error} ->
+        Logger.warning(
+          "WSConn #{ws_url} failed eth_chainId for #{inspect(chain)}: #{inspect(error)}; closing"
+        )
+
+        {:close, state}
+
+      %{"id" => 3} ->
+        {:ok, %{state | chain_verified?: true}}
+
       %{"id" => 1, "result" => subscription_id} when is_binary(subscription_id) ->
         {:ok, %{state | subscription_id: subscription_id}}
 
@@ -308,7 +340,11 @@ defmodule RemoteChain.WSConn do
 
   defp new_block(hex_number, header, state) do
     block_number = String.to_integer(hex_number, 16)
-    send(state.owner, {:new_block, state.ws_url, block_number, header})
+
+    if state.chain_verified? do
+      send(state.owner, {:new_block, state.ws_url, block_number, header})
+    end
+
     %{state | lastblock_at: DateTime.utc_now(), lastblock_number: block_number}
   end
 

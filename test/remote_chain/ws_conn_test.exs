@@ -128,7 +128,12 @@ defmodule RemoteChain.WSConnTest do
 
   describe "handle_frame/2 newHeads notifications" do
     defp conn_state do
-      %WSConn{owner: self(), ws_url: "wss://provider.example/ws", subscription_id: "0xabc"}
+      %WSConn{
+        owner: self(),
+        chain: Chains.Anvil,
+        ws_url: "wss://provider.example/ws",
+        subscription_id: "0xabc"
+      }
     end
 
     test "forwards the full header from a subscription notification" do
@@ -159,6 +164,28 @@ defmodule RemoteChain.WSConnTest do
 
       assert_received {:new_block, "wss://provider.example/ws", 500, nil}
       assert state.lastblock_number == 500
+    end
+
+    test "drops blocks until eth_chainId matches and forwards once verified" do
+      unverified = %{conn_state() | chain_verified?: false}
+      block_frame = Poison.encode!(%{"id" => 2, "result" => "0x1f4"})
+
+      assert {:ok, state} = WSConn.handle_frame({:text, block_frame}, unverified)
+      refute_received {:new_block, _, _, _}
+
+      chain_frame = Poison.encode!(%{"id" => 3, "result" => "0x7a69"})
+      assert {:ok, state} = WSConn.handle_frame({:text, chain_frame}, state)
+      assert state.chain_verified? == true
+
+      assert {:ok, _state} = WSConn.handle_frame({:text, block_frame}, state)
+      assert_received {:new_block, "wss://provider.example/ws", 500, nil}
+    end
+
+    test "closes connection when eth_chainId returns a mismatched chain" do
+      unverified = %{conn_state() | chain_verified?: false}
+      wrong_chain = Poison.encode!(%{"id" => 3, "result" => "0x1"})
+
+      assert {:close, _state} = WSConn.handle_frame({:text, wrong_chain}, unverified)
     end
   end
 end

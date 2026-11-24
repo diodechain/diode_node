@@ -14,6 +14,7 @@ defmodule FleetValidationTest do
     Model.FleetSql.delete_all()
 
     on_exit(fn ->
+      Application.delete_env(:diode, :fleet_validation_contract_fn)
       Application.delete_env(:diode, :fleet_validation_registry_fn)
     end)
 
@@ -127,5 +128,63 @@ defmodule FleetValidationTest do
 
     row = Model.FleetSql.get(@moonbeam_id, fleet)
     assert row.registry_exists == 0
+  end
+
+  test "ensure_valid returns :ok without persisting invalid row when get_code RPC fails" do
+    fleet = Chains.Moonbeam.developer_fleet_address()
+
+    Application.put_env(:diode, :fleet_validation_contract_fn, fn _chain_id, _fleet ->
+      raise "RPC error in Chains.Base.eth_getCode([\"0x\", \"latest\"]): block not found"
+    end)
+
+    ticket =
+      ticketv2(
+        chain_id: @moonbeam_id,
+        server_id: Wallet.address!(Diode.wallet()),
+        fleet_contract: fleet,
+        total_connections: 1,
+        total_bytes: 4096,
+        local_address: "fleet_validation_test",
+        epoch: 1,
+        device_signature: <<0::520>>
+      )
+
+    assert :ok = FleetValidation.ensure_valid(ticket)
+    assert Model.FleetSql.get(@moonbeam_id, fleet) == nil
+  end
+
+  test "ensure_valid returns :ok without overwriting FleetSql when registry RPC fails" do
+    fleet = Chains.Moonbeam.developer_fleet_address()
+    now = System.os_time(:second)
+
+    Model.FleetSql.upsert(%{
+      chain_id: @moonbeam_id,
+      fleet: fleet,
+      is_contract: 1,
+      registry_exists: 0,
+      stake: 0,
+      contract_checked_at: now,
+      registry_checked_at: 0,
+      stake_checked_at: 0
+    })
+
+    Application.put_env(:diode, :fleet_validation_registry_fn, fn _chain_id, _fleet ->
+      raise "RPC error in Chains.Base.eth_call(...): block not found"
+    end)
+
+    ticket =
+      ticketv2(
+        chain_id: @moonbeam_id,
+        server_id: Wallet.address!(Diode.wallet()),
+        fleet_contract: fleet,
+        total_connections: 1,
+        total_bytes: 4096,
+        local_address: "fleet_validation_test",
+        epoch: 1,
+        device_signature: <<0::520>>
+      )
+
+    assert :ok = FleetValidation.ensure_valid(ticket)
+    assert Model.FleetSql.get(@moonbeam_id, fleet).registry_checked_at == 0
   end
 end

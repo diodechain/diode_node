@@ -24,7 +24,7 @@ defmodule RemoteChain.ChainListTest do
       if opts[:chain_id_error] do
         %{"jsonrpc" => "2.0", "id" => id, "error" => %{"code" => -32000, "message" => "down"}}
       else
-        %{"jsonrpc" => "2.0", "id" => id, "result" => "0x7a69"}
+        %{"jsonrpc" => "2.0", "id" => id, "result" => Keyword.get(opts, :chain_id, "0x7a69")}
       end
     end
 
@@ -60,7 +60,7 @@ defmodule RemoteChain.ChainListTest do
         case {id, method} do
           {1, "eth_subscribe"} -> "0x1"
           {2, "eth_blockNumber"} -> "0x10"
-          {99, "eth_chainId"} -> "0x7a69"
+          {_id, "eth_chainId"} -> Keyword.get(opts, :chain_id, "0x7a69")
           {100, "eth_getBlockByNumber"} -> %{"number" => "0x10", "timestamp" => opts[:timestamp]}
           _ -> nil
         end
@@ -262,6 +262,15 @@ defmodule RemoteChain.ChainListTest do
         refute RemoteChain.ChainList.do_test?(url, Chains.Anvil)
       end)
     end
+
+    test "rejects a provider returning a mismatched eth_chainId" do
+      with_http_mock(
+        [chain_id: "0x1", timestamp: hex_timestamp(System.os_time(:second))],
+        fn url ->
+          refute RemoteChain.ChainList.do_test?(url, Chains.Anvil)
+        end
+      )
+    end
   end
 
   describe "do_test?/2 WS providers" do
@@ -275,6 +284,25 @@ defmodule RemoteChain.ChainListTest do
       with_ws_mock([timestamp: hex_timestamp(System.os_time(:second) - 24 * 3600)], fn url ->
         refute RemoteChain.ChainList.do_test?(url, Chains.Anvil)
       end)
+    end
+
+    test "rejects a provider returning a mismatched eth_chainId" do
+      with_ws_mock(
+        [chain_id: "0x1", timestamp: hex_timestamp(System.os_time(:second))],
+        fn url ->
+          refute RemoteChain.ChainList.do_test?(url, Chains.Anvil)
+        end
+      )
+    end
+  end
+
+  describe "chain_id_matches?/2" do
+    test "matches hex or integer chain IDs against the chain config and rejects mismatches" do
+      assert RemoteChain.ChainList.chain_id_matches?(Chains.Anvil, "0x7a69")
+      assert RemoteChain.ChainList.chain_id_matches?(Chains.Anvil, 31_337)
+      refute RemoteChain.ChainList.chain_id_matches?(Chains.Anvil, "0x1")
+      refute RemoteChain.ChainList.chain_id_matches?(Chains.Anvil, "not-hex")
+      refute RemoteChain.ChainList.chain_id_matches?(Chains.Anvil, nil)
     end
   end
 

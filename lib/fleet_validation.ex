@@ -15,21 +15,38 @@ defmodule FleetValidation do
   def ensure_valid(ticket) do
     chain_id = Ticket.chain_id(ticket)
     fleet = Ticket.fleet_contract(ticket)
-    row = refresh(chain_id, fleet, FleetSql.get(chain_id, fleet))
 
-    with :ok <- validate_contract(row),
-         :ok <- validate_registry(row, chain_id) do
-      maybe_warn_zero_stake(row, chain_id)
-      :ok
-    else
+    case safe_refresh(chain_id, fleet, FleetSql.get(chain_id, fleet)) do
+      {:ok, row} ->
+        with :ok <- validate_contract(row),
+             :ok <- validate_registry(row, chain_id) do
+          maybe_warn_zero_stake(row, chain_id)
+          :ok
+        else
+          {:error, reason} ->
+            Logger.warning(
+              "Fleet validation failed on: #{Base16.encode(fleet)} @ #{chain_id}: #{inspect({:error, reason})}"
+            )
+
+            Network.DeviceNotify.notify_fleet_issue(ticket, reason)
+            :ok
+        end
+
       {:error, reason} ->
         Logger.warning(
-          "Fleet validation failed on: #{Base16.encode(fleet)} @ #{chain_id}: #{inspect({:error, reason})}"
+          "Fleet validation RPC failed on: #{Base16.encode(fleet)} @ #{chain_id}: #{inspect(reason)}"
         )
 
-        Network.DeviceNotify.notify_fleet_issue(ticket, reason)
         :ok
     end
+  end
+
+  defp safe_refresh(chain_id, fleet, row) do
+    {:ok, refresh(chain_id, fleet, row)}
+  rescue
+    error -> {:error, Exception.message(error)}
+  catch
+    :exit, reason -> {:error, reason}
   end
 
   defp refresh(chain_id, fleet, nil) do
@@ -127,12 +144,18 @@ defmodule FleetValidation do
   end
 
   defp contract?(chain_id, fleet) do
-    chain_id
-    |> RemoteChain.RPCCache.get_code(Base16.encode(fleet))
-    |> Base16.decode()
-    |> case do
-      "" -> false
-      _ -> true
+    case Application.get_env(:diode, :fleet_validation_contract_fn) do
+      fun when is_function(fun, 2) ->
+        fun.(chain_id, fleet)
+
+      _ ->
+        chain_id
+        |> RemoteChain.RPCCache.get_code(Base16.encode(fleet))
+        |> Base16.decode()
+        |> case do
+          "" -> false
+          _ -> true
+        end
     end
   end
 
