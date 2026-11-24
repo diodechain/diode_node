@@ -160,6 +160,15 @@ defmodule RemoteChain.RPCCacheTest do
       cache = RemoteChain.RPCCache.inject_block_header(cache, Chains.Diode, 100, header)
       assert %{"result" => _} = RemoteChain.Cache.get(cache, block_key(Chains.Diode, "0x64"))
     end
+
+    test "skips OasisSapphire because newHeads hash differs from eth_getBlockByNumber" do
+      cache = Lru.new(10)
+
+      cache =
+        RemoteChain.RPCCache.inject_block_header(cache, Chains.OasisSapphire, 100, full_header())
+
+      assert RemoteChain.Cache.get(cache, block_key(Chains.OasisSapphire, "0x64")) == nil
+    end
   end
 
   describe "handle_info({{NodeProxy, _}, :block_number, n, header})" do
@@ -211,6 +220,35 @@ defmodule RemoteChain.RPCCacheTest do
       assert state.block_number == 100
 
       key = RemoteChain.RPCCache.cache_key(Chains.Anvil, "eth_getBlockByNumber", ["0x64", false])
+      assert RemoteChain.Cache.get(state.cache, key) == nil
+    end
+
+    test "updates block_number for OasisSapphire without priming cache from newHeads" do
+      cache = Lru.new(10)
+      {:ok, pid} = GenServer.start_link(RemoteChain.RPCCache, {Chains.OasisSapphire, cache})
+
+      header = %{
+        "hash" => "0x1111111111111111111111111111111111111111111111111111111111111111",
+        "nonce" => "0x0000000000000000",
+        "miner" => "0x2222222222222222222222222222222222222222",
+        "number" => "0x64",
+        "parentHash" => "0x3333333333333333333333333333333333333333333333333333333333333333",
+        "stateRoot" => "0x4444444444444444444444444444444444444444444444444444444444444444",
+        "timestamp" => "0x66b3d350",
+        "transactionsRoot" => "0x5555555555555555555555555555555555555555555555555555555555555555"
+      }
+
+      send(pid, {{RemoteChain.NodeProxy, Chains.OasisSapphire}, :block_number, 100, header})
+
+      state = :sys.get_state(pid)
+      assert state.block_number == 100
+
+      key =
+        RemoteChain.RPCCache.cache_key(Chains.OasisSapphire, "eth_getBlockByNumber", [
+          "0x64",
+          false
+        ])
+
       assert RemoteChain.Cache.get(state.cache, key) == nil
     end
   end
