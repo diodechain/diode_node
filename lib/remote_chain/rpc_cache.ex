@@ -618,9 +618,20 @@ defmodule RemoteChain.RPCCache do
   match the announced block) are skipped, leaving the regular fetch path in
   place. `nil` headers are sent for number-only announcements.
 
+  `Chains.OasisSapphire` is skipped because its `newHeads` subscription returns
+  an Ethereum RLP header hash instead of the Oasis runtime block hash returned
+  by `eth_getBlockByNumber` (and verified by Sapphire signed simulate calls).
+
   Returns the (possibly updated) cache.
   """
   def inject_block_header(cache, _chain, _block_number, nil), do: cache
+
+  # Oasis Sapphire's `newHeads` subscription returns an Ethereum RLP header
+  # hash rather than the Oasis runtime block hash returned by
+  # `eth_getBlockByNumber` (and checked by Sapphire signed simulate calls).
+  # Priming the `eth_getBlockByNumber` cache from `newHeads` poisons every
+  # announced block and causes `unexpected base block` errors.
+  def inject_block_header(cache, Chains.OasisSapphire, _block_number, _header), do: cache
 
   def inject_block_header(cache, chain, block_number, header)
       when is_map(header) do
